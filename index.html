@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>SUGKA LAB – UGEL IBIR-IMAZA</title>
+<meta name="description" content="Asistente IA para especialistas de la UGEL IBIR-IMAZA"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<style>
+/*──────────────────────────────────────────────────────────────────────────────
+  DESIGN SYSTEM
+──────────────────────────────────────────────────────────────────────────────*/
+:root{
+  --bg:#060d18; --surface:#0d1929; --surface2:#132236; --surface3:#1a2e47;
+  --border:#1e3a5a; --border2:#254870;
+  --accent:#10b981; --accent-dim:#0d9268; --accent-glow:#10b98133;
+  --blue:#3b82f6; --blue-dim:#2563eb;
+  --danger:#ef4444; --warning:#f59e0b; --purple:#8b5cf6;
+  --text:#f0f6ff; --text-muted:#7a9bbf; --text-dim:#4a6d8c;
+  --radius:12px; --radius-sm:8px; --radius-lg:16px;
+  --shadow:0 4px 24px rgba(0,0,0,.5); --shadow-lg:0 8px 40px rgba(0,0,0,.7);
+  --transition:.22s cubic-bezier(.4,0,.2,1);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
+button{cursor:pointer;font-family:inherit}
+input,select,textarea{font-family:inherit}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  SCREENS
+──────────────────────────────────────────────────────────────────────────────*/
+.screen{position:fixed;inset:0;display:none;opacity:0;transition:opacity .35s ease}
+.screen.active{display:flex;opacity:1}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  LOGIN SCREEN
+──────────────────────────────────────────────────────────────────────────────*/
+#screen-login{
+  align-items:center;justify-content:center;
+  background:radial-gradient(ellipse 120% 120% at 60% -10%,#0d2d1a 0%,#060d18 60%);
+  overflow:hidden;
+}
+.login-bg-grid{
+  position:absolute;inset:0;
+  background-image:linear-gradient(var(--border) 1px,transparent 1px),
+    linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:40px 40px;opacity:.18;
+}
+.login-glow{
+  position:absolute;width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,#10b98122 0%,transparent 70%);
+  top:-100px;right:-100px;pointer-events:none;
+}
+.login-card{
+  position:relative;z-index:10;width:420px;
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:24px;padding:40px;
+  box-shadow:0 0 0 1px var(--accent-glow),var(--shadow-lg);
+  animation:fadeUp .5s ease;
+}
+@keyframes fadeUp{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+.login-logo{
+  display:flex;align-items:center;gap:12px;margin-bottom:32px;
+}
+.login-logo-icon{
+  width:48px;height:48px;border-radius:14px;
+  background:linear-gradient(135deg,var(--accent),#059669);
+  display:flex;align-items:center;justify-content:center;font-size:22px;
+  box-shadow:0 0 24px var(--accent-glow);
+}
+.login-logo-text{display:flex;flex-direction:column;line-height:1.1}
+.login-logo-text .brand{font-size:20px;font-weight:800;color:var(--text);letter-spacing:-.5px}
+.login-logo-text .sub{font-size:11px;color:var(--text-muted);font-weight:400;margin-top:2px}
+
+.login-heading{font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px}
+.login-subheading{font-size:12px;color:var(--text-muted);margin-bottom:28px}
+
+.form-group{margin-bottom:18px}
+.form-group label{display:block;font-size:11px;font-weight:600;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.7px;margin-bottom:7px}
+
+.form-select,.form-input{
+  width:100%;padding:11px 14px;border-radius:var(--radius-sm);
+  background:var(--surface2);border:1px solid var(--border2);
+  color:var(--text);font-size:13px;outline:none;
+  transition:border-color var(--transition),box-shadow var(--transition);
+}
+.form-select:focus,.form-input:focus{
+  border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);
+}
+.form-select option{background:var(--surface2)}
+
+.pin-wrapper{position:relative}
+.pin-hint{
+  margin-top:6px;font-size:11px;color:var(--text-muted);
+  display:flex;align-items:center;gap:6px;
+}
+.pin-hint .pin-val{
+  font-family:monospace;font-size:13px;font-weight:700;color:var(--accent);
+  background:var(--accent-glow);padding:2px 8px;border-radius:4px;letter-spacing:2px;
+}
+
+.btn-login{
+  width:100%;padding:13px;border-radius:var(--radius-sm);border:none;
+  background:linear-gradient(135deg,var(--accent),var(--accent-dim));
+  color:#fff;font-size:14px;font-weight:700;letter-spacing:.3px;
+  transition:all var(--transition);margin-top:8px;
+  box-shadow:0 4px 16px var(--accent-glow);
+}
+.btn-login:hover{transform:translateY(-1px);box-shadow:0 6px 24px var(--accent-glow)}
+.btn-login:active{transform:translateY(0)}
+.btn-login:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+.login-error{
+  margin-top:14px;padding:10px 14px;border-radius:var(--radius-sm);
+  background:#ef444422;border:1px solid #ef444444;
+  color:#fca5a5;font-size:12px;display:none;
+}
+
+.login-footer{margin-top:24px;text-align:center;font-size:11px;color:var(--text-dim)}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  MAIN APP
+──────────────────────────────────────────────────────────────────────────────*/
+#screen-app{flex-direction:row}
+
+/* SIDEBAR */
+#sidebar{
+  width:64px;background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;align-items:center;
+  padding:16px 0;gap:4px;z-index:100;flex-shrink:0;
+  transition:width var(--transition);
+}
+#sidebar.expanded{width:220px;align-items:flex-start;padding:16px 12px}
+
+.sidebar-logo{
+  width:40px;height:40px;border-radius:10px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-dim));
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  flex-shrink:0;margin-bottom:8px;
+  box-shadow:0 0 16px var(--accent-glow);
+}
+.sidebar-logo-wrap{display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:0 4px;width:100%}
+.sidebar-brand-text{display:none;flex-direction:column;line-height:1.1}
+#sidebar.expanded .sidebar-brand-text{display:flex}
+.sidebar-brand-text .b1{font-size:14px;font-weight:800;color:var(--text)}
+.sidebar-brand-text .b2{font-size:10px;color:var(--text-muted)}
+
+.nav-divider{width:36px;height:1px;background:var(--border);margin:8px auto}
+#sidebar.expanded .nav-divider{width:100%}
+
+.nav-item{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 12px;border-radius:var(--radius-sm);
+  cursor:pointer;transition:all var(--transition);
+  width:100%;position:relative;
+}
+#sidebar:not(.expanded) .nav-item{justify-content:center;width:44px}
+.nav-item:hover{background:var(--surface2)}
+.nav-item.active{background:var(--accent-glow);color:var(--accent)}
+.nav-item.active .nav-icon{color:var(--accent)}
+.nav-icon{font-size:18px;flex-shrink:0;width:22px;text-align:center}
+.nav-label{font-size:13px;font-weight:500;white-space:nowrap;display:none}
+#sidebar.expanded .nav-label{display:block}
+
+.nav-badge{
+  background:var(--danger);color:#fff;border-radius:10px;
+  padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto;display:none;
+}
+#sidebar.expanded .nav-badge{display:block}
+
+.sidebar-bottom{margin-top:auto;width:100%}
+.user-card{
+  padding:10px 12px;border-radius:var(--radius-sm);
+  background:var(--surface2);border:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+  cursor:default;
+}
+#sidebar:not(.expanded) .user-card{justify-content:center;padding:10px 0}
+.user-avatar{
+  width:32px;height:32px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,var(--blue),var(--purple));
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;color:#fff;
+}
+.user-info{display:none;flex-direction:column;min-width:0}
+#sidebar.expanded .user-info{display:flex}
+.user-info .uname{font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-info .urole{font-size:10px;color:var(--text-muted)}
+
+.btn-logout{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:9px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:transparent;color:var(--text-muted);font-size:12px;
+  transition:all var(--transition);margin-top:8px;width:100%;
+}
+#sidebar:not(.expanded) .btn-logout{width:44px;padding:9px 0}
+.btn-logout:hover{background:#ef444422;border-color:#ef444444;color:#fca5a5}
+.btn-logout .logout-label{display:none}
+#sidebar.expanded .btn-logout .logout-label{display:inline}
+
+.sidebar-toggle{
+  position:absolute;top:50%;right:-14px;transform:translateY(-50%);
+  width:28px;height:28px;border-radius:50%;
+  background:var(--surface2);border:1px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;color:var(--text-muted);cursor:pointer;z-index:110;
+  transition:all var(--transition);
+}
+.sidebar-toggle:hover{background:var(--surface3);color:var(--text)}
+
+/* MAIN CONTENT */
+#main-content{
+  flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;
+}
+
+/* TOPBAR */
+#topbar{
+  height:56px;background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;padding:0 20px;gap:16px;flex-shrink:0;z-index:50;
+}
+.topbar-title{font-size:15px;font-weight:700;color:var(--text)}
+.topbar-sub{font-size:11px;color:var(--text-muted);margin-left:4px}
+.topbar-spacer{flex:1}
+.topbar-badge{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 12px;border-radius:20px;
+  background:var(--surface2);border:1px solid var(--border);
+  font-size:11px;font-weight:600;
+}
+.topbar-badge .dot{width:7px;height:7px;border-radius:50%;animation:pulse 2s infinite}
+.dot-green{background:var(--accent)}
+.dot-red{background:var(--danger)}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+
+/* VIEWS */
+#views-container{flex:1;overflow:hidden;position:relative}
+.view{position:absolute;inset:0;display:none;overflow:hidden}
+.view.active{display:flex}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  MAP VIEW
+──────────────────────────────────────────────────────────────────────────────*/
+#view-mapa{flex-direction:row}
+#map-panel{
+  width:320px;background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;
+}
+#map-panel.collapsed{width:0;border:none;overflow:hidden}
+#leaflet-map{flex:1}
+
+.panel-section{padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.panel-label{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+
+.map-search{
+  width:100%;padding:9px 12px;border-radius:var(--radius-sm);
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);font-size:12px;outline:none;
+  transition:border-color var(--transition);
+}
+.map-search:focus{border-color:var(--accent)}
+.map-search::placeholder{color:var(--text-dim)}
+
+.filter-row{display:flex;gap:8px;margin-top:8px}
+.map-select{
+  flex:1;padding:7px 10px;border-radius:var(--radius-sm);
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);font-size:11px;outline:none;
+}
+.map-select:focus{border-color:var(--accent)}
+.map-select option{background:var(--surface2)}
+
+/* Stats strip */
+.stats-strip{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat-mini{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--radius-sm);padding:10px 12px;
+}
+.stat-mini .num{font-size:22px;font-weight:800;color:var(--text);line-height:1}
+.stat-mini .lbl{font-size:10px;color:var(--text-muted);margin-top:2px;text-transform:uppercase;letter-spacing:.4px}
+
+/* Legend */
+.legend-items{display:flex;flex-direction:column;gap:5px}
+.legend-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);cursor:pointer;
+  padding:4px 6px;border-radius:6px;transition:background var(--transition)}
+.legend-row:hover{background:var(--surface2)}
+.legend-row.inactive{opacity:.3}
+.leg-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.leg-count{margin-left:auto;font-size:10px;font-weight:600;
+  background:var(--surface3);padding:1px 6px;border-radius:10px}
+
+/* IE List */
+.ie-list-header{
+  padding:10px 16px;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.ie-list-header span{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px}
+#ie-list{flex:1;overflow-y:auto}
+.ie-row{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:9px 16px;cursor:pointer;border-bottom:1px solid var(--border);
+  transition:background var(--transition);
+}
+.ie-row:hover{background:var(--surface2)}
+.ie-row.selected{background:#10b98110;border-left:3px solid var(--accent);padding-left:13px}
+.ie-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.ie-info{flex:1;min-width:0}
+.ie-name{font-size:12px;font-weight:500;color:var(--text);line-height:1.4;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ie-meta{font-size:10px;color:var(--text-muted);margin-top:1px}
+
+/* IE Detail panel (popup overlay on map) */
+#ie-detail{
+  position:absolute;top:16px;right:16px;width:300px;z-index:500;
+  background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-lg);display:none;animation:slideIn .25s ease;
+  max-height:calc(100% - 32px);overflow-y:auto;
+}
+@keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.ie-detail-header{padding:16px;border-bottom:1px solid var(--border);position:relative}
+.ie-detail-close{
+  position:absolute;top:12px;right:12px;width:24px;height:24px;border-radius:50%;
+  background:var(--surface2);border:none;color:var(--text-muted);font-size:14px;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.ie-detail-nivel{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;
+}
+.ie-detail-name{font-size:14px;font-weight:700;color:var(--text);line-height:1.3;margin-bottom:6px}
+.ie-detail-rows{padding:14px;display:flex;flex-direction:column;gap:8px}
+.ie-drow{display:flex;gap:8px;font-size:11px;align-items:flex-start}
+.ie-drow strong{color:var(--text-muted);min-width:80px;flex-shrink:0;font-weight:500}
+.ie-drow span{color:var(--text)}
+.alerts-section{padding:0 14px 14px}
+.alerts-title{font-size:10px;font-weight:700;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}
+.alert-card{
+  padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:6px;
+  border-left:3px solid var(--danger);background:var(--surface2);
+}
+.alert-card.media{border-left-color:var(--warning)}
+.alert-card.baja{border-left-color:var(--accent)}
+.alert-card-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px}
+.alert-card-desc{font-size:10px;color:var(--text-muted);line-height:1.4}
+.alert-card-score{font-size:10px;font-weight:700;color:var(--text-dim);margin-top:4px}
+
+/* Leaflet popup override */
+.leaflet-popup-content-wrapper{
+  background:var(--surface)!important;border:1px solid var(--border2)!important;
+  border-radius:10px!important;box-shadow:var(--shadow-lg)!important;padding:0!important;
+}
+.leaflet-popup-tip{background:var(--surface)!important}
+.leaflet-popup-content{margin:0!important}
+.lf-popup{padding:12px 14px;font-size:12px;color:var(--text);min-width:180px}
+.lf-popup strong{color:var(--accent);display:block;margin-bottom:4px;font-size:13px}
+.lf-popup span{color:var(--text-muted)}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  OCR VIEW
+──────────────────────────────────────────────────────────────────────────────*/
+#view-ocr{flex-direction:column;overflow-y:auto;padding:24px}
+.ocr-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1100px;margin:0 auto;width:100%}
+@media(max-width:800px){.ocr-grid{grid-template-columns:1fr}}
+
+.ocr-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
+.ocr-panel-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px;
+  display:flex;align-items:center;gap:8px}
+
+.drop-zone{
+  border:2px dashed var(--border2);border-radius:var(--radius);
+  padding:40px 20px;text-align:center;cursor:pointer;
+  transition:all var(--transition);background:var(--surface2);min-height:220px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:var(--accent-glow)}
+.drop-zone .dz-icon{font-size:40px;opacity:.6}
+.drop-zone .dz-text{font-size:13px;color:var(--text-muted)}
+.drop-zone .dz-sub{font-size:11px;color:var(--text-dim)}
+.btn-browse{
+  padding:8px 16px;border-radius:var(--radius-sm);
+  border:1px solid var(--border2);background:var(--surface3);
+  color:var(--text);font-size:12px;font-weight:500;
+  transition:all var(--transition);
+}
+.btn-browse:hover{border-color:var(--accent);color:var(--accent)}
+
+.ocr-preview-box{
+  border-radius:var(--radius);overflow:hidden;background:var(--surface2);
+  border:1px solid var(--border);min-height:200px;
+  display:flex;align-items:center;justify-content:center;
+}
+.ocr-preview-box img{max-width:100%;max-height:280px;object-fit:contain}
+.ocr-preview-placeholder{color:var(--text-dim);font-size:12px;text-align:center;padding:20px}
+
+.ocr-progress{
+  display:none;flex-direction:column;gap:8px;padding:16px;
+  background:var(--surface2);border-radius:var(--radius);
+  border:1px solid var(--border);margin-top:12px;
+}
+.ocr-progress.visible{display:flex}
+.progress-bar-wrap{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
+.progress-bar{height:100%;background:var(--accent);border-radius:3px;
+  transition:width .3s ease;animation:scanning 1.5s ease-in-out infinite}
+@keyframes scanning{0%{width:0}50%{width:70%}100%{width:100%}}
+.progress-label{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px}
+.progress-label::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);
+  animation:pulse 1s infinite}
+
+/* Extracted fields */
+.fields-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.field-item{display:flex;flex-direction:column;gap:4px}
+.field-label{font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;
+  display:flex;align-items:center;gap:4px}
+.field-input{
+  padding:8px 10px;border-radius:var(--radius-sm);
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);font-size:12px;outline:none;
+  transition:border-color var(--transition);
+}
+.field-input:focus{border-color:var(--accent)}
+.confidence-chip{
+  display:inline-flex;align-items:center;gap:4px;padding:2px 6px;
+  border-radius:4px;font-size:9px;font-weight:700;
+}
+.conf-high{background:#10b98122;color:var(--accent)}
+.conf-med{background:#f59e0b22;color:var(--warning)}
+.conf-low{background:#ef444422;color:var(--danger)}
+
+.niveles-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.nivel-box{
+  background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:10px 6px;text-align:center;
+}
+.nivel-box .niv-label{font-size:10px;font-weight:700;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.4px}
+.nivel-box .niv-input{
+  display:block;width:100%;margin-top:4px;padding:6px 4px;
+  border-radius:4px;background:var(--surface3);border:1px solid var(--border);
+  color:var(--text);font-size:16px;font-weight:700;text-align:center;outline:none;
+}
+.nivel-box .niv-input:focus{border-color:var(--accent)}
+
+.btn-save{
+  width:100%;padding:12px;border-radius:var(--radius-sm);border:none;
+  background:linear-gradient(135deg,var(--accent),var(--accent-dim));
+  color:#fff;font-size:13px;font-weight:700;
+  transition:all var(--transition);
+  box-shadow:0 4px 16px var(--accent-glow);
+}
+.btn-save:hover{transform:translateY(-1px);box-shadow:0 6px 24px var(--accent-glow)}
+.btn-save:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+.ocr-success{
+  display:none;padding:12px 14px;border-radius:var(--radius-sm);
+  background:#10b98122;border:1px solid var(--accent);
+  color:var(--accent);font-size:12px;font-weight:600;
+  text-align:center;margin-top:10px;
+}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  DASHBOARD VIEW
+──────────────────────────────────────────────────────────────────────────────*/
+#view-dashboard{flex-direction:column;overflow-y:auto;padding:24px;gap:20px}
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
+.kpi-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:20px;position:relative;overflow:hidden;
+}
+.kpi-card::before{
+  content:'';position:absolute;top:-20px;right:-20px;
+  width:80px;height:80px;border-radius:50%;opacity:.08;
+}
+.kpi-card.green::before{background:var(--accent)}
+.kpi-card.blue::before{background:var(--blue)}
+.kpi-card.red::before{background:var(--danger)}
+.kpi-card.yellow::before{background:var(--warning)}
+.kpi-card.purple::before{background:var(--purple)}
+.kpi-icon{font-size:24px;margin-bottom:12px}
+.kpi-value{font-size:36px;font-weight:800;color:var(--text);line-height:1;margin-bottom:4px}
+.kpi-label{font-size:12px;color:var(--text-muted)}
+.kpi-sub{font-size:10px;color:var(--text-dim);margin-top:4px}
+
+.section-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;
+  display:flex;align-items:center;gap:8px}
+.section-title::before{content:'';width:4px;height:18px;background:var(--accent);border-radius:2px}
+
+.top-table{width:100%;border-collapse:collapse}
+.top-table th{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;
+  letter-spacing:.6px;padding:8px 12px;border-bottom:1px solid var(--border);text-align:left}
+.top-table td{font-size:12px;padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text)}
+.top-table tr:last-child td{border-bottom:none}
+.top-table tr:hover td{background:var(--surface2)}
+.score-pill{
+  display:inline-flex;padding:2px 8px;border-radius:10px;
+  font-size:10px;font-weight:700;
+}
+.score-alta{background:#ef444422;color:var(--danger)}
+.score-media{background:#f59e0b22;color:var(--warning)}
+.score-baja{background:#10b98122;color:var(--accent)}
+
+.district-bar-wrap{display:flex;flex-direction:column;gap:8px}
+.dist-row{display:flex;align-items:center;gap:10px}
+.dist-name{font-size:12px;color:var(--text-muted);min-width:80px}
+.dist-bar-bg{flex:1;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.dist-bar-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .8s ease}
+.dist-count{font-size:11px;font-weight:700;color:var(--text);min-width:30px;text-align:right}
+
+.dash-row{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.dash-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
+
+/* Loading/empty states */
+.empty-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:40px;color:var(--text-dim);text-align:center;gap:10px;
+}
+.empty-state .es-icon{font-size:36px;opacity:.4}
+.empty-state .es-text{font-size:13px}
+
+/* Spinner */
+.spinner{
+  width:40px;height:40px;border-radius:50%;
+  border:3px solid var(--border2);border-top-color:var(--accent);
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Loading overlay */
+#global-loading{
+  position:fixed;inset:0;z-index:9999;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  transition:opacity .4s;
+}
+#global-loading.hidden{opacity:0;pointer-events:none}
+.loading-text{font-size:14px;color:var(--text-muted)}
+
+/* Toast */
+#toast{
+  position:fixed;bottom:24px;right:24px;z-index:9000;
+  padding:12px 20px;border-radius:var(--radius);
+  background:var(--surface);border:1px solid var(--border2);
+  box-shadow:var(--shadow-lg);font-size:13px;font-weight:500;
+  transform:translateY(20px);opacity:0;transition:all .3s ease;pointer-events:none;
+}
+#toast.show{transform:translateY(0);opacity:1}
+#toast.success{border-color:var(--accent);color:var(--accent)}
+#toast.error{border-color:var(--danger);color:var(--danger)}
+</style>
+</head>
+<body>
+
+<!-- ── LOADING ────────────────────────────────────────────────────── -->
+<div id="global-loading">
+  <div class="spinner"></div>
+  <div class="loading-text">SUGKA LAB iniciando…</div>
+</div>
+<div id="toast"></div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     LOGIN SCREEN
+══════════════════════════════════════════════════════════════════════ -->
+<div id="screen-login" class="screen">
+  <div class="login-bg-grid"></div>
+  <div class="login-glow"></div>
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">🏫</div>
+      <div class="login-logo-text">
+        <span class="brand">SUGKA LAB</span>
+        <span class="sub">UGEL IBIR-IMAZA · Bagua, Amazonas</span>
+      </div>
+    </div>
+
+    <div class="login-heading">Bienvenido, especialista</div>
+    <div class="login-subheading">Selecciona tu nombre e ingresa tu PIN de acceso</div>
+
+    <div class="form-group">
+      <label for="sel-especialista">Especialista</label>
+      <select id="sel-especialista" class="form-select">
+        <option value="">Cargando especialistas…</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="inp-pin">PIN de acceso</label>
+      <div class="pin-wrapper">
+        <input id="inp-pin" type="password" class="form-input" placeholder="••••"
+          maxlength="4" autocomplete="off" inputmode="text"/>
+        <div class="pin-hint" id="pin-hint" style="display:none">
+          Tu PIN: <span class="pin-val" id="pin-val-display">—</span>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-login" id="btn-login" disabled>Ingresar al sistema</button>
+    <div class="login-error" id="login-error"></div>
+
+    <div class="login-footer">
+      Modo demo · Los datos son reales y confidenciales<br/>
+      SUGKA LAB v1.0 · 2026
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     MAIN APP SCREEN
+══════════════════════════════════════════════════════════════════════ -->
+<div id="screen-app" class="screen">
+
+  <!-- SIDEBAR -->
+  <nav id="sidebar">
+    <div class="sidebar-logo-wrap">
+      <div class="sidebar-logo">🏫</div>
+      <div class="sidebar-brand-text">
+        <span class="b1">SUGKA LAB</span>
+        <span class="b2">UGEL IBIR-IMAZA</span>
+      </div>
+    </div>
+    <div class="nav-divider"></div>
+
+    <div class="nav-item active" data-view="mapa" id="nav-mapa">
+      <span class="nav-icon">🗺️</span>
+      <span class="nav-label">Mapa de IEs</span>
+    </div>
+    <div class="nav-item" data-view="ocr" id="nav-ocr">
+      <span class="nav-icon">📄</span>
+      <span class="nav-label">Cargar Ficha</span>
+    </div>
+    <div class="nav-item" data-view="dashboard" id="nav-dashboard">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">Dashboard</span>
+      <span class="nav-badge" id="badge-alertas">…</span>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="user-card">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div class="user-info">
+          <span class="uname" id="user-name">Especialista</span>
+          <span class="urole" id="user-role">—</span>
+        </div>
+      </div>
+      <button class="btn-logout" id="btn-logout">
+        <span>🚪</span>
+        <span class="logout-label">Cerrar sesión</span>
+      </button>
+    </div>
+
+    <div class="sidebar-toggle" id="sidebar-toggle">▶</div>
+  </nav>
+
+  <!-- MAIN CONTENT -->
+  <div id="main-content">
+    <!-- TOPBAR -->
+    <div id="topbar">
+      <span class="topbar-title" id="topbar-title">Mapa de Instituciones Educativas</span>
+      <span class="topbar-sub" id="topbar-sub">UGEL IBIR-IMAZA</span>
+      <div class="topbar-spacer"></div>
+      <div class="topbar-badge">
+        <span class="dot dot-green"></span>
+        <span id="topbar-badge-text">En línea</span>
+      </div>
+    </div>
+
+    <!-- VIEWS -->
+    <div id="views-container">
+
+      <!-- ── MAP VIEW ─────────────────────────────────────── -->
+      <div id="view-mapa" class="view active">
+        <div id="map-panel">
+          <div class="panel-section">
+            <div class="panel-label">Buscar IE</div>
+            <input id="map-search" class="map-search" placeholder="Nombre, código o centro poblado…"/>
+            <div class="filter-row">
+              <select id="map-filter-distrito" class="map-select">
+                <option value="">Todos los distritos</option>
+                <option value="Imaza">Imaza</option>
+                <option value="Aramango">Aramango</option>
+                <option value="Nieva">Nieva</option>
+              </select>
+              <select id="map-filter-alerta" class="map-select">
+                <option value="">Todas las alertas</option>
+                <option value="alta">🔴 Alta</option>
+                <option value="media">🟡 Media</option>
+                <option value="baja">🟢 Baja</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <div class="stats-strip">
+              <div class="stat-mini"><div class="num" id="ms-total">—</div><div class="lbl">IEs visibles</div></div>
+              <div class="stat-mini"><div class="num" id="ms-alertas" style="color:var(--danger)">—</div><div class="lbl">Alerta alta</div></div>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <div class="panel-label">Nivel de alerta</div>
+            <div class="legend-items">
+              <div class="legend-row" data-alerta="alta" id="leg-alta">
+                <div class="leg-dot" style="background:#ef4444;box-shadow:0 0 6px #ef444488"></div>
+                <span>Alerta alta (≥15)</span>
+                <span class="leg-count" id="lc-alta">…</span>
+              </div>
+              <div class="legend-row" data-alerta="media" id="leg-media">
+                <div class="leg-dot" style="background:#f59e0b;box-shadow:0 0 6px #f59e0b88"></div>
+                <span>Alerta media (≥8)</span>
+                <span class="leg-count" id="lc-media">…</span>
+              </div>
+              <div class="legend-row" data-alerta="baja" id="leg-baja">
+                <div class="leg-dot" style="background:#10b981;box-shadow:0 0 6px #10b98188"></div>
+                <span>Sin alerta crítica</span>
+                <span class="leg-count" id="lc-baja">…</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ie-list-header">
+            <span>IEs</span>
+            <span style="color:var(--accent);font-weight:700" id="ie-list-count">—</span>
+          </div>
+          <div id="ie-list"></div>
+        </div>
+
+        <div id="leaflet-map"></div>
+
+        <!-- IE Detail overlay -->
+        <div id="ie-detail">
+          <div class="ie-detail-header">
+            <div id="ied-nivel-badge" class="ie-detail-nivel"></div>
+            <div id="ied-name" class="ie-detail-name"></div>
+            <button class="ie-detail-close" id="ie-detail-close">✕</button>
+          </div>
+          <div class="ie-detail-rows" id="ied-rows"></div>
+          <div class="alerts-section">
+            <div class="alerts-title">⚠️ Alertas activas</div>
+            <div id="ied-alerts"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── OCR VIEW ─────────────────────────────────────── -->
+      <div id="view-ocr" class="view">
+        <div class="ocr-grid">
+          <!-- LEFT: upload -->
+          <div>
+            <div class="ocr-panel">
+              <div class="ocr-panel-title">📎 Cargar documento de campo</div>
+              <div class="drop-zone" id="drop-zone">
+                <div class="dz-icon">📷</div>
+                <div class="dz-text">Arrastra aquí la imagen o PDF de la ficha</div>
+                <div class="dz-sub">PNG, JPG, PDF · Máx 10MB</div>
+                <button class="btn-browse" id="btn-browse">Seleccionar archivo</button>
+              </div>
+              <input type="file" id="file-input" accept="image/*,.pdf" style="display:none"/>
+
+              <div class="ocr-progress" id="ocr-progress">
+                <div class="progress-label">Procesando documento con OCR…</div>
+                <div class="progress-bar-wrap"><div class="progress-bar"></div></div>
+              </div>
+            </div>
+
+            <div class="ocr-panel" style="margin-top:16px">
+              <div class="ocr-panel-title">👁️ Vista previa</div>
+              <div class="ocr-preview-box" id="preview-box">
+                <div class="ocr-preview-placeholder">La previsualización aparecerá aquí</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT: extracted fields -->
+          <div>
+            <div class="ocr-panel" id="fields-panel">
+              <div class="ocr-panel-title">
+                📋 Campos extraídos
+                <span id="conf-badge" style="margin-left:auto"></span>
+              </div>
+
+              <div class="fields-grid">
+                <div class="field-item" style="grid-column:1/-1">
+                  <div class="field-label">🏫 Nombre de la IE</div>
+                  <input class="field-input" id="f-nombre-ie" placeholder="—"/>
+                </div>
+                <div class="field-item">
+                  <div class="field-label">Código modular</div>
+                  <input class="field-input" id="f-codigo" placeholder="—"/>
+                </div>
+                <div class="field-item">
+                  <div class="field-label">Distrito</div>
+                  <input class="field-input" id="f-distrito" placeholder="—"/>
+                </div>
+                <div class="field-item">
+                  <div class="field-label">👤 Docente observado</div>
+                  <input class="field-input" id="f-docente" placeholder="—"/>
+                </div>
+                <div class="field-item">
+                  <div class="field-label">👷 Monitor / Especialista</div>
+                  <input class="field-input" id="f-monitor" placeholder="—"/>
+                </div>
+                <div class="field-item">
+                  <div class="field-label">📅 Fecha programada</div>
+                  <input class="field-input" id="f-fecha-prog" type="date"/>
+                </div>
+                <div class="field-item">
+                  <div class="field-label">📅 Fecha ejecutada</div>
+                  <input class="field-input" id="f-fecha-exec" type="date"/>
+                </div>
+                <div class="field-item">
+                  <div class="field-label">Plan</div>
+                  <input class="field-input" id="f-plan" placeholder="—"/>
+                </div>
+                <div class="field-item">
+                  <div class="field-label">Visita Nº</div>
+                  <input class="field-input" id="f-visita" placeholder="—"/>
+                </div>
+              </div>
+
+              <div class="panel-label" style="margin-bottom:8px">Niveles de desempeño</div>
+              <div class="niveles-grid">
+                <div class="nivel-box">
+                  <div class="niv-label">Nivel I</div>
+                  <input class="niv-input" id="f-niv1" type="number" min="0" value="0"/>
+                </div>
+                <div class="nivel-box">
+                  <div class="niv-label">Nivel II</div>
+                  <input class="niv-input" id="f-niv2" type="number" min="0" value="0"/>
+                </div>
+                <div class="nivel-box">
+                  <div class="niv-label">Nivel III</div>
+                  <input class="niv-input" id="f-niv3" type="number" min="0" value="0"/>
+                </div>
+                <div class="nivel-box">
+                  <div class="niv-label">Nivel IV</div>
+                  <input class="niv-input" id="f-niv4" type="number" min="0" value="0"/>
+                </div>
+              </div>
+
+              <button class="btn-save" id="btn-save-ficha" disabled>
+                💾 Confirmar y guardar ficha
+              </button>
+              <div class="ocr-success" id="ocr-success">✅ ¡Ficha guardada exitosamente en el sistema!</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── DASHBOARD VIEW ───────────────────────────────── -->
+      <div id="view-dashboard" class="view">
+        <div class="dash-grid" id="dash-kpis">
+          <div class="empty-state"><div class="spinner"></div></div>
+        </div>
+
+        <div class="dash-row">
+          <div class="dash-panel">
+            <div class="section-title">IEs priorizadas para atención</div>
+            <table class="top-table" id="dash-top-table">
+              <thead><tr>
+                <th>IE</th><th>Distrito</th><th>Score</th><th>Cobertura</th>
+              </tr></thead>
+              <tbody id="dash-top-body"></tbody>
+            </table>
+          </div>
+
+          <div class="dash-panel">
+            <div class="section-title">IEs por distrito</div>
+            <div class="district-bar-wrap" id="dash-district-bars"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /views-container -->
+  </div><!-- /main-content -->
+</div><!-- /screen-app -->
+
+<!-- ── SCRIPTS ────────────────────────────────────────────────────── -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+'use strict';
+const API = 'http://localhost:8000/api';
+
+/*──────────────────────────────────────────────────────────────────────────────
+  UTILITIES
+──────────────────────────────────────────────────────────────────────────────*/
+async function apiFetch(path, opts={}) {
+  const r = await fetch(API + path, {headers:{'Content-Type':'application/json'},...opts});
+  if (!r.ok) { const e = await r.json(); throw new Error(e.error||'Error'); }
+  return r.json();
+}
+
+function showToast(msg, type='success', ms=3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `show ${type}`;
+  setTimeout(() => t.className = '', ms);
+}
+
+function hideGlobalLoading() {
+  const el = document.getElementById('global-loading');
+  el.classList.add('hidden');
+  setTimeout(() => el.style.display='none', 500);
+}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  AUTH / SESSION
+──────────────────────────────────────────────────────────────────────────────*/
+let currentUser = null;
+
+function saveSession(data) {
+  sessionStorage.setItem('sugka_session', JSON.stringify(data));
+  currentUser = data;
+}
+function loadSession() {
+  try { return JSON.parse(sessionStorage.getItem('sugka_session')); }
+  catch { return null; }
+}
+function clearSession() {
+  sessionStorage.removeItem('sugka_session');
+  currentUser = null;
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById(id);
+  el.classList.add('active');
+}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  LOGIN
+──────────────────────────────────────────────────────────────────────────────*/
+let especialistas = [];
+
+async function initLogin() {
+  try {
+    especialistas = await apiFetch('/especialistas');
+    const sel = document.getElementById('sel-especialista');
+    sel.innerHTML = '<option value="">— Selecciona tu nombre —</option>';
+    especialistas.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.especialista_id;
+      opt.textContent = e.nombre;
+      opt.dataset.pin = e.pin_hint;
+      sel.appendChild(opt);
+    });
+  } catch(err) {
+    document.getElementById('sel-especialista').innerHTML =
+      '<option value="">Error al cargar especialistas</option>';
+    showToast('No se pudo conectar con la API. ¿Está corriendo el servidor en :8000?', 'error', 6000);
+  }
+}
+
+document.getElementById('sel-especialista').addEventListener('change', function() {
+  const opt = this.options[this.selectedIndex];
+  const pin = opt.dataset.pin;
+  const hint = document.getElementById('pin-hint');
+  const pinVal = document.getElementById('pin-val-display');
+  const btn = document.getElementById('btn-login');
+  if (pin) {
+    hint.style.display = 'flex';
+    pinVal.textContent = pin;
+    document.getElementById('inp-pin').value = '';
+    btn.disabled = false;
+  } else {
+    hint.style.display = 'none';
+    btn.disabled = true;
+  }
+});
+
+document.getElementById('btn-login').addEventListener('click', async () => {
+  const espId = document.getElementById('sel-especialista').value;
+  const pin   = document.getElementById('inp-pin').value.trim();
+  const errEl = document.getElementById('login-error');
+  const btn   = document.getElementById('btn-login');
+
+  if (!espId || !pin) { errEl.textContent='Selecciona tu nombre e ingresa el PIN'; errEl.style.display='block'; return; }
+
+  btn.disabled = true; btn.textContent = 'Verificando…';
+  errEl.style.display = 'none';
+
+  try {
+    const data = await apiFetch('/login', {
+      method:'POST', body: JSON.stringify({especialista_id: espId, pin})
+    });
+    saveSession(data);
+    enterApp(data.especialista);
+  } catch(err) {
+    errEl.textContent = err.message || 'Error de autenticación';
+    errEl.style.display = 'block';
+    btn.disabled = false; btn.textContent = 'Ingresar al sistema';
+  }
+});
+
+document.getElementById('inp-pin').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btn-login').click();
+});
+
+/*──────────────────────────────────────────────────────────────────────────────
+  APP INIT
+──────────────────────────────────────────────────────────────────────────────*/
+function enterApp(esp) {
+  showScreen('screen-app');
+  // Set user info
+  const initials = esp.nombre.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+  document.getElementById('user-avatar').textContent = initials;
+  document.getElementById('user-name').textContent   = esp.nombre;
+  document.getElementById('user-role').textContent   = esp.rol_inferido.replace(/_/g,' ');
+
+  initMap();
+  loadDashboardData();
+  switchView('mapa');
+}
+
+document.getElementById('btn-logout').addEventListener('click', () => {
+  clearSession();
+  showScreen('screen-login');
+  document.getElementById('inp-pin').value = '';
+  document.getElementById('sel-especialista').value = '';
+  document.getElementById('pin-hint').style.display = 'none';
+  document.getElementById('btn-login').disabled = true;
+});
+
+/*──────────────────────────────────────────────────────────────────────────────
+  ROUTER
+──────────────────────────────────────────────────────────────────────────────*/
+const VIEW_TITLES = {
+  mapa: ['Mapa de Instituciones Educativas','UGEL IBIR-IMAZA · 3 distritos'],
+  ocr:  ['Carga y digitalización de fichas','OCR asistido por IA'],
+  dashboard: ['Dashboard de seguimiento','Resumen ejecutivo · UGEL IBIR-IMAZA']
+};
+
+function switchView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(`view-${id}`).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`nav-${id}`).classList.add('active');
+  const [title, sub] = VIEW_TITLES[id];
+  document.getElementById('topbar-title').textContent = title;
+  document.getElementById('topbar-sub').textContent   = sub;
+  if (id === 'mapa') setTimeout(() => map && map.invalidateSize(), 10);
+}
+
+document.querySelectorAll('.nav-item[data-view]').forEach(el => {
+  el.addEventListener('click', () => switchView(el.dataset.view));
+});
+
+/*──────────────────────────────────────────────────────────────────────────────
+  SIDEBAR TOGGLE
+──────────────────────────────────────────────────────────────────────────────*/
+let sidebarExpanded = false;
+document.getElementById('sidebar-toggle').addEventListener('click', () => {
+  sidebarExpanded = !sidebarExpanded;
+  document.getElementById('sidebar').classList.toggle('expanded', sidebarExpanded);
+  document.getElementById('sidebar-toggle').textContent = sidebarExpanded ? '◀' : '▶';
+  if (map) setTimeout(() => map.invalidateSize(), 230);
+});
+
+/*──────────────────────────────────────────────────────────────────────────────
+  MAP MODULE
+──────────────────────────────────────────────────────────────────────────────*/
+let map, clusterGroup, allIEs=[], filteredIEs=[], markerMap={}, selectedIdx=null;
+const ALERTA_CFG = {
+  alta:  { color:'#ef4444', label:'Alerta alta' },
+  media: { color:'#f59e0b', label:'Alerta media' },
+  baja:  { color:'#10b981', label:'Sin alerta' },
+};
+
+function makeMarkerIcon(ie, active=false) {
+  const cfg = ALERTA_CFG[ie.nivel_alerta] || ALERTA_CFG.baja;
+  const s   = active ? 18 : 12;
+  const glow= active ? `box-shadow:0 0 12px ${cfg.color},0 0 24px ${cfg.color}66;` : `box-shadow:0 0 5px ${cfg.color}55;`;
+  const bdr = active ? 'border:3px solid #fff;' : `border:2px solid ${cfg.color}66;`;
+  return L.divIcon({
+    html:`<div style="width:${s}px;height:${s}px;border-radius:50%;background:${cfg.color};${bdr}${glow}transition:all .2s;"></div>`,
+    className:'',iconSize:[s,s],iconAnchor:[s/2,s/2]
+  });
+}
+
+async function initMap() {
+  if (map) return;
+  map = L.map('leaflet-map',{center:[-4.95,-78.2],zoom:9,zoomControl:false});
+  L.control.zoom({position:'bottomright'}).addTo(map);
+
+  const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© CartoDB',maxZoom:19});
+  const sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:19});
+  const topo = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:19});
+  dark.addTo(map);
+  L.control.layers({'Oscuro':dark,'Satélite':sat,'Topográfico':topo},{},{position:'bottomright'}).addTo(map);
+
+  clusterGroup = L.markerClusterGroup({
+    maxClusterRadius:50,showCoverageOnHover:false,
+    iconCreateFunction(cluster) {
+      const n = cluster.getChildCount();
+      const s = n<20?36:n<100?44:52;
+      return L.divIcon({
+        html:`<div style="width:${s}px;height:${s}px;border-radius:50%;background:linear-gradient(135deg,#1f6feb,#10b981);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;box-shadow:0 4px 16px rgba(16,185,129,.4);border:2px solid rgba(16,185,129,.6);">${n}</div>`,
+        className:'',iconSize:[s,s]
+      });
+    }
+  });
+  map.addLayer(clusterGroup);
+
+  try {
+    allIEs = await apiFetch('/instituciones');
+    applyMapFilters();
+    const bounds = L.latLngBounds(allIEs.filter(ie=>ie.latitud&&ie.longitud).map(ie=>[ie.latitud,ie.longitud]));
+    map.fitBounds(bounds,{padding:[40,40]});
+  } catch(err) {
+    showToast('Error cargando IEs: ' + err.message, 'error');
+  }
+}
+
+function applyMapFilters() {
+  const search   = document.getElementById('map-search').value.toLowerCase();
+  const distrito = document.getElementById('map-filter-distrito').value.toLowerCase();
+  const alerta   = document.getElementById('map-filter-alerta').value;
+
+  filteredIEs = allIEs.filter(ie => {
+    if (distrito && ie.distrito.toLowerCase() !== distrito) return false;
+    if (alerta   && ie.nivel_alerta !== alerta) return false;
+    if (search) {
+      const h = (ie.nombre_iiee+' '+ie.codigo_modular+' '+ie.centro_poblado+' '+ie.distrito).toLowerCase();
+      if (!h.includes(search)) return false;
+    }
+    return true;
+  });
+
+  renderMarkers();
+  renderIEList();
+  updateMapStats();
+}
+
+function renderMarkers() {
+  clusterGroup.clearLayers(); markerMap={};
+  filteredIEs.forEach((ie,i) => {
+    if (!ie.latitud||!ie.longitud) return;
+    const m = L.marker([ie.latitud,ie.longitud],{icon:makeMarkerIcon(ie,false)});
+    const cfg = ALERTA_CFG[ie.nivel_alerta]||ALERTA_CFG.baja;
+    m.bindPopup(`<div class="lf-popup"><strong>${ie.nombre_iiee}</strong><span>${ie.nivel_modalidad} · ${ie.distrito}</span></div>`);
+    m.on('click', () => { selectIE(i); showIEDetail(ie); });
+    markerMap[i] = m;
+    clusterGroup.addLayer(m);
+  });
+}
+
+function renderIEList() {
+  const container = document.getElementById('ie-list');
+  container.innerHTML = '';
+  if (!filteredIEs.length) {
+    container.innerHTML = '<div class="empty-state"><div class="es-icon">🔍</div><div class="es-text">Sin resultados</div></div>';
+    return;
+  }
+  filteredIEs.forEach((ie,i) => {
+    const cfg = ALERTA_CFG[ie.nivel_alerta]||ALERTA_CFG.baja;
+    const row = document.createElement('div');
+    row.className = 'ie-row'; row.id = `ie-row-${i}`;
+    row.innerHTML = `<div class="ie-dot" style="background:${cfg.color};box-shadow:0 0 5px ${cfg.color}66"></div>
+      <div class="ie-info">
+        <div class="ie-name">${ie.nombre_iiee}</div>
+        <div class="ie-meta">${ie.nivel_modalidad} · ${ie.centro_poblado}</div>
+      </div>`;
+    row.addEventListener('click', () => {
+      map.setView([ie.latitud,ie.longitud],14,{animate:true});
+      setTimeout(()=>{ const mk=markerMap[i]; if(mk) clusterGroup.zoomToShowLayer(mk,()=>mk.openPopup()); },400);
+      selectIE(i); showIEDetail(ie);
+    });
+    container.appendChild(row);
+  });
+}
+
+function selectIE(idx) {
+  if (selectedIdx !== null) {
+    const prev = document.getElementById(`ie-row-${selectedIdx}`);
+    if (prev) prev.classList.remove('selected');
+    if (markerMap[selectedIdx]) markerMap[selectedIdx].setIcon(makeMarkerIcon(filteredIEs[selectedIdx],false));
+  }
+  selectedIdx = idx;
+  const el = document.getElementById(`ie-row-${idx}`);
+  if (el) { el.classList.add('selected'); el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+  if (markerMap[idx]) markerMap[idx].setIcon(makeMarkerIcon(filteredIEs[idx],true));
+}
+
+async function showIEDetail(ie) {
+  const panel = document.getElementById('ie-detail');
+  const cfg   = ALERTA_CFG[ie.nivel_alerta]||ALERTA_CFG.baja;
+
+  document.getElementById('ied-nivel-badge').textContent  = cfg.label.toUpperCase();
+  document.getElementById('ied-nivel-badge').style.cssText= `background:${cfg.color}22;color:${cfg.color};border:1px solid ${cfg.color}44`;
+  document.getElementById('ied-name').textContent = ie.nombre_iiee;
+
+  document.getElementById('ied-rows').innerHTML = `
+    <div class="ie-drow"><strong>Nivel</strong><span>${ie.nivel_modalidad}</span></div>
+    <div class="ie-drow"><strong>Distrito</strong><span>${ie.distrito}</span></div>
+    <div class="ie-drow"><strong>Centro Pob.</strong><span>${ie.centro_poblado||'—'}</span></div>
+    <div class="ie-drow"><strong>Gestión</strong><span>${ie.tipo_gestion||'—'}</span></div>
+    <div class="ie-drow"><strong>Alumnos</strong><span>${ie.alumnos_censo||'—'}</span></div>
+    <div class="ie-drow"><strong>Docentes</strong><span>${ie.docentes_censo||'—'}</span></div>
+    <div class="ie-drow"><strong>Fichas SIMON</strong><span>${ie.simon_fichas}</span></div>
+    <div class="ie-drow"><strong>Docs campo</strong><span>${ie.campo_documentos}</span></div>
+    <div class="ie-drow"><strong>Score prior.</strong><span style="font-weight:700;color:${cfg.color}">${ie.priority_score.toFixed(1)}</span></div>
+    <div class="ie-drow"><strong>Cobertura</strong><span>${ie.coverage_category}</span></div>
+    <div class="ie-drow"><strong>Coords</strong><span style="font-family:monospace;font-size:10px">${ie.latitud.toFixed(5)}, ${ie.longitud.toFixed(5)}</span></div>`;
+
+  // Load alerts
+  const alertsEl = document.getElementById('ied-alerts');
+  alertsEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted)">Cargando alertas…</div>';
+  panel.style.display = 'block';
+
+  try {
+    const alerts = await apiFetch(`/alertas?codigo_modular=${ie.codigo_modular}`);
+    if (!alerts.length) {
+      alertsEl.innerHTML = '<div class="empty-state" style="padding:12px"><div class="es-text">Sin alertas registradas</div></div>';
+    } else {
+      alertsEl.innerHTML = alerts.slice(0,6).map(a => `
+        <div class="alert-card ${a.severidad}">
+          <div class="alert-card-title">${a.titulo}</div>
+          <div class="alert-card-desc">${a.descripcion}</div>
+          <div class="alert-card-score">Score: ${a.score.toFixed(1)} · ${a.fuente.toUpperCase()} · Evidencias: ${a.evidencia_count}</div>
+        </div>`).join('');
+    }
+  } catch(e) {
+    alertsEl.innerHTML = '<div style="font-size:11px;color:var(--danger)">Error cargando alertas</div>';
+  }
+}
+
+document.getElementById('ie-detail-close').addEventListener('click', () => {
+  document.getElementById('ie-detail').style.display = 'none';
+});
+
+function updateMapStats() {
+  const counts = {alta:0,media:0,baja:0};
+  filteredIEs.forEach(ie => counts[ie.nivel_alerta] = (counts[ie.nivel_alerta]||0)+1);
+  document.getElementById('ms-total').textContent   = filteredIEs.length;
+  document.getElementById('ms-alertas').textContent = counts.alta;
+  document.getElementById('lc-alta').textContent    = counts.alta;
+  document.getElementById('lc-media').textContent   = counts.media;
+  document.getElementById('lc-baja').textContent    = counts.baja;
+  document.getElementById('ie-list-count').textContent = filteredIEs.length;
+  document.getElementById('topbar-badge-text').textContent = `${filteredIEs.length} IEs · ${counts.alta} alertas altas`;
+}
+
+['map-search','map-filter-distrito','map-filter-alerta'].forEach(id => {
+  document.getElementById(id).addEventListener(id==='map-search'?'input':'change', applyMapFilters);
+});
+
+/*──────────────────────────────────────────────────────────────────────────────
+  OCR MODULE
+──────────────────────────────────────────────────────────────────────────────*/
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+document.getElementById('btn-browse').addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) processFile(fileInput.files[0]); });
+
+async function processFile(file) {
+  // Preview
+  const previewBox = document.getElementById('preview-box');
+  if (file.type.startsWith('image/')) {
+    const url = URL.createObjectURL(file);
+    previewBox.innerHTML = `<img src="${url}" alt="preview"/>`;
+  } else {
+    previewBox.innerHTML = `<div class="ocr-preview-placeholder">📄 ${file.name}<br/><span style="font-size:10px">PDF cargado</span></div>`;
+  }
+
+  // Show progress
+  const prog = document.getElementById('ocr-progress');
+  prog.classList.add('visible');
+  clearFields();
+  document.getElementById('btn-save-ficha').disabled = true;
+  document.getElementById('ocr-success').style.display = 'none';
+
+  // Simulate OCR delay
+  await new Promise(r => setTimeout(r, 2200));
+
+  try {
+    const result = await apiFetch('/ocr/upload', {
+      method:'POST',
+      body: JSON.stringify({filename: file.name, type: file.type})
+    });
+    prog.classList.remove('visible');
+    fillFields(result.extracted);
+  } catch(err) {
+    prog.classList.remove('visible');
+    showToast('Error en OCR: ' + err.message, 'error');
+  }
+}
+
+function clearFields() {
+  ['f-nombre-ie','f-codigo','f-distrito','f-docente','f-monitor',
+   'f-fecha-prog','f-fecha-exec','f-plan','f-visita'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  ['f-niv1','f-niv2','f-niv3','f-niv4'].forEach(id => {
+    document.getElementById(id).value = '0';
+  });
+}
+
+function fillFields(e) {
+  document.getElementById('f-nombre-ie').value  = e.nombre_ie||'';
+  document.getElementById('f-codigo').value      = e.codigo_modular||'';
+  document.getElementById('f-distrito').value    = e.distrito||'';
+  document.getElementById('f-docente').value     = e.docente||'';
+  document.getElementById('f-monitor').value     = e.monitor||'';
+  document.getElementById('f-fecha-prog').value  = e.fecha_programacion||'';
+  document.getElementById('f-fecha-exec').value  = e.fecha_ejecucion||'';
+  document.getElementById('f-plan').value        = e.plan||'';
+  document.getElementById('f-visita').value      = e.visita||'';
+  document.getElementById('f-niv1').value        = e.nivel_i||0;
+  document.getElementById('f-niv2').value        = e.nivel_ii||0;
+  document.getElementById('f-niv3').value        = e.nivel_iii||0;
+  document.getElementById('f-niv4').value        = e.nivel_iv||0;
+
+  const conf = e.confidence||0;
+  const chip = document.getElementById('conf-badge');
+  chip.className = `confidence-chip ${conf>=.85?'conf-high':conf>=.7?'conf-med':'conf-low'}`;
+  chip.textContent = `🎯 Confianza: ${Math.round(conf*100)}%`;
+
+  document.getElementById('btn-save-ficha').disabled = false;
+  showToast('¡Campos extraídos exitosamente!', 'success');
+}
+
+document.getElementById('btn-save-ficha').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-save-ficha');
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    await apiFetch('/fichas', {
+      method:'POST',
+      body: JSON.stringify({
+        codigo_modular: document.getElementById('f-codigo').value,
+        docente:        document.getElementById('f-docente').value,
+        monitor:        document.getElementById('f-monitor').value,
+        fecha_ejecucion: document.getElementById('f-fecha-exec').value,
+        nivel_i:  document.getElementById('f-niv1').value,
+        nivel_ii: document.getElementById('f-niv2').value,
+        nivel_iii:document.getElementById('f-niv3').value,
+        nivel_iv: document.getElementById('f-niv4').value,
+      })
+    });
+    document.getElementById('ocr-success').style.display = 'block';
+    btn.textContent = '✅ Guardado';
+    showToast('Ficha guardada en el sistema', 'success');
+  } catch(err) {
+    btn.disabled = false; btn.textContent = '💾 Confirmar y guardar ficha';
+    showToast('Error al guardar: ' + err.message, 'error');
+  }
+});
+
+/*──────────────────────────────────────────────────────────────────────────────
+  DASHBOARD MODULE
+──────────────────────────────────────────────────────────────────────────────*/
+async function loadDashboardData() {
+  try {
+    const d = await apiFetch('/dashboard');
+
+    // Update badge
+    document.getElementById('badge-alertas').textContent = d.alertas_altas;
+
+    // KPI cards
+    document.getElementById('dash-kpis').innerHTML = `
+      <div class="kpi-card green"><div class="kpi-icon">🏫</div>
+        <div class="kpi-value">${d.total_ies}</div>
+        <div class="kpi-label">Total IEs en UGEL</div>
+      </div>
+      <div class="kpi-card red"><div class="kpi-icon">🚨</div>
+        <div class="kpi-value" style="color:var(--danger)">${d.alertas_altas}</div>
+        <div class="kpi-label">IEs con alerta alta</div>
+        <div class="kpi-sub">${d.alertas_pendientes} alertas pendientes</div>
+      </div>
+      <div class="kpi-card blue"><div class="kpi-icon">📋</div>
+        <div class="kpi-value">${d.ies_monitoreadas}</div>
+        <div class="kpi-label">IEs monitoreadas</div>
+        <div class="kpi-sub">${d.pct_monitoreadas}% de cobertura</div>
+      </div>
+      <div class="kpi-card purple"><div class="kpi-icon">👷</div>
+        <div class="kpi-value">${d.especialistas}</div>
+        <div class="kpi-label">Especialistas activos</div>
+      </div>`;
+
+    // Top prioridad table
+    const tbody = document.getElementById('dash-top-body');
+    tbody.innerHTML = d.top_prioridad.map(r => {
+      const sc = r.priority_score||0;
+      const cls = sc>=15?'score-alta':sc>=8?'score-media':'score-baja';
+      return `<tr>
+        <td style="font-weight:500;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.nombre_iiee}</td>
+        <td>${r.distrito}</td>
+        <td><span class="score-pill ${cls}">${sc.toFixed(1)}</span></td>
+        <td style="font-size:10px;color:var(--text-muted)">${(r.coverage_category||'—').replace(/\+/g,' + ')}</td>
+      </tr>`;
+    }).join('');
+
+    // District bars
+    const maxTotal = Math.max(...d.por_distrito.map(r=>r.total),1);
+    document.getElementById('dash-district-bars').innerHTML = d.por_distrito.map(r => `
+      <div class="dist-row">
+        <span class="dist-name">${r.distrito}</span>
+        <div class="dist-bar-bg">
+          <div class="dist-bar-fill" style="width:${Math.round(r.total/maxTotal*100)}%"></div>
+        </div>
+        <span class="dist-count">${r.total}</span>
+      </div>`).join('');
+
+  } catch(err) {
+    document.getElementById('dash-kpis').innerHTML =
+      `<div class="empty-state"><div class="es-icon">⚠️</div><div class="es-text">Error cargando dashboard</div></div>`;
+  }
+}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  STARTUP
+──────────────────────────────────────────────────────────────────────────────*/
+(async function init() {
+  const session = loadSession();
+  if (session) {
+    await initLogin();
+    enterApp(session.especialista);
+  } else {
+    await initLogin();
+    showScreen('screen-login');
+  }
+  hideGlobalLoading();
+})();
+</script>
+</body>
+</html>
