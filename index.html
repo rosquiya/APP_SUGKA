@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
@@ -34,14 +34,11 @@ input,select,textarea{font-family:inherit}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
 
 /*──────────────────────────────────────────────────────────────────────────────
-  SCREENS
+  SCREENS & LOGIN
 ──────────────────────────────────────────────────────────────────────────────*/
 .screen{position:fixed;inset:0;display:none;opacity:0;transition:opacity .35s ease}
 .screen.active{display:flex;opacity:1}
 
-/*──────────────────────────────────────────────────────────────────────────────
-  LOGIN SCREEN
-──────────────────────────────────────────────────────────────────────────────*/
 #screen-login{
   align-items:center;justify-content:center;
   background:radial-gradient(ellipse 120% 120% at 60% -10%,#0d2d1a 0%,#060d18 60%);
@@ -63,13 +60,9 @@ input,select,textarea{font-family:inherit}
   background:var(--surface);border:1px solid var(--border2);
   border-radius:24px;padding:40px;
   box-shadow:0 0 0 1px var(--accent-glow),var(--shadow-lg);
-  animation:fadeUp .5s ease;
 }
-@keyframes fadeUp{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
 
-.login-logo{
-  display:flex;align-items:center;gap:12px;margin-bottom:32px;
-}
+.login-logo{display:flex;align-items:center;gap:12px;margin-bottom:32px;}
 .login-logo-icon{
   width:48px;height:48px;border-radius:14px;
   background:linear-gradient(135deg,var(--accent),#059669);
@@ -93,9 +86,7 @@ input,select,textarea{font-family:inherit}
   color:var(--text);font-size:13px;outline:none;
   transition:border-color var(--transition),box-shadow var(--transition);
 }
-.form-select:focus,.form-input:focus{
-  border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);
-}
+.form-select:focus,.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow);}
 .form-select option{background:var(--surface2)}
 
 .pin-wrapper{position:relative}
@@ -108,31 +99,28 @@ input,select,textarea{font-family:inherit}
   background:var(--accent-glow);padding:2px 8px;border-radius:4px;letter-spacing:2px;
 }
 
-.btn-login{
+.btn-primary{
   width:100%;padding:13px;border-radius:var(--radius-sm);border:none;
   background:linear-gradient(135deg,var(--accent),var(--accent-dim));
   color:#fff;font-size:14px;font-weight:700;letter-spacing:.3px;
-  transition:all var(--transition);margin-top:8px;
+  transition:all var(--transition);
   box-shadow:0 4px 16px var(--accent-glow);
 }
-.btn-login:hover{transform:translateY(-1px);box-shadow:0 6px 24px var(--accent-glow)}
-.btn-login:active{transform:translateY(0)}
-.btn-login:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px var(--accent-glow)}
+.btn-primary:active{transform:translateY(0)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
 
 .login-error{
   margin-top:14px;padding:10px 14px;border-radius:var(--radius-sm);
   background:#ef444422;border:1px solid #ef444444;
   color:#fca5a5;font-size:12px;display:none;
 }
-
 .login-footer{margin-top:24px;text-align:center;font-size:11px;color:var(--text-dim)}
 
 /*──────────────────────────────────────────────────────────────────────────────
-  MAIN APP
+  MAIN APP & SIDEBAR
 ──────────────────────────────────────────────────────────────────────────────*/
 #screen-app{flex-direction:row}
-
-/* SIDEBAR */
 #sidebar{
   width:64px;background:var(--surface);border-right:1px solid var(--border);
   display:flex;flex-direction:column;align-items:center;
@@ -141,14 +129,13 @@ input,select,textarea{font-family:inherit}
 }
 #sidebar.expanded{width:220px;align-items:flex-start;padding:16px 12px}
 
+.sidebar-logo-wrap{display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:0 4px;width:100%}
 .sidebar-logo{
   width:40px;height:40px;border-radius:10px;
   background:linear-gradient(135deg,var(--accent),var(--accent-dim));
   display:flex;align-items:center;justify-content:center;font-size:18px;
-  flex-shrink:0;margin-bottom:8px;
-  box-shadow:0 0 16px var(--accent-glow);
+  flex-shrink:0;box-shadow:0 0 16px var(--accent-glow);
 }
-.sidebar-logo-wrap{display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:0 4px;width:100%}
 .sidebar-brand-text{display:none;flex-direction:column;line-height:1.1}
 #sidebar.expanded .sidebar-brand-text{display:flex}
 .sidebar-brand-text .b1{font-size:14px;font-weight:800;color:var(--text)}
@@ -166,25 +153,30 @@ input,select,textarea{font-family:inherit}
 #sidebar:not(.expanded) .nav-item{justify-content:center;width:44px}
 .nav-item:hover{background:var(--surface2)}
 .nav-item.active{background:var(--accent-glow);color:var(--accent)}
-.nav-item.active .nav-icon{color:var(--accent)}
 .nav-icon{font-size:18px;flex-shrink:0;width:22px;text-align:center}
 .nav-label{font-size:13px;font-weight:500;white-space:nowrap;display:none}
 #sidebar.expanded .nav-label{display:block}
 
-.nav-badge{
-  background:var(--danger);color:#fff;border-radius:10px;
-  padding:1px 6px;font-size:10px;font-weight:700;margin-left:auto;display:none;
-}
-#sidebar.expanded .nav-badge{display:block}
-
 .sidebar-bottom{margin-top:auto;width:100%}
-.user-card{
-  padding:10px 12px;border-radius:var(--radius-sm);
-  background:var(--surface2);border:1px solid var(--border);
-  display:flex;align-items:center;gap:10px;
-  cursor:default;
+.sync-btn{
+  background:var(--blue-dim);color:#fff;
+  border:none;padding:9px;border-radius:var(--radius-sm);
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;margin-bottom:12px;font-size:12px;font-weight:600;
 }
-#sidebar:not(.expanded) .user-card{justify-content:center;padding:10px 0}
+#sidebar:not(.expanded) .sync-btn .slbl{display:none}
+.sync-btn:disabled{opacity:.5;cursor:not-allowed}
+.sync-badge{
+  background:#fff;color:var(--blue-dim);border-radius:10px;
+  padding:1px 6px;font-size:10px;font-weight:800;
+}
+
+.user-card{
+  padding:10px 0;border-radius:var(--radius-sm);
+  background:var(--surface2);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;gap:10px;
+}
+#sidebar.expanded .user-card{padding:10px 12px;justify-content:flex-start}
 .user-avatar{
   width:32px;height:32px;border-radius:50%;flex-shrink:0;
   background:linear-gradient(135deg,var(--blue),var(--purple));
@@ -198,11 +190,11 @@ input,select,textarea{font-family:inherit}
 
 .btn-logout{
   display:flex;align-items:center;justify-content:center;gap:8px;
-  padding:9px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  padding:9px 0;border-radius:var(--radius-sm);border:1px solid var(--border);
   background:transparent;color:var(--text-muted);font-size:12px;
   transition:all var(--transition);margin-top:8px;width:100%;
 }
-#sidebar:not(.expanded) .btn-logout{width:44px;padding:9px 0}
+#sidebar.expanded .btn-logout{padding:9px 12px}
 .btn-logout:hover{background:#ef444422;border-color:#ef444444;color:#fca5a5}
 .btn-logout .logout-label{display:none}
 #sidebar.expanded .btn-logout .logout-label{display:inline}
@@ -213,16 +205,9 @@ input,select,textarea{font-family:inherit}
   background:var(--surface2);border:1px solid var(--border2);
   display:flex;align-items:center;justify-content:center;
   font-size:11px;color:var(--text-muted);cursor:pointer;z-index:110;
-  transition:all var(--transition);
-}
-.sidebar-toggle:hover{background:var(--surface3);color:var(--text)}
-
-/* MAIN CONTENT */
-#main-content{
-  flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;
 }
 
-/* TOPBAR */
+#main-content{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;}
 #topbar{
   height:56px;background:var(--surface);border-bottom:1px solid var(--border);
   display:flex;align-items:center;padding:0 20px;gap:16px;flex-shrink:0;z-index:50;
@@ -230,18 +215,10 @@ input,select,textarea{font-family:inherit}
 .topbar-title{font-size:15px;font-weight:700;color:var(--text)}
 .topbar-sub{font-size:11px;color:var(--text-muted);margin-left:4px}
 .topbar-spacer{flex:1}
-.topbar-badge{
-  display:flex;align-items:center;gap:6px;
-  padding:5px 12px;border-radius:20px;
-  background:var(--surface2);border:1px solid var(--border);
-  font-size:11px;font-weight:600;
-}
-.topbar-badge .dot{width:7px;height:7px;border-radius:50%;animation:pulse 2s infinite}
-.dot-green{background:var(--accent)}
-.dot-red{background:var(--danger)}
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+.net-status{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+.dot.offline{background:var(--danger)}
 
-/* VIEWS */
 #views-container{flex:1;overflow:hidden;position:relative}
 .view{position:absolute;inset:0;display:none;overflow:hidden}
 .view.active{display:flex}
@@ -254,9 +231,7 @@ input,select,textarea{font-family:inherit}
   width:320px;background:var(--surface);border-right:1px solid var(--border);
   display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;
 }
-#map-panel.collapsed{width:0;border:none;overflow:hidden}
-#leaflet-map{flex:1}
-
+#leaflet-map{flex:1;position:relative}
 .panel-section{padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
 .panel-label{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
 
@@ -264,286 +239,157 @@ input,select,textarea{font-family:inherit}
   width:100%;padding:9px 12px;border-radius:var(--radius-sm);
   background:var(--surface2);border:1px solid var(--border);
   color:var(--text);font-size:12px;outline:none;
-  transition:border-color var(--transition);
 }
-.map-search:focus{border-color:var(--accent)}
-.map-search::placeholder{color:var(--text-dim)}
-
 .filter-row{display:flex;gap:8px;margin-top:8px}
 .map-select{
   flex:1;padding:7px 10px;border-radius:var(--radius-sm);
   background:var(--surface2);border:1px solid var(--border);
   color:var(--text);font-size:11px;outline:none;
 }
-.map-select:focus{border-color:var(--accent)}
-.map-select option{background:var(--surface2)}
-
-/* Stats strip */
 .stats-strip{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.stat-mini{
-  background:var(--surface2);border:1px solid var(--border);
-  border-radius:var(--radius-sm);padding:10px 12px;
-}
+.stat-mini{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;}
 .stat-mini .num{font-size:22px;font-weight:800;color:var(--text);line-height:1}
 .stat-mini .lbl{font-size:10px;color:var(--text-muted);margin-top:2px;text-transform:uppercase;letter-spacing:.4px}
 
-/* Legend */
-.legend-items{display:flex;flex-direction:column;gap:5px}
-.legend-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);cursor:pointer;
-  padding:4px 6px;border-radius:6px;transition:background var(--transition)}
-.legend-row:hover{background:var(--surface2)}
-.legend-row.inactive{opacity:.3}
+.legend-row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);padding:4px 0}
 .leg-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
-.leg-count{margin-left:auto;font-size:10px;font-weight:600;
-  background:var(--surface3);padding:1px 6px;border-radius:10px}
+.leg-count{margin-left:auto;font-size:10px;font-weight:600;background:var(--surface3);padding:1px 6px;border-radius:10px}
 
-/* IE List */
-.ie-list-header{
-  padding:10px 16px;display:flex;align-items:center;justify-content:space-between;
-  border-bottom:1px solid var(--border);flex-shrink:0;
-}
-.ie-list-header span{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.7px}
+.ie-list-header{padding:10px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-shrink:0;}
 #ie-list{flex:1;overflow-y:auto}
-.ie-row{
-  display:flex;align-items:flex-start;gap:10px;
-  padding:9px 16px;cursor:pointer;border-bottom:1px solid var(--border);
-  transition:background var(--transition);
-}
+.ie-row{display:flex;gap:10px;padding:9px 16px;cursor:pointer;border-bottom:1px solid var(--border);}
 .ie-row:hover{background:var(--surface2)}
 .ie-row.selected{background:#10b98110;border-left:3px solid var(--accent);padding-left:13px}
 .ie-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:3px}
-.ie-info{flex:1;min-width:0}
-.ie-name{font-size:12px;font-weight:500;color:var(--text);line-height:1.4;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ie-name{font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ie-meta{font-size:10px;color:var(--text-muted);margin-top:1px}
 
-/* IE Detail panel (popup overlay on map) */
+/* Map IE Detail Overlay */
 #ie-detail{
-  position:absolute;top:16px;right:16px;width:300px;z-index:500;
-  background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-lg);
-  box-shadow:var(--shadow-lg);display:none;animation:slideIn .25s ease;
-  max-height:calc(100% - 32px);overflow-y:auto;
+  position:absolute;top:20px;right:-400px;width:340px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);
+  z-index:1000;display:flex;flex-direction:column;
+  transition:right var(--transition);
 }
-@keyframes slideIn{from{transform:translateX(20px);opacity:0}to{transform:translateY(0);opacity:1}}
-.ie-detail-header{padding:16px;border-bottom:1px solid var(--border);position:relative}
-.ie-detail-close{
-  position:absolute;top:12px;right:12px;width:24px;height:24px;border-radius:50%;
-  background:var(--surface2);border:none;color:var(--text-muted);font-size:14px;
-  display:flex;align-items:center;justify-content:center;cursor:pointer;
-}
-.ie-detail-nivel{
-  display:inline-flex;align-items:center;gap:5px;
-  padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;
-  text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;
-}
-.ie-detail-name{font-size:14px;font-weight:700;color:var(--text);line-height:1.3;margin-bottom:6px}
-.ie-detail-rows{padding:14px;display:flex;flex-direction:column;gap:8px}
-.ie-drow{display:flex;gap:8px;font-size:11px;align-items:flex-start}
-.ie-drow strong{color:var(--text-muted);min-width:80px;flex-shrink:0;font-weight:500}
-.ie-drow span{color:var(--text)}
-.alerts-section{padding:0 14px 14px}
-.alerts-title{font-size:10px;font-weight:700;color:var(--text-muted);
-  text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px}
-.alert-card{
-  padding:10px 12px;border-radius:var(--radius-sm);margin-bottom:6px;
-  border-left:3px solid var(--danger);background:var(--surface2);
-}
-.alert-card.media{border-left-color:var(--warning)}
-.alert-card.baja{border-left-color:var(--accent)}
-.alert-card-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px}
-.alert-card-desc{font-size:10px;color:var(--text-muted);line-height:1.4}
-.alert-card-score{font-size:10px;font-weight:700;color:var(--text-dim);margin-top:4px}
+#ie-detail.open{right:20px}
+.ied-header{padding:16px;border-bottom:1px solid var(--border);position:relative}
+.ied-close{position:absolute;top:12px;right:12px;background:none;border:none;color:var(--text-muted);font-size:16px;cursor:pointer}
+.ied-close:hover{color:var(--text)}
+.ied-name{font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px;padding-right:20px}
+.ied-code{font-size:11px;font-family:monospace;color:var(--text-muted);background:var(--surface2);padding:2px 6px;border-radius:4px}
+.ied-nivel-badge{display:inline-block;font-size:10px;font-weight:700;color:var(--blue);background:#3b82f622;padding:2px 8px;border-radius:10px;margin-left:6px;text-transform:uppercase}
+.ied-body{padding:0;max-height:400px;overflow-y:auto}
+.ied-section{padding:16px;border-bottom:1px solid var(--border)}
+.ied-label{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
+.ied-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:12px;border-bottom:1px dashed var(--border2)}
+.ied-row:last-child{border:none;padding-bottom:0}
+.ied-row .val{font-weight:600;color:var(--text);text-align:right}
+.ied-alerts{display:flex;flex-direction:column;gap:8px}
+.ied-alert-card{background:var(--surface2);border-left:3px solid transparent;padding:10px 12px;border-radius:0 var(--radius-sm) var(--radius-sm) 0}
+.ied-alert-card.alta{border-left-color:var(--danger)}
+.ied-alert-card.media{border-left-color:var(--warning)}
+.ied-alert-card.baja{border-left-color:var(--accent)}
+.ied-ac-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px}
+.ied-ac-sub{font-size:10px;color:var(--text-muted)}
 
-/* Leaflet popup override */
-.leaflet-popup-content-wrapper{
-  background:var(--surface)!important;border:1px solid var(--border2)!important;
-  border-radius:10px!important;box-shadow:var(--shadow-lg)!important;padding:0!important;
+/*──────────────────────────────────────────────────────────────────────────────
+  FORM (MANUAL ONLINE/OFFLINE) & OCR SHARED STYLES
+──────────────────────────────────────────────────────────────────────────────*/
+.scroll-view{flex-direction:column;overflow-y:auto;padding:24px}
+.grid-container{max-width:900px;margin:0 auto;width:100%}
+#view-dashboard .grid-container{max-width:1180px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px}
+.panel-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:20px;display:flex;align-items:center;gap:8px}
+
+.fields-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.field-item{display:flex;flex-direction:column;gap:6px}
+.field-item.full{grid-column:1/-1}
+
+.niveles-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.nivel-box{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 10px;text-align:center}
+.nivel-box .niv-label{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px}
+.nivel-box .niv-input{
+  display:block;width:100%;margin-top:6px;padding:8px 6px;
+  border-radius:4px;background:var(--surface3);border:1px solid var(--border);
+  color:var(--text);font-size:18px;font-weight:700;text-align:center;outline:none;
 }
-.leaflet-popup-tip{background:var(--surface)!important}
-.leaflet-popup-content{margin:0!important}
-.lf-popup{padding:12px 14px;font-size:12px;color:var(--text);min-width:180px}
-.lf-popup strong{color:var(--accent);display:block;margin-bottom:4px;font-size:13px}
-.lf-popup span{color:var(--text-muted)}
+.nivel-box .niv-input:focus{border-color:var(--accent)}
 
 /*──────────────────────────────────────────────────────────────────────────────
   OCR VIEW
 ──────────────────────────────────────────────────────────────────────────────*/
-#view-ocr{flex-direction:column;overflow-y:auto;padding:24px}
-.ocr-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:1100px;margin:0 auto;width:100%}
-@media(max-width:800px){.ocr-grid{grid-template-columns:1fr}}
-
-.ocr-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
-.ocr-panel-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px;
-  display:flex;align-items:center;gap:8px}
-
+.ocr-layout{display:grid;grid-template-columns:350px 1fr;gap:20px}
+@media(max-width:900px){.ocr-layout{grid-template-columns:1fr}}
 .drop-zone{
   border:2px dashed var(--border2);border-radius:var(--radius);
   padding:40px 20px;text-align:center;cursor:pointer;
-  transition:all var(--transition);background:var(--surface2);min-height:220px;
+  transition:all var(--transition);background:var(--surface2);min-height:200px;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
 }
-.drop-zone:hover,.drop-zone.drag-over{border-color:var(--accent);background:var(--accent-glow)}
-.drop-zone .dz-icon{font-size:40px;opacity:.6}
-.drop-zone .dz-text{font-size:13px;color:var(--text-muted)}
-.drop-zone .dz-sub{font-size:11px;color:var(--text-dim)}
-.btn-browse{
-  padding:8px 16px;border-radius:var(--radius-sm);
-  border:1px solid var(--border2);background:var(--surface3);
-  color:var(--text);font-size:12px;font-weight:500;
-  transition:all var(--transition);
-}
-.btn-browse:hover{border-color:var(--accent);color:var(--accent)}
-
-.ocr-preview-box{
-  border-radius:var(--radius);overflow:hidden;background:var(--surface2);
-  border:1px solid var(--border);min-height:200px;
-  display:flex;align-items:center;justify-content:center;
-}
-.ocr-preview-box img{max-width:100%;max-height:280px;object-fit:contain}
-.ocr-preview-placeholder{color:var(--text-dim);font-size:12px;text-align:center;padding:20px}
-
-.ocr-progress{
-  display:none;flex-direction:column;gap:8px;padding:16px;
-  background:var(--surface2);border-radius:var(--radius);
-  border:1px solid var(--border);margin-top:12px;
-}
+.drop-zone:hover{border-color:var(--accent);background:var(--accent-glow)}
+.ocr-progress{display:none;flex-direction:column;gap:8px;margin-top:16px}
 .ocr-progress.visible{display:flex}
 .progress-bar-wrap{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
-.progress-bar{height:100%;background:var(--accent);border-radius:3px;
-  transition:width .3s ease;animation:scanning 1.5s ease-in-out infinite}
-@keyframes scanning{0%{width:0}50%{width:70%}100%{width:100%}}
-.progress-label{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px}
-.progress-label::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);
-  animation:pulse 1s infinite}
+.progress-bar{height:100%;background:var(--accent);border-radius:3px;width:30%;animation:scanning 2s infinite}
+@keyframes scanning{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+.progress-label{font-size:11px;color:var(--text-muted)}
 
-/* Extracted fields */
-.fields-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
-.field-item{display:flex;flex-direction:column;gap:4px}
-.field-label{font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;
-  display:flex;align-items:center;gap:4px}
-.field-input{
-  padding:8px 10px;border-radius:var(--radius-sm);
-  background:var(--surface2);border:1px solid var(--border);
-  color:var(--text);font-size:12px;outline:none;
-  transition:border-color var(--transition);
-}
-.field-input:focus{border-color:var(--accent)}
 .confidence-chip{
-  display:inline-flex;align-items:center;gap:4px;padding:2px 6px;
-  border-radius:4px;font-size:9px;font-weight:700;
+  display:inline-flex;align-items:center;gap:4px;padding:3px 8px;
+  border-radius:6px;font-size:10px;font-weight:700;margin-left:auto;
 }
 .conf-high{background:#10b98122;color:var(--accent)}
 .conf-med{background:#f59e0b22;color:var(--warning)}
-.conf-low{background:#ef444422;color:var(--danger)}
-
-.niveles-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
-.nivel-box{
-  background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);
-  padding:10px 6px;text-align:center;
-}
-.nivel-box .niv-label{font-size:10px;font-weight:700;color:var(--text-muted);
-  text-transform:uppercase;letter-spacing:.4px}
-.nivel-box .niv-input{
-  display:block;width:100%;margin-top:4px;padding:6px 4px;
-  border-radius:4px;background:var(--surface3);border:1px solid var(--border);
-  color:var(--text);font-size:16px;font-weight:700;text-align:center;outline:none;
-}
-.nivel-box .niv-input:focus{border-color:var(--accent)}
-
-.btn-save{
-  width:100%;padding:12px;border-radius:var(--radius-sm);border:none;
-  background:linear-gradient(135deg,var(--accent),var(--accent-dim));
-  color:#fff;font-size:13px;font-weight:700;
-  transition:all var(--transition);
-  box-shadow:0 4px 16px var(--accent-glow);
-}
-.btn-save:hover{transform:translateY(-1px);box-shadow:0 6px 24px var(--accent-glow)}
-.btn-save:disabled{opacity:.4;cursor:not-allowed;transform:none}
-
-.ocr-success{
-  display:none;padding:12px 14px;border-radius:var(--radius-sm);
-  background:#10b98122;border:1px solid var(--accent);
-  color:var(--accent);font-size:12px;font-weight:600;
-  text-align:center;margin-top:10px;
-}
 
 /*──────────────────────────────────────────────────────────────────────────────
-  DASHBOARD VIEW
+  DASHBOARD
 ──────────────────────────────────────────────────────────────────────────────*/
-#view-dashboard{flex-direction:column;overflow-y:auto;padding:24px;gap:20px}
-.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
-.kpi-card{
-  background:var(--surface);border:1px solid var(--border);
-  border-radius:var(--radius-lg);padding:20px;position:relative;overflow:hidden;
-}
-.kpi-card::before{
-  content:'';position:absolute;top:-20px;right:-20px;
-  width:80px;height:80px;border-radius:50%;opacity:.08;
-}
-.kpi-card.green::before{background:var(--accent)}
-.kpi-card.blue::before{background:var(--blue)}
-.kpi-card.red::before{background:var(--danger)}
-.kpi-card.yellow::before{background:var(--warning)}
-.kpi-card.purple::before{background:var(--purple)}
+.dash-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:20px}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
 .kpi-icon{font-size:24px;margin-bottom:12px}
 .kpi-value{font-size:36px;font-weight:800;color:var(--text);line-height:1;margin-bottom:4px}
 .kpi-label{font-size:12px;color:var(--text-muted)}
-.kpi-sub{font-size:10px;color:var(--text-dim);margin-top:4px}
+.dashboard-stack{display:flex;flex-direction:column;gap:20px}
+.dashboard-row{display:grid;grid-template-columns:1.25fr .75fr;gap:20px}
+@media(max-width:980px){.dashboard-row{grid-template-columns:1fr}}
+.demo-badge{display:inline-flex;align-items:center;padding:4px 8px;border-radius:6px;background:#f59e0b22;color:var(--warning);font-size:10px;font-weight:700;margin-left:auto}
+.risk-split{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:680px){.risk-split{grid-template-columns:repeat(2,1fr)}}
+.risk-box{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px}
+.risk-box .rv{font-size:24px;font-weight:800;margin-bottom:2px}
+.risk-box .rl{font-size:11px;color:var(--text-muted)}
+.risk-critical{color:#fca5a5}.risk-high{color:var(--danger)}.risk-medium{color:var(--warning)}.risk-low{color:var(--accent)}
+.data-table{width:100%;border-collapse:collapse;font-size:12px}
+.data-table th,.data-table td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:top;text-align:left}
+.data-table th{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px}
+.risk-pill{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:800}
+.risk-pill.Critico{background:#ef444433;color:#fecaca}
+.risk-pill.Alto{background:#ef444422;color:#fca5a5}
+.risk-pill.Medio{background:#f59e0b22;color:var(--warning)}
+.risk-pill.Bajo{background:#10b98122;color:var(--accent)}
+.result-list{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(max-width:680px){.result-list{grid-template-columns:1fr}}
+.result-item{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px}
+.result-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px}
+.result-name{font-size:12px;font-weight:700;color:var(--text)}
+.result-value{font-size:18px;font-weight:800;color:var(--accent)}
+.bar-track{height:6px;background:var(--surface3);border-radius:999px;overflow:hidden;margin-bottom:8px}
+.bar-fill{height:100%;background:var(--accent);border-radius:999px}
+.muted-note{font-size:11px;color:var(--text-muted);line-height:1.5}
+.rules-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.rule-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px}
+.rule-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px}
+.rule-meta{font-size:10px;color:var(--text-muted);margin-bottom:8px}
+.rule-focus{font-size:11px;color:var(--text-muted);line-height:1.45}
+.action-list{display:flex;flex-direction:column;gap:8px}
+.action-item{font-size:12px;color:var(--text-muted);padding:9px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm)}
 
-.section-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px;
-  display:flex;align-items:center;gap:8px}
-.section-title::before{content:'';width:4px;height:18px;background:var(--accent);border-radius:2px}
-
-.top-table{width:100%;border-collapse:collapse}
-.top-table th{font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;
-  letter-spacing:.6px;padding:8px 12px;border-bottom:1px solid var(--border);text-align:left}
-.top-table td{font-size:12px;padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text)}
-.top-table tr:last-child td{border-bottom:none}
-.top-table tr:hover td{background:var(--surface2)}
-.score-pill{
-  display:inline-flex;padding:2px 8px;border-radius:10px;
-  font-size:10px;font-weight:700;
-}
-.score-alta{background:#ef444422;color:var(--danger)}
-.score-media{background:#f59e0b22;color:var(--warning)}
-.score-baja{background:#10b98122;color:var(--accent)}
-
-.district-bar-wrap{display:flex;flex-direction:column;gap:8px}
-.dist-row{display:flex;align-items:center;gap:10px}
-.dist-name{font-size:12px;color:var(--text-muted);min-width:80px}
-.dist-bar-bg{flex:1;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden}
-.dist-bar-fill{height:100%;border-radius:4px;background:var(--accent);transition:width .8s ease}
-.dist-count{font-size:11px;font-weight:700;color:var(--text);min-width:30px;text-align:right}
-
-.dash-row{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-.dash-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
-
-/* Loading/empty states */
-.empty-state{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:40px;color:var(--text-dim);text-align:center;gap:10px;
-}
-.empty-state .es-icon{font-size:36px;opacity:.4}
-.empty-state .es-text{font-size:13px}
-
-/* Spinner */
-.spinner{
-  width:40px;height:40px;border-radius:50%;
-  border:3px solid var(--border2);border-top-color:var(--accent);
-  animation:spin .8s linear infinite;
-}
-@keyframes spin{to{transform:rotate(360deg)}}
-
-/* Loading overlay */
-#global-loading{
-  position:fixed;inset:0;z-index:9999;background:var(--bg);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
-  transition:opacity .4s;
-}
+/* Loader / Toast */
+#global-loading{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;transition:opacity .4s}
 #global-loading.hidden{opacity:0;pointer-events:none}
-.loading-text{font-size:14px;color:var(--text-muted)}
-
-/* Toast */
+.spinner{width:40px;height:40px;border-radius:50%;border:3px solid var(--border2);border-top-color:var(--accent);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 #toast{
   position:fixed;bottom:24px;right:24px;z-index:9000;
   padding:12px 20px;border-radius:var(--radius);
@@ -554,19 +400,17 @@ input,select,textarea{font-family:inherit}
 #toast.show{transform:translateY(0);opacity:1}
 #toast.success{border-color:var(--accent);color:var(--accent)}
 #toast.error{border-color:var(--danger);color:var(--danger)}
+#toast.warning{border-color:var(--warning);color:var(--warning)}
+
 </style>
 </head>
 <body>
 
-<!-- ── LOADING ────────────────────────────────────────────────────── -->
-<div id="global-loading">
-  <div class="spinner"></div>
-  <div class="loading-text">SUGKA LAB iniciando…</div>
-</div>
+<div id="global-loading"><div class="spinner"></div></div>
 <div id="toast"></div>
 
 <!-- ══════════════════════════════════════════════════════════════════
-     LOGIN SCREEN
+     LOGIN
 ══════════════════════════════════════════════════════════════════════ -->
 <div id="screen-login" class="screen">
   <div class="login-bg-grid"></div>
@@ -574,373 +418,587 @@ input,select,textarea{font-family:inherit}
   <div class="login-card">
     <div class="login-logo">
       <div class="login-logo-icon">🏫</div>
-      <div class="login-logo-text">
-        <span class="brand">SUGKA LAB</span>
-        <span class="sub">UGEL IBIR-IMAZA · Bagua, Amazonas</span>
-      </div>
+      <div class="login-logo-text"><span class="brand">SUGKA LAB</span><span class="sub">UGEL IBIR-IMAZA</span></div>
     </div>
-
     <div class="login-heading">Bienvenido, especialista</div>
-    <div class="login-subheading">Selecciona tu nombre e ingresa tu PIN de acceso</div>
+    <div class="login-subheading">Selecciona tu nombre e ingresa tu PIN</div>
 
     <div class="form-group">
-      <label for="sel-especialista">Especialista</label>
-      <select id="sel-especialista" class="form-select">
-        <option value="">Cargando especialistas…</option>
-      </select>
+      <label>Especialista</label>
+      <select id="sel-especialista" class="form-select"><option value="">Cargando…</option></select>
     </div>
-
     <div class="form-group">
-      <label for="inp-pin">PIN de acceso</label>
+      <label>PIN de acceso</label>
       <div class="pin-wrapper">
-        <input id="inp-pin" type="password" class="form-input" placeholder="••••"
-          maxlength="4" autocomplete="off" inputmode="text"/>
-        <div class="pin-hint" id="pin-hint" style="display:none">
-          Tu PIN: <span class="pin-val" id="pin-val-display">—</span>
-        </div>
+        <input id="inp-pin" type="password" class="form-input" placeholder="••••" maxlength="4"/>
+        <div class="pin-hint" id="pin-hint" style="display:none">PIN: <span class="pin-val" id="pin-val-display"></span></div>
       </div>
     </div>
-
-    <button class="btn-login" id="btn-login" disabled>Ingresar al sistema</button>
+    <button class="btn-primary" id="btn-login" disabled>Ingresar al sistema</button>
     <div class="login-error" id="login-error"></div>
-
-    <div class="login-footer">
-      Modo demo · Los datos son reales y confidenciales<br/>
-      SUGKA LAB v1.0 · 2026
-    </div>
   </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════
-     MAIN APP SCREEN
+     APP
 ══════════════════════════════════════════════════════════════════════ -->
 <div id="screen-app" class="screen">
 
-  <!-- SIDEBAR -->
   <nav id="sidebar">
     <div class="sidebar-logo-wrap">
       <div class="sidebar-logo">🏫</div>
-      <div class="sidebar-brand-text">
-        <span class="b1">SUGKA LAB</span>
-        <span class="b2">UGEL IBIR-IMAZA</span>
-      </div>
+      <div class="sidebar-brand-text"><span class="b1">SUGKA LAB</span><span class="b2">Offline Ready</span></div>
     </div>
     <div class="nav-divider"></div>
 
     <div class="nav-item active" data-view="mapa" id="nav-mapa">
-      <span class="nav-icon">🗺️</span>
-      <span class="nav-label">Mapa de IEs</span>
+      <span class="nav-icon">🗺️</span><span class="nav-label">Mapa de IEs</span>
+    </div>
+    <div class="nav-item" data-view="form" id="nav-form">
+      <span class="nav-icon">📝</span><span class="nav-label">Llenar Ficha</span>
     </div>
     <div class="nav-item" data-view="ocr" id="nav-ocr">
-      <span class="nav-icon">📄</span>
-      <span class="nav-label">Cargar Ficha</span>
+      <span class="nav-icon">📄</span><span class="nav-label">OCR Ficha</span>
     </div>
     <div class="nav-item" data-view="dashboard" id="nav-dashboard">
-      <span class="nav-icon">📊</span>
-      <span class="nav-label">Dashboard</span>
-      <span class="nav-badge" id="badge-alertas">…</span>
+      <span class="nav-icon">📊</span><span class="nav-label">Dashboard</span>
     </div>
 
     <div class="sidebar-bottom">
+      <button class="sync-btn" id="btn-sync" disabled>
+        <span>🔄</span><span class="slbl">Sincronizar</span>
+        <span class="sync-badge" id="sync-count">0</span>
+      </button>
+
       <div class="user-card">
         <div class="user-avatar" id="user-avatar">?</div>
         <div class="user-info">
-          <span class="uname" id="user-name">Especialista</span>
-          <span class="urole" id="user-role">—</span>
+          <span class="uname" id="user-name">Usuario</span>
+          <span class="urole" id="user-role">Rol</span>
         </div>
       </div>
       <button class="btn-logout" id="btn-logout">
-        <span>🚪</span>
-        <span class="logout-label">Cerrar sesión</span>
+        <span>🚪</span><span class="logout-label">Cerrar sesión</span>
       </button>
     </div>
-
     <div class="sidebar-toggle" id="sidebar-toggle">▶</div>
   </nav>
 
-  <!-- MAIN CONTENT -->
   <div id="main-content">
-    <!-- TOPBAR -->
     <div id="topbar">
-      <span class="topbar-title" id="topbar-title">Mapa de Instituciones Educativas</span>
-      <span class="topbar-sub" id="topbar-sub">UGEL IBIR-IMAZA</span>
+      <span class="topbar-title" id="topbar-title">Mapa</span>
+      <span class="topbar-sub" id="topbar-sub">UGEL</span>
       <div class="topbar-spacer"></div>
-      <div class="topbar-badge">
-        <span class="dot dot-green"></span>
-        <span id="topbar-badge-text">En línea</span>
+      <div class="net-status">
+        <span class="dot" id="net-dot"></span>
+        <span id="net-text">Online</span>
       </div>
     </div>
 
-    <!-- VIEWS -->
     <div id="views-container">
 
-      <!-- ── MAP VIEW ─────────────────────────────────────── -->
+      <!-- MAPA -->
       <div id="view-mapa" class="view active">
         <div id="map-panel">
           <div class="panel-section">
             <div class="panel-label">Buscar IE</div>
-            <input id="map-search" class="map-search" placeholder="Nombre, código o centro poblado…"/>
+            <input id="map-search" class="map-search" placeholder="Nombre, código o centro poblado..."/>
             <div class="filter-row">
               <select id="map-filter-distrito" class="map-select">
                 <option value="">Todos los distritos</option>
-                <option value="Imaza">Imaza</option>
-                <option value="Aramango">Aramango</option>
-                <option value="Nieva">Nieva</option>
               </select>
               <select id="map-filter-alerta" class="map-select">
                 <option value="">Todas las alertas</option>
                 <option value="alta">🔴 Alta</option>
                 <option value="media">🟡 Media</option>
-                <option value="baja">🟢 Baja</option>
+                <option value="baja">🟢 Baja (Sin alerta)</option>
               </select>
             </div>
           </div>
 
           <div class="panel-section">
             <div class="stats-strip">
-              <div class="stat-mini"><div class="num" id="ms-total">—</div><div class="lbl">IEs visibles</div></div>
-              <div class="stat-mini"><div class="num" id="ms-alertas" style="color:var(--danger)">—</div><div class="lbl">Alerta alta</div></div>
+              <div class="stat-mini"><div class="num" id="ms-total">0</div><div class="lbl">IEs Visibles</div></div>
+              <div class="stat-mini"><div class="num" id="ms-alertas" style="color:var(--danger)">0</div><div class="lbl">Alerta Alta</div></div>
             </div>
           </div>
 
           <div class="panel-section">
-            <div class="panel-label">Nivel de alerta</div>
-            <div class="legend-items">
-              <div class="legend-row" data-alerta="alta" id="leg-alta">
-                <div class="leg-dot" style="background:#ef4444;box-shadow:0 0 6px #ef444488"></div>
-                <span>Alerta alta (≥15)</span>
-                <span class="leg-count" id="lc-alta">…</span>
-              </div>
-              <div class="legend-row" data-alerta="media" id="leg-media">
-                <div class="leg-dot" style="background:#f59e0b;box-shadow:0 0 6px #f59e0b88"></div>
-                <span>Alerta media (≥8)</span>
-                <span class="leg-count" id="lc-media">…</span>
-              </div>
-              <div class="legend-row" data-alerta="baja" id="leg-baja">
-                <div class="leg-dot" style="background:#10b981;box-shadow:0 0 6px #10b98188"></div>
-                <span>Sin alerta crítica</span>
-                <span class="leg-count" id="lc-baja">…</span>
-              </div>
-            </div>
+            <div class="panel-label">Nivel de Alerta</div>
+            <div class="legend-row"><div class="leg-dot" style="background:var(--danger)"></div><span>Alerta alta (≥15)</span><span class="leg-count" id="leg-alta">0</span></div>
+            <div class="legend-row"><div class="leg-dot" style="background:var(--warning)"></div><span>Alerta media (≥8)</span><span class="leg-count" id="leg-media">0</span></div>
+            <div class="legend-row"><div class="leg-dot" style="background:var(--accent)"></div><span>Sin alerta crítica</span><span class="leg-count" id="leg-baja">0</span></div>
           </div>
 
           <div class="ie-list-header">
-            <span>IEs</span>
-            <span style="color:var(--accent);font-weight:700" id="ie-list-count">—</span>
+            <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">IEs</span>
+            <span id="ie-list-count" style="font-size:11px;font-weight:700;color:var(--accent)">0</span>
           </div>
           <div id="ie-list"></div>
         </div>
 
-        <div id="leaflet-map"></div>
-
-        <!-- IE Detail overlay -->
-        <div id="ie-detail">
-          <div class="ie-detail-header">
-            <div id="ied-nivel-badge" class="ie-detail-nivel"></div>
-            <div id="ied-name" class="ie-detail-name"></div>
-            <button class="ie-detail-close" id="ie-detail-close">✕</button>
-          </div>
-          <div class="ie-detail-rows" id="ied-rows"></div>
-          <div class="alerts-section">
-            <div class="alerts-title">⚠️ Alertas activas</div>
-            <div id="ied-alerts"></div>
+        <div id="leaflet-map">
+          <!-- IE Detail Overlay -->
+          <div id="ie-detail">
+            <div class="ied-header">
+              <button class="ied-close" onclick="closeIEDetail()">✕</button>
+              <div class="ied-name" id="ied-name">IE Name</div>
+              <span class="ied-code" id="ied-code">000000</span>
+              <span class="ied-nivel-badge" id="ied-nivel-badge">Primaria</span>
+            </div>
+            <div class="ied-body">
+              <div class="ied-section">
+                <div class="ied-label">Información General</div>
+                <div class="ied-row"><span>Distrito</span><span class="val" id="ied-distrito"></span></div>
+                <div class="ied-row"><span>Centro Poblado</span><span class="val" id="ied-cp"></span></div>
+                <div class="ied-row"><span>Alumnos (Censo)</span><span class="val" id="ied-alumnos"></span></div>
+                <div class="ied-row"><span>Docentes (Censo)</span><span class="val" id="ied-docentes"></span></div>
+              </div>
+              <div class="ied-section">
+                <div class="ied-label">Métricas de Monitoreo</div>
+                <div class="ied-row"><span>Fichas SIMON</span><span class="val" id="ied-simon"></span></div>
+                <div class="ied-row"><span>Promedio Desempeño</span><span class="val" id="ied-promedio"></span></div>
+                <div class="ied-row"><span>Visitas de Campo</span><span class="val" id="ied-campo"></span></div>
+                <div class="ied-row"><span>Cobertura Total</span><span class="val" id="ied-cobertura"></span></div>
+              </div>
+              <div class="ied-section" id="ied-alerts-section">
+                <div class="ied-label">Alertas Críticas Activas</div>
+                <div class="ied-alerts" id="ied-alerts-container"></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- ── OCR VIEW ─────────────────────────────────────── -->
-      <div id="view-ocr" class="view">
-        <div class="ocr-grid">
-          <!-- LEFT: upload -->
-          <div>
-            <div class="ocr-panel">
-              <div class="ocr-panel-title">📎 Cargar documento de campo</div>
-              <div class="drop-zone" id="drop-zone">
-                <div class="dz-icon">📷</div>
-                <div class="dz-text">Arrastra aquí la imagen o PDF de la ficha</div>
-                <div class="dz-sub">PNG, JPG, PDF · Máx 10MB</div>
-                <button class="btn-browse" id="btn-browse">Seleccionar archivo</button>
+      <!-- FORM MANUAL (Offline Ready) -->
+      <div id="view-form" class="view scroll-view">
+        <div class="grid-container">
+          <div class="panel">
+            <div class="panel-title">📝 Ficha de Monitoreo Docente</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">
+              Esta ficha puede ser llenada sin conexión a internet. Los datos se guardarán localmente y podrás sincronizarlos luego.
+            </div>
+
+            <form id="manual-form">
+              <div class="fields-grid">
+                <div class="field-item">
+                  <label class="form-group label">Código Modular IE</label>
+                  <input class="form-input" id="fm-codigo" required/>
+                </div>
+                <div class="field-item">
+                  <label class="form-group label">Nombre Docente</label>
+                  <input class="form-input" id="fm-docente" required/>
+                </div>
+                <div class="field-item">
+                  <label class="form-group label">Fecha Ejecución</label>
+                  <input type="date" class="form-input" id="fm-fecha" required/>
+                </div>
+                <div class="field-item">
+                  <label class="form-group label">Especialista Monitor</label>
+                  <input class="form-input" id="fm-monitor" readonly/>
+                </div>
               </div>
-              <input type="file" id="file-input" accept="image/*,.pdf" style="display:none"/>
+
+              <div class="panel-label" style="margin-bottom:8px;margin-top:16px">A: Preparación para el aprendizaje</div>
+              <div class="niveles-grid" style="grid-template-columns:repeat(3,1fr)">
+                <div class="nivel-box"><div class="niv-label">A1 (1-4)</div><input type="number" min="0" max="4" class="niv-input" id="fm-a1" value="0"/></div>
+                <div class="nivel-box"><div class="niv-label">A2 (1-4)</div><input type="number" min="0" max="4" class="niv-input" id="fm-a2" value="0"/></div>
+                <div class="nivel-box"><div class="niv-label">A3 (1-4)</div><input type="number" min="0" max="4" class="niv-input" id="fm-a3" value="0"/></div>
+              </div>
+              <div class="panel-label" style="margin-bottom:8px">B: Enseñanza para el aprendizaje</div>
+              <div class="niveles-grid" style="grid-template-columns:repeat(5,1fr)">
+                <div class="nivel-box"><div class="niv-label">B1</div><input type="number" min="0" max="4" class="niv-input" id="fm-b1" value="0"/></div>
+                <div class="nivel-box"><div class="niv-label">B2</div><input type="number" min="0" max="4" class="niv-input" id="fm-b2" value="0"/></div>
+                <div class="nivel-box"><div class="niv-label">B3</div><input type="number" min="0" max="4" class="niv-input" id="fm-b3" value="0"/></div>
+                <div class="nivel-box"><div class="niv-label">B4</div><input type="number" min="0" max="4" class="niv-input" id="fm-b4" value="0"/></div>
+                <div class="nivel-box"><div class="niv-label">B5</div><input type="number" min="0" max="4" class="niv-input" id="fm-b5" value="0"/></div>
+              </div>
+
+              <div class="fields-grid" style="margin-top:20px;margin-bottom:20px">
+                <div class="field-item full">
+                  <label class="form-group label">Observaciones / Recomendaciones</label>
+                  <textarea class="form-input" id="fm-obs" rows="3" placeholder="Escriba las observaciones..."></textarea>
+                </div>
+                <div class="field-item full">
+                  <label class="form-group label">Compromisos del Monitoreado</label>
+                  <textarea class="form-input" id="fm-comp" rows="3" placeholder="Escriba los compromisos..."></textarea>
+                </div>
+              </div>
+
+              <button type="submit" class="btn-primary">💾 Guardar Ficha</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- OCR UPLOAD -->
+      <div id="view-ocr" class="view scroll-view">
+        <div class="grid-container">
+          <div class="ocr-layout">
+            <div class="panel" style="margin-bottom:0">
+              <div class="panel-title">📎 Subir Documento</div>
+              <div class="drop-zone" id="drop-zone">
+                <div style="font-size:32px;opacity:0.5">📄</div>
+                <div style="font-size:12px;color:var(--text-muted)">PDF o imágenes (JPG, PNG). Puedes seleccionar varias fotos.</div>
+                <button class="btn-primary" style="padding:8px;font-size:12px" onclick="document.getElementById('file-input').click()">Examinar</button>
+              </div>
+              <input type="file" id="file-input" style="display:none" accept=".pdf,image/*" multiple/>
 
               <div class="ocr-progress" id="ocr-progress">
-                <div class="progress-label">Procesando documento con OCR…</div>
+                <div class="progress-label" id="ocr-status-text">Procesando con IA...</div>
                 <div class="progress-bar-wrap"><div class="progress-bar"></div></div>
               </div>
             </div>
 
-            <div class="ocr-panel" style="margin-top:16px">
-              <div class="ocr-panel-title">👁️ Vista previa</div>
-              <div class="ocr-preview-box" id="preview-box">
-                <div class="ocr-preview-placeholder">La previsualización aparecerá aquí</div>
-              </div>
-            </div>
-          </div>
+            <div class="panel" style="margin-bottom:0">
+              <div class="panel-title">📋 Datos Extraídos <span id="ocr-conf" class="confidence-chip" style="display:none"></span></div>
 
-          <!-- RIGHT: extracted fields -->
-          <div>
-            <div class="ocr-panel" id="fields-panel">
-              <div class="ocr-panel-title">
-                📋 Campos extraídos
-                <span id="conf-badge" style="margin-left:auto"></span>
-              </div>
-
-              <div class="fields-grid">
-                <div class="field-item" style="grid-column:1/-1">
-                  <div class="field-label">🏫 Nombre de la IE</div>
-                  <input class="field-input" id="f-nombre-ie" placeholder="—"/>
-                </div>
-                <div class="field-item">
-                  <div class="field-label">Código modular</div>
-                  <input class="field-input" id="f-codigo" placeholder="—"/>
-                </div>
-                <div class="field-item">
-                  <div class="field-label">Distrito</div>
-                  <input class="field-input" id="f-distrito" placeholder="—"/>
-                </div>
-                <div class="field-item">
-                  <div class="field-label">👤 Docente observado</div>
-                  <input class="field-input" id="f-docente" placeholder="—"/>
-                </div>
-                <div class="field-item">
-                  <div class="field-label">👷 Monitor / Especialista</div>
-                  <input class="field-input" id="f-monitor" placeholder="—"/>
-                </div>
-                <div class="field-item">
-                  <div class="field-label">📅 Fecha programada</div>
-                  <input class="field-input" id="f-fecha-prog" type="date"/>
-                </div>
-                <div class="field-item">
-                  <div class="field-label">📅 Fecha ejecutada</div>
-                  <input class="field-input" id="f-fecha-exec" type="date"/>
-                </div>
-                <div class="field-item">
-                  <div class="field-label">Plan</div>
-                  <input class="field-input" id="f-plan" placeholder="—"/>
-                </div>
-                <div class="field-item">
-                  <div class="field-label">Visita Nº</div>
-                  <input class="field-input" id="f-visita" placeholder="—"/>
-                </div>
+              <div class="panel-label">Identificación de la IE</div>
+              <div class="fields-grid" style="gap:10px">
+                <div class="field-item"><label class="form-group label">Fecha</label><input class="form-input" id="fo-fecha" type="date"/></div>
+                <div class="field-item"><label class="form-group label">N° Visita</label><input class="form-input" id="fo-visita"/></div>
+                <div class="field-item"><label class="form-group label">Región</label><input class="form-input" id="fo-region"/></div>
+                <div class="field-item"><label class="form-group label">UGEL</label><input class="form-input" id="fo-ugel"/></div>
+                <div class="field-item full"><label class="form-group label">IE / Código Modular</label><input class="form-input" id="fo-ie"/></div>
+                <div class="field-item"><label class="form-group label">Nivel / Modalidad</label><input class="form-input" id="fo-nivel"/></div>
+                <div class="field-item"><label class="form-group label">Director(a)</label><input class="form-input" id="fo-director"/></div>
+                <div class="field-item"><label class="form-group label">Cel. Director</label><input class="form-input" id="fo-director-cel"/></div>
+                <div class="field-item"><label class="form-group label">Email Director</label><input class="form-input" id="fo-director-email"/></div>
+                <div class="field-item full"><label class="form-group label">Situación Laboral Director</label><input class="form-input" id="fo-director-situacion"/></div>
               </div>
 
-              <div class="panel-label" style="margin-bottom:8px">Niveles de desempeño</div>
-              <div class="niveles-grid">
-                <div class="nivel-box">
-                  <div class="niv-label">Nivel I</div>
-                  <input class="niv-input" id="f-niv1" type="number" min="0" value="0"/>
-                </div>
-                <div class="nivel-box">
-                  <div class="niv-label">Nivel II</div>
-                  <input class="niv-input" id="f-niv2" type="number" min="0" value="0"/>
-                </div>
-                <div class="nivel-box">
-                  <div class="niv-label">Nivel III</div>
-                  <input class="niv-input" id="f-niv3" type="number" min="0" value="0"/>
-                </div>
-                <div class="nivel-box">
-                  <div class="niv-label">Nivel IV</div>
-                  <input class="niv-input" id="f-niv4" type="number" min="0" value="0"/>
-                </div>
+              <div class="panel-label">Docente, Aula y Sesión</div>
+              <div class="fields-grid" style="gap:10px">
+                <div class="field-item full"><label class="form-group label">Docente</label><input class="form-input" id="fo-docente"/></div>
+                <div class="field-item"><label class="form-group label">DNI Docente</label><input class="form-input" id="fo-docente-dni"/></div>
+                <div class="field-item"><label class="form-group label">Cel. Docente</label><input class="form-input" id="fo-docente-cel"/></div>
+                <div class="field-item"><label class="form-group label">Email Docente</label><input class="form-input" id="fo-docente-email"/></div>
+                <div class="field-item"><label class="form-group label">Situación Laboral</label><input class="form-input" id="fo-docente-situacion"/></div>
+                <div class="field-item"><label class="form-group label">Grado</label><input class="form-input" id="fo-grado"/></div>
+                <div class="field-item"><label class="form-group label">Sección</label><input class="form-input" id="fo-seccion"/></div>
+                <div class="field-item"><label class="form-group label">N° Estudiantes</label><input class="form-input" id="fo-estudiantes" type="number"/></div>
+                <div class="field-item"><label class="form-group label">Área</label><input class="form-input" id="fo-area"/></div>
+                <div class="field-item full"><label class="form-group label">Competencia</label><input class="form-input" id="fo-competencia"/></div>
+                <div class="field-item full"><label class="form-group label">Título de la Sesión</label><input class="form-input" id="fo-titulo-sesion"/></div>
               </div>
 
-              <button class="btn-save" id="btn-save-ficha" disabled>
-                💾 Confirmar y guardar ficha
-              </button>
-              <div class="ocr-success" id="ocr-success">✅ ¡Ficha guardada exitosamente en el sistema!</div>
+              <div class="panel-label">Especialista Responsable</div>
+              <div class="fields-grid" style="gap:10px">
+                <div class="field-item full"><label class="form-group label">Monitor</label><input class="form-input" id="fo-monitor"/></div>
+                <div class="field-item"><label class="form-group label">DNI Monitor</label><input class="form-input" id="fo-monitor-dni"/></div>
+                <div class="field-item"><label class="form-group label">IGED</label><input class="form-input" id="fo-iged"/></div>
+                <div class="field-item full"><label class="form-group label">Email Monitor</label><input class="form-input" id="fo-monitor-email"/></div>
+              </div>
+
+              <div class="panel-label">A: Preparación</div>
+              <div class="niveles-grid" style="gap:5px;margin-bottom:10px;grid-template-columns:repeat(3,1fr)">
+                <input class="form-input" id="fo-a1" type="number" placeholder="A1"/><input class="form-input" id="fo-a2" type="number" placeholder="A2"/><input class="form-input" id="fo-a3" type="number" placeholder="A3"/>
+              </div>
+              <div class="panel-label">B: Enseñanza</div>
+              <div class="niveles-grid" style="gap:5px;margin-bottom:15px;grid-template-columns:repeat(5,1fr)">
+                <input class="form-input" id="fo-b1" type="number" placeholder="B1"/><input class="form-input" id="fo-b2" type="number" placeholder="B2"/>
+                <input class="form-input" id="fo-b3" type="number" placeholder="B3"/><input class="form-input" id="fo-b4" type="number" placeholder="B4"/>
+                <input class="form-input" id="fo-b5" type="number" placeholder="B5"/>
+              </div>
+              <div class="fields-grid" style="gap:10px;margin-bottom:15px">
+                <div class="field-item"><label class="form-group label">Promedio Nivel</label><input class="form-input" id="fo-prom" readonly/></div>
+              </div>
+              <div class="panel-label">Observaciones por Ítem</div>
+              <div class="fields-grid" style="gap:10px;margin-bottom:15px">
+                <div class="field-item"><label class="form-group label">A1 Observación</label><textarea class="form-input" id="fo-a1-obs" rows="2"></textarea></div>
+                <div class="field-item"><label class="form-group label">A2 Observación</label><textarea class="form-input" id="fo-a2-obs" rows="2"></textarea></div>
+                <div class="field-item"><label class="form-group label">A3 Observación</label><textarea class="form-input" id="fo-a3-obs" rows="2"></textarea></div>
+                <div class="field-item"><label class="form-group label">B1 Observación</label><textarea class="form-input" id="fo-b1-obs" rows="2"></textarea></div>
+                <div class="field-item"><label class="form-group label">B2 Observación</label><textarea class="form-input" id="fo-b2-obs" rows="2"></textarea></div>
+                <div class="field-item"><label class="form-group label">B3 Observación</label><textarea class="form-input" id="fo-b3-obs" rows="2"></textarea></div>
+                <div class="field-item"><label class="form-group label">B4 Observación</label><textarea class="form-input" id="fo-b4-obs" rows="2"></textarea></div>
+                <div class="field-item"><label class="form-group label">B5 Observación</label><textarea class="form-input" id="fo-b5-obs" rows="2"></textarea></div>
+              </div>
+              <div class="fields-grid" style="gap:10px;margin-bottom:15px">
+                <div class="field-item full">
+                  <label class="form-group label">Observaciones / Recomendaciones</label>
+                  <textarea class="form-input" id="fo-obs" rows="3"></textarea>
+                </div>
+                <div class="field-item full">
+                  <label class="form-group label">Compromisos del Monitoreado</label>
+                  <textarea class="form-input" id="fo-comp" rows="3"></textarea>
+                </div>
+              </div>
+              <button class="btn-primary" id="btn-save-ocr" disabled>💾 Confirmar e Ingresar</button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- ── DASHBOARD VIEW ───────────────────────────────── -->
-      <div id="view-dashboard" class="view">
-        <div class="dash-grid" id="dash-kpis">
-          <div class="empty-state"><div class="spinner"></div></div>
-        </div>
+      <!-- DASHBOARD -->
+      <div id="view-dashboard" class="view scroll-view">
+        <div class="grid-container">
+          <div class="dashboard-stack">
+            <div class="panel" style="margin-bottom:0">
+              <div class="panel-title">Resultados de Monitoreo <span id="dash-demo-badge" class="demo-badge" style="display:none">Datos demo</span></div>
+              <div class="dash-grid" id="dash-kpis">
+                <div class="spinner" style="margin:auto"></div>
+              </div>
+              <div class="risk-split" id="dash-risk-split"></div>
+            </div>
 
-        <div class="dash-row">
-          <div class="dash-panel">
-            <div class="section-title">IEs priorizadas para atención</div>
-            <table class="top-table" id="dash-top-table">
-              <thead><tr>
-                <th>IE</th><th>Distrito</th><th>Score</th><th>Cobertura</th>
-              </tr></thead>
-              <tbody id="dash-top-body"></tbody>
-            </table>
-          </div>
+            <div class="dashboard-row">
+              <div class="panel" style="margin-bottom:0">
+                <div class="panel-title">IEs Prioritarias por Riesgo</div>
+                <div id="dash-risk-table"></div>
+              </div>
+              <div class="panel" style="margin-bottom:0">
+                <div class="panel-title">Acciones Recomendadas</div>
+                <div class="action-list" id="dash-actions"></div>
+              </div>
+            </div>
 
-          <div class="dash-panel">
-            <div class="section-title">IEs por distrito</div>
-            <div class="district-bar-wrap" id="dash-district-bars"></div>
+            <div class="dashboard-row">
+              <div class="panel" style="margin-bottom:0">
+                <div class="panel-title">Resultados Recolectados</div>
+                <div class="result-list" id="dash-results"></div>
+              </div>
+              <div class="panel" style="margin-bottom:0">
+                <div class="panel-title">Modelo de Clasificación</div>
+                <div id="dash-model"></div>
+              </div>
+            </div>
+
+            <div class="panel" style="margin-bottom:0">
+              <div class="panel-title">Reglas de Alertas</div>
+              <div class="rules-grid" id="dash-rules"></div>
+            </div>
           </div>
         </div>
       </div>
 
-    </div><!-- /views-container -->
-  </div><!-- /main-content -->
-</div><!-- /screen-app -->
+    </div>
+  </div>
+</div>
 
-<!-- ── SCRIPTS ────────────────────────────────────────────────────── -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
 'use strict';
 const API = 'http://localhost:8000/api';
 
-/*──────────────────────────────────────────────────────────────────────────────
-  UTILITIES
-──────────────────────────────────────────────────────────────────────────────*/
+/* Service Worker & Offline Cache */
+let offlineFichas = JSON.parse(localStorage.getItem('offline_fichas') || '[]');
+let isOnline = navigator.onLine;
+let lastOcrFicha = null;
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(err => console.error('SW falló:', err));
+}
+
+window.addEventListener('online', () => updateNetStatus(true));
+window.addEventListener('offline', () => updateNetStatus(false));
+
+function updateNetStatus(online) {
+  isOnline = online;
+  const dot = document.getElementById('net-dot');
+  const txt = document.getElementById('net-text');
+  if(online) { dot.className='dot'; txt.textContent='Online'; syncFichas(); }
+  else { dot.className='dot offline'; txt.textContent='Offline'; showToast('Sin conexión. Modo Offline activado.', 'warning'); }
+}
+
+function updateSyncUI() {
+  const btn = document.getElementById('btn-sync');
+  const bge = document.getElementById('sync-count');
+  bge.textContent = offlineFichas.length;
+  btn.disabled = offlineFichas.length === 0 || !isOnline;
+}
+
+function saveFichaOffline(ficha) {
+  offlineFichas.push(ficha);
+  localStorage.setItem('offline_fichas', JSON.stringify(offlineFichas));
+  updateSyncUI();
+  showToast('Ficha guardada localmente.', 'success');
+}
+
+async function syncFichas() {
+  if (offlineFichas.length === 0 || !isOnline) return;
+  try {
+    const r = await fetch(API+'/sync', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(offlineFichas)
+    });
+    if(!r.ok) throw new Error('Error al sincronizar');
+    offlineFichas = [];
+    localStorage.removeItem('offline_fichas');
+    updateSyncUI();
+    showToast('Fichas sincronizadas con SIMON.', 'success');
+  } catch(e) {
+    showToast('Error sincronizando. Se reintentará luego.', 'error');
+  }
+}
+document.getElementById('btn-sync').addEventListener('click', syncFichas);
+
+/* Utils */
 async function apiFetch(path, opts={}) {
   const r = await fetch(API + path, {headers:{'Content-Type':'application/json'},...opts});
   if (!r.ok) { const e = await r.json(); throw new Error(e.error||'Error'); }
   return r.json();
 }
-
-function showToast(msg, type='success', ms=3000) {
+function showToast(msg, type='success') {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = `show ${type}`;
-  setTimeout(() => t.className = '', ms);
+  setTimeout(() => t.className = '', 3000);
 }
 
-function hideGlobalLoading() {
-  const el = document.getElementById('global-loading');
-  el.classList.add('hidden');
-  setTimeout(() => el.style.display='none', 500);
+function esc(value='') {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+  }[c]));
 }
 
-/*──────────────────────────────────────────────────────────────────────────────
-  AUTH / SESSION
-──────────────────────────────────────────────────────────────────────────────*/
-let currentUser = null;
-
-function saveSession(data) {
-  sessionStorage.setItem('sugka_session', JSON.stringify(data));
-  currentUser = data;
-}
-function loadSession() {
-  try { return JSON.parse(sessionStorage.getItem('sugka_session')); }
-  catch { return null; }
-}
-function clearSession() {
-  sessionStorage.removeItem('sugka_session');
-  currentUser = null;
-}
-
-function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+function setField(id, value='') {
   const el = document.getElementById(id);
-  el.classList.add('active');
+  if(el) el.value = value ?? '';
 }
 
-/*──────────────────────────────────────────────────────────────────────────────
-  LOGIN
-──────────────────────────────────────────────────────────────────────────────*/
-let especialistas = [];
+function getField(id) {
+  const el = document.getElementById(id);
+  return el ? el.value.trim() : '';
+}
 
+function parseIeField(value) {
+  const match = value.match(/^(\d{5,10})\s*-\s*(.*)$/);
+  return {
+    codigo_modular: match ? match[1] : '',
+    nombre_ie: match ? match[2] : value
+  };
+}
+
+const OCR_FIELD_IDS = [
+  'fo-fecha','fo-visita','fo-region','fo-ugel','fo-ie','fo-nivel','fo-director',
+  'fo-director-cel','fo-director-email','fo-director-situacion','fo-docente',
+  'fo-docente-dni','fo-docente-cel','fo-docente-email','fo-docente-situacion',
+  'fo-grado','fo-seccion','fo-estudiantes','fo-area','fo-competencia',
+  'fo-titulo-sesion','fo-monitor','fo-monitor-dni','fo-iged','fo-monitor-email',
+  'fo-a1','fo-a2','fo-a3','fo-b1','fo-b2','fo-b3','fo-b4','fo-b5','fo-prom',
+  'fo-a1-obs','fo-a2-obs','fo-a3-obs','fo-b1-obs','fo-b2-obs','fo-b3-obs',
+  'fo-b4-obs','fo-b5-obs','fo-obs','fo-comp'
+];
+
+function clearOcrFields() {
+  OCR_FIELD_IDS.forEach(id => setField(id, ''));
+  const cb = document.getElementById('ocr-conf');
+  cb.style.display = 'none';
+  cb.textContent = '';
+  lastOcrFicha = null;
+}
+
+function populateOcrFields(ex) {
+  lastOcrFicha = {...ex};
+  const ieLabel = [ex.codigo_modular, ex.nombre_ie].filter(Boolean).join(' - ');
+  setField('fo-fecha', ex.fecha_ejecucion);
+  setField('fo-visita', ex.n_visita);
+  setField('fo-region', ex.region);
+  setField('fo-ugel', ex.ugel);
+  setField('fo-ie', ieLabel || ex.nombre_ie || '');
+  setField('fo-nivel', ex.nivel_modalidad);
+  setField('fo-director', ex.director);
+  setField('fo-director-cel', ex.director_cel);
+  setField('fo-director-email', ex.director_email);
+  setField('fo-director-situacion', ex.director_situacion_laboral);
+  setField('fo-docente', ex.docente);
+  setField('fo-docente-dni', ex.docente_dni);
+  setField('fo-docente-cel', ex.docente_cel);
+  setField('fo-docente-email', ex.docente_email);
+  setField('fo-docente-situacion', ex.docente_situacion_laboral);
+  setField('fo-grado', ex.grado);
+  setField('fo-seccion', ex.seccion);
+  setField('fo-estudiantes', ex.nro_estudiantes || '');
+  setField('fo-area', ex.area);
+  setField('fo-competencia', ex.competencia);
+  setField('fo-titulo-sesion', ex.titulo_sesion);
+  setField('fo-monitor', ex.monitor || (currentUser ? currentUser.nombre : ''));
+  setField('fo-monitor-dni', ex.monitor_dni);
+  setField('fo-iged', ex.iged);
+  setField('fo-monitor-email', ex.monitor_email);
+  setField('fo-a1', ex.a1 || 0);
+  setField('fo-a2', ex.a2 || 0);
+  setField('fo-a3', ex.a3 || 0);
+  setField('fo-b1', ex.b1 || 0);
+  setField('fo-b2', ex.b2 || 0);
+  setField('fo-b3', ex.b3 || 0);
+  setField('fo-b4', ex.b4 || 0);
+  setField('fo-b5', ex.b5 || 0);
+  setField('fo-prom', ex.promedio_nivel || ex.promedio || '');
+  setField('fo-a1-obs', ex.a1_observacion);
+  setField('fo-a2-obs', ex.a2_observacion);
+  setField('fo-a3-obs', ex.a3_observacion);
+  setField('fo-b1-obs', ex.b1_observacion);
+  setField('fo-b2-obs', ex.b2_observacion);
+  setField('fo-b3-obs', ex.b3_observacion);
+  setField('fo-b4-obs', ex.b4_observacion);
+  setField('fo-b5-obs', ex.b5_observacion);
+  setField('fo-obs', ex.observaciones_recomendaciones || ex.observaciones || '');
+  setField('fo-comp', ex.compromisos_monitoreado || ex.compromisos || '');
+}
+
+function buildOcrFichaFromFields() {
+  const ie = parseIeField(getField('fo-ie'));
+  return {
+    ...(lastOcrFicha || {}),
+    source: 'ocr',
+    ocr_processed: true,
+    fecha_ejecucion: getField('fo-fecha'),
+    n_visita: getField('fo-visita'),
+    region: getField('fo-region'),
+    ugel: getField('fo-ugel'),
+    codigo_modular: ie.codigo_modular || (lastOcrFicha ? lastOcrFicha.codigo_modular : ''),
+    nombre_ie: ie.nombre_ie || (lastOcrFicha ? lastOcrFicha.nombre_ie : ''),
+    nivel_modalidad: getField('fo-nivel'),
+    director: getField('fo-director'),
+    director_cel: getField('fo-director-cel'),
+    director_email: getField('fo-director-email'),
+    director_situacion_laboral: getField('fo-director-situacion'),
+    docente: getField('fo-docente'),
+    docente_dni: getField('fo-docente-dni'),
+    docente_cel: getField('fo-docente-cel'),
+    docente_email: getField('fo-docente-email'),
+    docente_situacion_laboral: getField('fo-docente-situacion'),
+    grado: getField('fo-grado'),
+    seccion: getField('fo-seccion'),
+    nro_estudiantes: getField('fo-estudiantes'),
+    area: getField('fo-area'),
+    competencia: getField('fo-competencia'),
+    titulo_sesion: getField('fo-titulo-sesion'),
+    monitor: getField('fo-monitor'),
+    monitor_dni: getField('fo-monitor-dni'),
+    iged: getField('fo-iged'),
+    monitor_email: getField('fo-monitor-email'),
+    a1: getField('fo-a1'),
+    a2: getField('fo-a2'),
+    a3: getField('fo-a3'),
+    b1: getField('fo-b1'),
+    b2: getField('fo-b2'),
+    b3: getField('fo-b3'),
+    b4: getField('fo-b4'),
+    b5: getField('fo-b5'),
+    promedio_nivel: getField('fo-prom'),
+    a1_observacion: getField('fo-a1-obs'),
+    a2_observacion: getField('fo-a2-obs'),
+    a3_observacion: getField('fo-a3-obs'),
+    b1_observacion: getField('fo-b1-obs'),
+    b2_observacion: getField('fo-b2-obs'),
+    b3_observacion: getField('fo-b3-obs'),
+    b4_observacion: getField('fo-b4-obs'),
+    b5_observacion: getField('fo-b5-obs'),
+    observaciones: getField('fo-obs'),
+    observaciones_recomendaciones: getField('fo-obs'),
+    compromisos: getField('fo-comp'),
+    compromisos_monitoreado: getField('fo-comp')
+  };
+}
+
+/* Auth */
+let currentUser = null;
 async function initLogin() {
   try {
-    especialistas = await apiFetch('/especialistas');
+    const especialistas = await apiFetch('/especialistas');
     const sel = document.getElementById('sel-especialista');
     sel.innerHTML = '<option value="">— Selecciona tu nombre —</option>';
     especialistas.forEach(e => {
@@ -950,490 +1008,399 @@ async function initLogin() {
       opt.dataset.pin = e.pin_hint;
       sel.appendChild(opt);
     });
-  } catch(err) {
-    document.getElementById('sel-especialista').innerHTML =
-      '<option value="">Error al cargar especialistas</option>';
-    showToast('No se pudo conectar con la API. ¿Está corriendo el servidor en :8000?', 'error', 6000);
-  }
+  } catch(e) { showToast('Error cargando BD', 'error'); }
 }
 
 document.getElementById('sel-especialista').addEventListener('change', function() {
-  const opt = this.options[this.selectedIndex];
-  const pin = opt.dataset.pin;
-  const hint = document.getElementById('pin-hint');
-  const pinVal = document.getElementById('pin-val-display');
-  const btn = document.getElementById('btn-login');
-  if (pin) {
-    hint.style.display = 'flex';
-    pinVal.textContent = pin;
-    document.getElementById('inp-pin').value = '';
-    btn.disabled = false;
+  const pin = this.options[this.selectedIndex].dataset.pin;
+  if(pin) {
+    document.getElementById('pin-hint').style.display = 'flex';
+    document.getElementById('pin-val-display').textContent = pin;
+    document.getElementById('btn-login').disabled = false;
   } else {
-    hint.style.display = 'none';
-    btn.disabled = true;
+    document.getElementById('pin-hint').style.display = 'none';
+    document.getElementById('btn-login').disabled = true;
   }
 });
 
 document.getElementById('btn-login').addEventListener('click', async () => {
   const espId = document.getElementById('sel-especialista').value;
-  const pin   = document.getElementById('inp-pin').value.trim();
-  const errEl = document.getElementById('login-error');
-  const btn   = document.getElementById('btn-login');
-
-  if (!espId || !pin) { errEl.textContent='Selecciona tu nombre e ingresa el PIN'; errEl.style.display='block'; return; }
-
-  btn.disabled = true; btn.textContent = 'Verificando…';
-  errEl.style.display = 'none';
-
+  const pin   = document.getElementById('inp-pin').value;
   try {
-    const data = await apiFetch('/login', {
-      method:'POST', body: JSON.stringify({especialista_id: espId, pin})
-    });
-    saveSession(data);
-    enterApp(data.especialista);
-  } catch(err) {
-    errEl.textContent = err.message || 'Error de autenticación';
-    errEl.style.display = 'block';
-    btn.disabled = false; btn.textContent = 'Ingresar al sistema';
+    const d = await apiFetch('/login', {method:'POST', body: JSON.stringify({especialista_id: espId, pin})});
+    sessionStorage.setItem('sugka_session', JSON.stringify(d));
+    enterApp(d.especialista);
+  } catch(e) {
+    document.getElementById('login-error').textContent = e.message;
+    document.getElementById('login-error').style.display = 'block';
   }
 });
 
-document.getElementById('inp-pin').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('btn-login').click();
-});
-
-/*──────────────────────────────────────────────────────────────────────────────
-  APP INIT
-──────────────────────────────────────────────────────────────────────────────*/
 function enterApp(esp) {
-  showScreen('screen-app');
-  // Set user info
-  const initials = esp.nombre.split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
-  document.getElementById('user-avatar').textContent = initials;
-  document.getElementById('user-name').textContent   = esp.nombre;
-  document.getElementById('user-role').textContent   = esp.rol_inferido.replace(/_/g,' ');
+  currentUser = esp;
+  document.getElementById('screen-login').classList.remove('active');
+  document.getElementById('screen-app').classList.add('active');
+  document.getElementById('user-name').textContent = esp.nombre;
+  document.getElementById('user-role').textContent = esp.rol_inferido;
+  document.getElementById('fm-monitor').value = esp.nombre;
 
-  initMap();
-  loadDashboardData();
-  switchView('mapa');
+  initMap(); loadDashboardData();
+  switchView('mapa'); updateSyncUI();
 }
 
-document.getElementById('btn-logout').addEventListener('click', () => {
-  clearSession();
-  showScreen('screen-login');
-  document.getElementById('inp-pin').value = '';
-  document.getElementById('sel-especialista').value = '';
-  document.getElementById('pin-hint').style.display = 'none';
-  document.getElementById('btn-login').disabled = true;
-});
-
-/*──────────────────────────────────────────────────────────────────────────────
-  ROUTER
-──────────────────────────────────────────────────────────────────────────────*/
-const VIEW_TITLES = {
-  mapa: ['Mapa de Instituciones Educativas','UGEL IBIR-IMAZA · 3 distritos'],
-  ocr:  ['Carga y digitalización de fichas','OCR asistido por IA'],
-  dashboard: ['Dashboard de seguimiento','Resumen ejecutivo · UGEL IBIR-IMAZA']
-};
-
+/* Router */
+const VIEW_TITLES = {mapa: ['Mapa de IEs',''], form: ['Llenar Ficha','Offline Ready'], ocr: ['OCR Avanzado','Azure + Gemini'], dashboard: ['Dashboard','']}
 function switchView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(`view-${id}`).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`nav-${id}`).classList.add('active');
-  const [title, sub] = VIEW_TITLES[id];
-  document.getElementById('topbar-title').textContent = title;
-  document.getElementById('topbar-sub').textContent   = sub;
-  if (id === 'mapa') setTimeout(() => map && map.invalidateSize(), 10);
+  document.getElementById('topbar-title').textContent = VIEW_TITLES[id][0];
+  document.getElementById('topbar-sub').textContent = VIEW_TITLES[id][1];
+  if(id==='mapa' && map) setTimeout(()=>map.invalidateSize(), 10);
 }
-
-document.querySelectorAll('.nav-item[data-view]').forEach(el => {
-  el.addEventListener('click', () => switchView(el.dataset.view));
-});
-
-/*──────────────────────────────────────────────────────────────────────────────
-  SIDEBAR TOGGLE
-──────────────────────────────────────────────────────────────────────────────*/
-let sidebarExpanded = false;
+document.querySelectorAll('.nav-item[data-view]').forEach(el => el.addEventListener('click', () => switchView(el.dataset.view)));
 document.getElementById('sidebar-toggle').addEventListener('click', () => {
-  sidebarExpanded = !sidebarExpanded;
-  document.getElementById('sidebar').classList.toggle('expanded', sidebarExpanded);
-  document.getElementById('sidebar-toggle').textContent = sidebarExpanded ? '◀' : '▶';
-  if (map) setTimeout(() => map.invalidateSize(), 230);
+  document.getElementById('sidebar').classList.toggle('expanded');
 });
 
-/*──────────────────────────────────────────────────────────────────────────────
-  MAP MODULE
-──────────────────────────────────────────────────────────────────────────────*/
-let map, clusterGroup, allIEs=[], filteredIEs=[], markerMap={}, selectedIdx=null;
+/* Mapa */
+let map, clusterGroup;
+let allIEs = [];
+let filteredIEs = [];
+let currentMarkers = {};
+let selectedIECode = null;
+
 const ALERTA_CFG = {
-  alta:  { color:'#ef4444', label:'Alerta alta' },
-  media: { color:'#f59e0b', label:'Alerta media' },
-  baja:  { color:'#10b981', label:'Sin alerta' },
+  alta:  {color:'var(--danger)',  hex:'#ef4444'},
+  media: {color:'var(--warning)', hex:'#f59e0b'},
+  baja:  {color:'var(--accent)',  hex:'#10b981'}
 };
 
-function makeMarkerIcon(ie, active=false) {
-  const cfg = ALERTA_CFG[ie.nivel_alerta] || ALERTA_CFG.baja;
-  const s   = active ? 18 : 12;
-  const glow= active ? `box-shadow:0 0 12px ${cfg.color},0 0 24px ${cfg.color}66;` : `box-shadow:0 0 5px ${cfg.color}55;`;
-  const bdr = active ? 'border:3px solid #fff;' : `border:2px solid ${cfg.color}66;`;
-  return L.divIcon({
-    html:`<div style="width:${s}px;height:${s}px;border-radius:50%;background:${cfg.color};${bdr}${glow}transition:all .2s;"></div>`,
-    className:'',iconSize:[s,s],iconAnchor:[s/2,s/2]
-  });
-}
-
 async function initMap() {
-  if (map) return;
-  map = L.map('leaflet-map',{center:[-4.95,-78.2],zoom:9,zoomControl:false});
-  L.control.zoom({position:'bottomright'}).addTo(map);
-
-  const dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© CartoDB',maxZoom:19});
-  const sat  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:19});
-  const topo = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:19});
-  dark.addTo(map);
-  L.control.layers({'Oscuro':dark,'Satélite':sat,'Topográfico':topo},{},{position:'bottomright'}).addTo(map);
-
-  clusterGroup = L.markerClusterGroup({
-    maxClusterRadius:50,showCoverageOnHover:false,
-    iconCreateFunction(cluster) {
-      const n = cluster.getChildCount();
-      const s = n<20?36:n<100?44:52;
-      return L.divIcon({
-        html:`<div style="width:${s}px;height:${s}px;border-radius:50%;background:linear-gradient(135deg,#1f6feb,#10b981);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:13px;box-shadow:0 4px 16px rgba(16,185,129,.4);border:2px solid rgba(16,185,129,.6);">${n}</div>`,
-        className:'',iconSize:[s,s]
-      });
-    }
-  });
+  if(map) return;
+  map = L.map('leaflet-map',{center:[-4.95,-78.2],zoom:9});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+  clusterGroup = L.markerClusterGroup({maxClusterRadius:40});
   map.addLayer(clusterGroup);
+
+  // Handlers UI
+  document.getElementById('map-search').addEventListener('input', applyMapFilters);
+  document.getElementById('map-filter-distrito').addEventListener('change', applyMapFilters);
+  document.getElementById('map-filter-alerta').addEventListener('change', applyMapFilters);
 
   try {
     allIEs = await apiFetch('/instituciones');
+    populateDistricts();
     applyMapFilters();
-    const bounds = L.latLngBounds(allIEs.filter(ie=>ie.latitud&&ie.longitud).map(ie=>[ie.latitud,ie.longitud]));
-    map.fitBounds(bounds,{padding:[40,40]});
-  } catch(err) {
-    showToast('Error cargando IEs: ' + err.message, 'error');
-  }
+  } catch(e) { console.error('Error cargando IEs:', e); }
+}
+
+function populateDistricts() {
+  const dists = [...new Set(allIEs.map(i=>i.distrito).filter(Boolean))].sort();
+  const sel = document.getElementById('map-filter-distrito');
+  dists.forEach(d => {
+    const o = document.createElement('option');
+    o.value=d; o.textContent=d;
+    sel.appendChild(o);
+  });
 }
 
 function applyMapFilters() {
-  const search   = document.getElementById('map-search').value.toLowerCase();
-  const distrito = document.getElementById('map-filter-distrito').value.toLowerCase();
-  const alerta   = document.getElementById('map-filter-alerta').value;
+  const qs = document.getElementById('map-search').value.toLowerCase();
+  const qd = document.getElementById('map-filter-distrito').value;
+  const qa = document.getElementById('map-filter-alerta').value;
 
   filteredIEs = allIEs.filter(ie => {
-    if (distrito && ie.distrito.toLowerCase() !== distrito) return false;
-    if (alerta   && ie.nivel_alerta !== alerta) return false;
-    if (search) {
-      const h = (ie.nombre_iiee+' '+ie.codigo_modular+' '+ie.centro_poblado+' '+ie.distrito).toLowerCase();
-      if (!h.includes(search)) return false;
+    if(qd && ie.distrito !== qd) return false;
+    if(qa && ie.nivel_alerta !== qa) return false;
+    if(qs) {
+      if(!ie.nombre_iiee.toLowerCase().includes(qs) &&
+         !ie.codigo_modular.includes(qs) &&
+         !(ie.centro_poblado && ie.centro_poblado.toLowerCase().includes(qs))) return false;
     }
     return true;
   });
 
-  renderMarkers();
-  renderIEList();
-  updateMapStats();
+  renderMap();
 }
 
-function renderMarkers() {
-  clusterGroup.clearLayers(); markerMap={};
-  filteredIEs.forEach((ie,i) => {
-    if (!ie.latitud||!ie.longitud) return;
-    const m = L.marker([ie.latitud,ie.longitud],{icon:makeMarkerIcon(ie,false)});
-    const cfg = ALERTA_CFG[ie.nivel_alerta]||ALERTA_CFG.baja;
-    m.bindPopup(`<div class="lf-popup"><strong>${ie.nombre_iiee}</strong><span>${ie.nivel_modalidad} · ${ie.distrito}</span></div>`);
-    m.on('click', () => { selectIE(i); showIEDetail(ie); });
-    markerMap[i] = m;
+function makeMarkerIcon(ie, active=false) {
+  const cfg = ALERTA_CFG[ie.nivel_alerta] || ALERTA_CFG.baja;
+  const sz = active?16:12;
+  const html = `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${cfg.hex};border:2px solid ${active?'#fff':'#000'};box-shadow:0 0 10px ${cfg.hex}88;transition:all .2s"></div>`;
+  return L.divIcon({html, className:'', iconSize:[sz,sz], iconAnchor:[sz/2,sz/2]});
+}
+
+function renderMap() {
+  clusterGroup.clearLayers();
+  currentMarkers = {};
+
+  let ca=0, cm=0, cb=0;
+
+  filteredIEs.forEach(ie => {
+    if(!ie.latitud) return;
+
+    if(ie.nivel_alerta==='alta') ca++;
+    else if(ie.nivel_alerta==='media') cm++;
+    else cb++;
+
+    const m = L.marker([ie.latitud, ie.longitud], {icon: makeMarkerIcon(ie, ie.codigo_modular===selectedIECode)});
+    m.on('click', () => {
+      selectedIECode = ie.codigo_modular;
+      renderMap(); // Re-render to show active marker
+      showIEDetail(ie);
+    });
+    currentMarkers[ie.codigo_modular] = m;
     clusterGroup.addLayer(m);
   });
+
+  // Update stats
+  document.getElementById('ms-total').textContent = filteredIEs.length;
+  document.getElementById('ms-alertas').textContent = ca;
+  document.getElementById('leg-alta').textContent = ca;
+  document.getElementById('leg-media').textContent = cm;
+  document.getElementById('leg-baja').textContent = cb;
+
+  renderIEList();
 }
 
 function renderIEList() {
   const container = document.getElementById('ie-list');
   container.innerHTML = '';
-  if (!filteredIEs.length) {
-    container.innerHTML = '<div class="empty-state"><div class="es-icon">🔍</div><div class="es-text">Sin resultados</div></div>';
-    return;
-  }
-  filteredIEs.forEach((ie,i) => {
-    const cfg = ALERTA_CFG[ie.nivel_alerta]||ALERTA_CFG.baja;
-    const row = document.createElement('div');
-    row.className = 'ie-row'; row.id = `ie-row-${i}`;
-    row.innerHTML = `<div class="ie-dot" style="background:${cfg.color};box-shadow:0 0 5px ${cfg.color}66"></div>
-      <div class="ie-info">
-        <div class="ie-name">${ie.nombre_iiee}</div>
-        <div class="ie-meta">${ie.nivel_modalidad} · ${ie.centro_poblado}</div>
-      </div>`;
-    row.addEventListener('click', () => {
-      map.setView([ie.latitud,ie.longitud],14,{animate:true});
-      setTimeout(()=>{ const mk=markerMap[i]; if(mk) clusterGroup.zoomToShowLayer(mk,()=>mk.openPopup()); },400);
-      selectIE(i); showIEDetail(ie);
-    });
-    container.appendChild(row);
-  });
-}
+  document.getElementById('ie-list-count').textContent = filteredIEs.length;
 
-function selectIE(idx) {
-  if (selectedIdx !== null) {
-    const prev = document.getElementById(`ie-row-${selectedIdx}`);
-    if (prev) prev.classList.remove('selected');
-    if (markerMap[selectedIdx]) markerMap[selectedIdx].setIcon(makeMarkerIcon(filteredIEs[selectedIdx],false));
-  }
-  selectedIdx = idx;
-  const el = document.getElementById(`ie-row-${idx}`);
-  if (el) { el.classList.add('selected'); el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
-  if (markerMap[idx]) markerMap[idx].setIcon(makeMarkerIcon(filteredIEs[idx],true));
+  // Mostrar maximo 100 para no trabar
+  const toRender = filteredIEs.slice(0, 100);
+
+  toRender.forEach(ie => {
+    const div = document.createElement('div');
+    div.className = 'ie-row' + (ie.codigo_modular===selectedIECode?' selected':'');
+    const c = ALERTA_CFG[ie.nivel_alerta] || ALERTA_CFG.baja;
+    div.innerHTML = `
+      <div class="ie-dot" style="background:${c.hex}"></div>
+      <div style="min-width:0;flex:1">
+        <div class="ie-name">${ie.codigo_modular} - ${ie.nombre_iiee}</div>
+        <div class="ie-meta">${ie.nivel_modalidad} · ${ie.distrito||'Sin distrito'}</div>
+      </div>
+    `;
+    div.onclick = () => {
+      selectedIECode = ie.codigo_modular;
+      const m = currentMarkers[ie.codigo_modular];
+      if(m) clusterGroup.zoomToShowLayer(m, () => m.fire('click'));
+      else { renderMap(); showIEDetail(ie); } // if unmapped
+    };
+    container.appendChild(div);
+  });
 }
 
 async function showIEDetail(ie) {
-  const panel = document.getElementById('ie-detail');
-  const cfg   = ALERTA_CFG[ie.nivel_alerta]||ALERTA_CFG.baja;
-
-  document.getElementById('ied-nivel-badge').textContent  = cfg.label.toUpperCase();
-  document.getElementById('ied-nivel-badge').style.cssText= `background:${cfg.color}22;color:${cfg.color};border:1px solid ${cfg.color}44`;
   document.getElementById('ied-name').textContent = ie.nombre_iiee;
+  document.getElementById('ied-code').textContent = ie.codigo_modular;
 
-  document.getElementById('ied-rows').innerHTML = `
-    <div class="ie-drow"><strong>Nivel</strong><span>${ie.nivel_modalidad}</span></div>
-    <div class="ie-drow"><strong>Distrito</strong><span>${ie.distrito}</span></div>
-    <div class="ie-drow"><strong>Centro Pob.</strong><span>${ie.centro_poblado||'—'}</span></div>
-    <div class="ie-drow"><strong>Gestión</strong><span>${ie.tipo_gestion||'—'}</span></div>
-    <div class="ie-drow"><strong>Alumnos</strong><span>${ie.alumnos_censo||'—'}</span></div>
-    <div class="ie-drow"><strong>Docentes</strong><span>${ie.docentes_censo||'—'}</span></div>
-    <div class="ie-drow"><strong>Fichas SIMON</strong><span>${ie.simon_fichas}</span></div>
-    <div class="ie-drow"><strong>Docs campo</strong><span>${ie.campo_documentos}</span></div>
-    <div class="ie-drow"><strong>Score prior.</strong><span style="font-weight:700;color:${cfg.color}">${ie.priority_score.toFixed(1)}</span></div>
-    <div class="ie-drow"><strong>Cobertura</strong><span>${ie.coverage_category}</span></div>
-    <div class="ie-drow"><strong>Coords</strong><span style="font-family:monospace;font-size:10px">${ie.latitud.toFixed(5)}, ${ie.longitud.toFixed(5)}</span></div>`;
+  const niv = ie.nivel_modalidad?ie.nivel_modalidad.split('-')[0].trim():'';
+  document.getElementById('ied-nivel-badge').textContent = niv || 'N/A';
+
+  document.getElementById('ied-distrito').textContent = ie.distrito||'-';
+  document.getElementById('ied-cp').textContent = ie.centro_poblado||'-';
+  document.getElementById('ied-alumnos').textContent = ie.alumnos_censo||'0';
+  document.getElementById('ied-docentes').textContent = ie.docentes_censo||'0';
+
+  document.getElementById('ied-simon').textContent = ie.simon_fichas||'0';
+  document.getElementById('ied-promedio').textContent = ie.simon_promedio||'-';
+  document.getElementById('ied-campo').textContent = ie.campo_documentos||'0';
+  document.getElementById('ied-cobertura').textContent = ie.coverage_category||'Sin evidencia';
 
   // Load alerts
-  const alertsEl = document.getElementById('ied-alerts');
-  alertsEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted)">Cargando alertas…</div>';
-  panel.style.display = 'block';
+  const ac = document.getElementById('ied-alerts-container');
+  ac.innerHTML = '<div class="spinner" style="width:20px;height:20px;margin:auto;border-width:2px"></div>';
+  document.getElementById('ie-detail').classList.add('open');
 
   try {
-    const alerts = await apiFetch(`/alertas?codigo_modular=${ie.codigo_modular}`);
-    if (!alerts.length) {
-      alertsEl.innerHTML = '<div class="empty-state" style="padding:12px"><div class="es-text">Sin alertas registradas</div></div>';
+    const alertas = await apiFetch(`/alertas?codigo_modular=${ie.codigo_modular}`);
+    if(alertas.length === 0) {
+      ac.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:10px 0">No hay alertas activas</div>';
     } else {
-      alertsEl.innerHTML = alerts.slice(0,6).map(a => `
-        <div class="alert-card ${a.severidad}">
-          <div class="alert-card-title">${a.titulo}</div>
-          <div class="alert-card-desc">${a.descripcion}</div>
-          <div class="alert-card-score">Score: ${a.score.toFixed(1)} · ${a.fuente.toUpperCase()} · Evidencias: ${a.evidencia_count}</div>
-        </div>`).join('');
+      ac.innerHTML = alertas.map(a => `
+        <div class="ied-alert-card ${a.severidad}">
+          <div class="ied-ac-title">${a.cat_nombre || a.alerta_codigo}</div>
+          <div class="ied-ac-sub">${a.mensaje||''}</div>
+        </div>
+      `).join('');
     }
   } catch(e) {
-    alertsEl.innerHTML = '<div style="font-size:11px;color:var(--danger)">Error cargando alertas</div>';
+    ac.innerHTML = '<div style="font-size:11px;color:var(--danger)">Error cargando alertas</div>';
   }
 }
 
-document.getElementById('ie-detail-close').addEventListener('click', () => {
-  document.getElementById('ie-detail').style.display = 'none';
-});
-
-function updateMapStats() {
-  const counts = {alta:0,media:0,baja:0};
-  filteredIEs.forEach(ie => counts[ie.nivel_alerta] = (counts[ie.nivel_alerta]||0)+1);
-  document.getElementById('ms-total').textContent   = filteredIEs.length;
-  document.getElementById('ms-alertas').textContent = counts.alta;
-  document.getElementById('lc-alta').textContent    = counts.alta;
-  document.getElementById('lc-media').textContent   = counts.media;
-  document.getElementById('lc-baja').textContent    = counts.baja;
-  document.getElementById('ie-list-count').textContent = filteredIEs.length;
-  document.getElementById('topbar-badge-text').textContent = `${filteredIEs.length} IEs · ${counts.alta} alertas altas`;
+window.closeIEDetail = function() {
+  document.getElementById('ie-detail').classList.remove('open');
+  selectedIECode = null;
+  renderMap();
 }
 
-['map-search','map-filter-distrito','map-filter-alerta'].forEach(id => {
-  document.getElementById(id).addEventListener(id==='map-search'?'input':'change', applyMapFilters);
+/* Formularios Manual */
+document.getElementById('manual-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const ficha = {
+    source: 'manual',
+    codigo_modular: document.getElementById('fm-codigo').value,
+    docente: document.getElementById('fm-docente').value,
+    fecha_ejecucion: document.getElementById('fm-fecha').value,
+    monitor: document.getElementById('fm-monitor').value,
+    a1: document.getElementById('fm-a1').value,
+    a2: document.getElementById('fm-a2').value,
+    a3: document.getElementById('fm-a3').value,
+    b1: document.getElementById('fm-b1').value,
+    b2: document.getElementById('fm-b2').value,
+    b3: document.getElementById('fm-b3').value,
+    b4: document.getElementById('fm-b4').value,
+    b5: document.getElementById('fm-b5').value,
+    observaciones: document.getElementById('fm-obs').value,
+    observaciones_recomendaciones: document.getElementById('fm-obs').value,
+    compromisos: document.getElementById('fm-comp').value,
+    compromisos_monitoreado: document.getElementById('fm-comp').value
+  };
+  saveFichaOffline(ficha);
+  e.target.reset();
+  document.getElementById('fm-monitor').value = currentUser.nombre;
 });
 
-/*──────────────────────────────────────────────────────────────────────────────
-  OCR MODULE
-──────────────────────────────────────────────────────────────────────────────*/
-const dropZone  = document.getElementById('drop-zone');
-const fileInput = document.getElementById('file-input');
+/* OCR Upload */
+document.getElementById('file-input').addEventListener('change', async (e) => {
+  const files = [...e.target.files];
+  if(files.length === 0) return;
 
-document.getElementById('btn-browse').addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
-dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault(); dropZone.classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file) processFile(file);
-});
-fileInput.addEventListener('change', () => { if (fileInput.files[0]) processFile(fileInput.files[0]); });
-
-async function processFile(file) {
-  // Preview
-  const previewBox = document.getElementById('preview-box');
-  if (file.type.startsWith('image/')) {
-    const url = URL.createObjectURL(file);
-    previewBox.innerHTML = `<img src="${url}" alt="preview"/>`;
-  } else {
-    previewBox.innerHTML = `<div class="ocr-preview-placeholder">📄 ${file.name}<br/><span style="font-size:10px">PDF cargado</span></div>`;
-  }
-
-  // Show progress
   const prog = document.getElementById('ocr-progress');
+  const status = document.getElementById('ocr-status-text');
+  status.textContent = `Procesando ${files.length} archivo(s) con OCR + IA...`;
   prog.classList.add('visible');
-  clearFields();
-  document.getElementById('btn-save-ficha').disabled = true;
-  document.getElementById('ocr-success').style.display = 'none';
+  document.getElementById('btn-save-ocr').disabled = true;
+  clearOcrFields();
 
-  // Simulate OCR delay
-  await new Promise(r => setTimeout(r, 2200));
+  const fd = new FormData();
+  files.forEach(file => fd.append('files', file));
 
   try {
-    const result = await apiFetch('/ocr/upload', {
-      method:'POST',
-      body: JSON.stringify({filename: file.name, type: file.type})
-    });
-    prog.classList.remove('visible');
-    fillFields(result.extracted);
+    // LLamada OCR avanzado Azure + Gemini
+    const r = await fetch(API+'/ocr/upload_advanced', {method: 'POST', body: fd});
+    if(!r.ok) { const err = await r.json(); throw new Error(err.error); }
+    const data = await r.json();
+
+    const ex = data.extracted;
+    populateOcrFields(ex);
+
+    const cb = document.getElementById('ocr-conf');
+    cb.style.display = 'inline-flex';
+    cb.textContent = `${data.file_count || files.length} archivo(s) | Vía: ${data.method.toUpperCase()} | Parser: ${(data.parser || 'IA').toUpperCase()} | Conf: ${ex.confidence}`;
+    cb.className = `confidence-chip ${ex.confidence > 0.9 ? 'conf-high':'conf-med'}`;
+
+    document.getElementById('btn-save-ocr').disabled = false;
+    showToast('Documento procesado correctamente', 'success');
   } catch(err) {
+    showToast('Error: ' + err.message, 'error');
+  } finally {
     prog.classList.remove('visible');
-    showToast('Error en OCR: ' + err.message, 'error');
-  }
-}
-
-function clearFields() {
-  ['f-nombre-ie','f-codigo','f-distrito','f-docente','f-monitor',
-   'f-fecha-prog','f-fecha-exec','f-plan','f-visita'].forEach(id => {
-    document.getElementById(id).value = '';
-  });
-  ['f-niv1','f-niv2','f-niv3','f-niv4'].forEach(id => {
-    document.getElementById(id).value = '0';
-  });
-}
-
-function fillFields(e) {
-  document.getElementById('f-nombre-ie').value  = e.nombre_ie||'';
-  document.getElementById('f-codigo').value      = e.codigo_modular||'';
-  document.getElementById('f-distrito').value    = e.distrito||'';
-  document.getElementById('f-docente').value     = e.docente||'';
-  document.getElementById('f-monitor').value     = e.monitor||'';
-  document.getElementById('f-fecha-prog').value  = e.fecha_programacion||'';
-  document.getElementById('f-fecha-exec').value  = e.fecha_ejecucion||'';
-  document.getElementById('f-plan').value        = e.plan||'';
-  document.getElementById('f-visita').value      = e.visita||'';
-  document.getElementById('f-niv1').value        = e.nivel_i||0;
-  document.getElementById('f-niv2').value        = e.nivel_ii||0;
-  document.getElementById('f-niv3').value        = e.nivel_iii||0;
-  document.getElementById('f-niv4').value        = e.nivel_iv||0;
-
-  const conf = e.confidence||0;
-  const chip = document.getElementById('conf-badge');
-  chip.className = `confidence-chip ${conf>=.85?'conf-high':conf>=.7?'conf-med':'conf-low'}`;
-  chip.textContent = `🎯 Confianza: ${Math.round(conf*100)}%`;
-
-  document.getElementById('btn-save-ficha').disabled = false;
-  showToast('¡Campos extraídos exitosamente!', 'success');
-}
-
-document.getElementById('btn-save-ficha').addEventListener('click', async () => {
-  const btn = document.getElementById('btn-save-ficha');
-  btn.disabled = true; btn.textContent = 'Guardando…';
-  try {
-    await apiFetch('/fichas', {
-      method:'POST',
-      body: JSON.stringify({
-        codigo_modular: document.getElementById('f-codigo').value,
-        docente:        document.getElementById('f-docente').value,
-        monitor:        document.getElementById('f-monitor').value,
-        fecha_ejecucion: document.getElementById('f-fecha-exec').value,
-        nivel_i:  document.getElementById('f-niv1').value,
-        nivel_ii: document.getElementById('f-niv2').value,
-        nivel_iii:document.getElementById('f-niv3').value,
-        nivel_iv: document.getElementById('f-niv4').value,
-      })
-    });
-    document.getElementById('ocr-success').style.display = 'block';
-    btn.textContent = '✅ Guardado';
-    showToast('Ficha guardada en el sistema', 'success');
-  } catch(err) {
-    btn.disabled = false; btn.textContent = '💾 Confirmar y guardar ficha';
-    showToast('Error al guardar: ' + err.message, 'error');
+    e.target.value = '';
   }
 });
 
-/*──────────────────────────────────────────────────────────────────────────────
-  DASHBOARD MODULE
-──────────────────────────────────────────────────────────────────────────────*/
+document.getElementById('btn-save-ocr').addEventListener('click', async () => {
+  const ficha = buildOcrFichaFromFields();
+  saveFichaOffline(ficha);
+  document.getElementById('btn-save-ocr').disabled = true;
+  if(isOnline) await syncFichas();
+  clearOcrFields();
+});
+
+/* Dashboard */
 async function loadDashboardData() {
   try {
     const d = await apiFetch('/dashboard');
+    const resultados = d.resultados_recolectados || {};
+    const risk = d.risk_distribution || {};
 
-    // Update badge
-    document.getElementById('badge-alertas').textContent = d.alertas_altas;
-
-    // KPI cards
+    document.getElementById('dash-demo-badge').style.display = d.demo_mode ? 'inline-flex' : 'none';
     document.getElementById('dash-kpis').innerHTML = `
-      <div class="kpi-card green"><div class="kpi-icon">🏫</div>
-        <div class="kpi-value">${d.total_ies}</div>
-        <div class="kpi-label">Total IEs en UGEL</div>
-      </div>
-      <div class="kpi-card red"><div class="kpi-icon">🚨</div>
-        <div class="kpi-value" style="color:var(--danger)">${d.alertas_altas}</div>
-        <div class="kpi-label">IEs con alerta alta</div>
-        <div class="kpi-sub">${d.alertas_pendientes} alertas pendientes</div>
-      </div>
-      <div class="kpi-card blue"><div class="kpi-icon">📋</div>
-        <div class="kpi-value">${d.ies_monitoreadas}</div>
-        <div class="kpi-label">IEs monitoreadas</div>
-        <div class="kpi-sub">${d.pct_monitoreadas}% de cobertura</div>
-      </div>
-      <div class="kpi-card purple"><div class="kpi-icon">👷</div>
-        <div class="kpi-value">${d.especialistas}</div>
-        <div class="kpi-label">Especialistas activos</div>
-      </div>`;
+      <div class="kpi-card"><div class="kpi-icon">🏫</div><div class="kpi-value">${d.total_ies}</div><div class="kpi-label">IEs Totales</div></div>
+      <div class="kpi-card"><div class="kpi-icon" style="color:var(--danger)">🚨</div><div class="kpi-value">${d.risk_focus_count}</div><div class="kpi-label">IEs en Riesgo Crítico/Alto</div></div>
+      <div class="kpi-card"><div class="kpi-icon">📄</div><div class="kpi-value">${resultados.fichas_recolectadas || 0}</div><div class="kpi-label">Fichas Recolectadas</div></div>
+      <div class="kpi-card"><div class="kpi-icon">🤖</div><div class="kpi-value">${resultados.ocr_total || 0}</div><div class="kpi-label">Extracciones OCR</div></div>
+      <div class="kpi-card"><div class="kpi-icon">📊</div><div class="kpi-value">${resultados.promedio_observado || 0}</div><div class="kpi-label">Promedio Observado</div></div>
+      <div class="kpi-card"><div class="kpi-icon">✅</div><div class="kpi-value">${resultados.compromisos_registrados || 0}</div><div class="kpi-label">Compromisos Registrados</div></div>
+    `;
 
-    // Top prioridad table
-    const tbody = document.getElementById('dash-top-body');
-    tbody.innerHTML = d.top_prioridad.map(r => {
-      const sc = r.priority_score||0;
-      const cls = sc>=15?'score-alta':sc>=8?'score-media':'score-baja';
-      return `<tr>
-        <td style="font-weight:500;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.nombre_iiee}</td>
-        <td>${r.distrito}</td>
-        <td><span class="score-pill ${cls}">${sc.toFixed(1)}</span></td>
-        <td style="font-size:10px;color:var(--text-muted)">${(r.coverage_category||'—').replace(/\+/g,' + ')}</td>
-      </tr>`;
-    }).join('');
+    document.getElementById('dash-risk-split').innerHTML = `
+      <div class="risk-box"><div class="rv risk-critical">${risk.Critico || 0}</div><div class="rl">Riesgo crítico</div></div>
+      <div class="risk-box"><div class="rv risk-high">${risk.Alto || 0}</div><div class="rl">Riesgo alto</div></div>
+      <div class="risk-box"><div class="rv risk-medium">${risk.Medio || 0}</div><div class="rl">Riesgo medio</div></div>
+      <div class="risk-box"><div class="rv risk-low">${risk.Bajo || 0}</div><div class="rl">Riesgo bajo</div></div>
+    `;
 
-    // District bars
-    const maxTotal = Math.max(...d.por_distrito.map(r=>r.total),1);
-    document.getElementById('dash-district-bars').innerHTML = d.por_distrito.map(r => `
-      <div class="dist-row">
-        <span class="dist-name">${r.distrito}</span>
-        <div class="dist-bar-bg">
-          <div class="dist-bar-fill" style="width:${Math.round(r.total/maxTotal*100)}%"></div>
+    const top = d.top_riesgo || [];
+    document.getElementById('dash-risk-table').innerHTML = `
+      <table class="data-table">
+        <thead><tr><th>IE</th><th>Distrito</th><th>Score</th><th>Nivel</th><th>Motivo</th></tr></thead>
+        <tbody>
+          ${top.map(r => `
+            <tr>
+              <td><strong>${esc(r.codigo_modular)}</strong><br/><span class="muted-note">${esc(r.nombre_iiee)}</span></td>
+              <td>${esc(r.distrito || '-')}</td>
+              <td><strong>${r.risk_score}</strong>/100</td>
+              <td><span class="risk-pill ${esc(r.risk_level)}">${esc(r.risk_level)}</span></td>
+              <td class="muted-note">${esc((r.risk_reasons || []).join('; '))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+
+    document.getElementById('dash-actions').innerHTML = (resultados.acciones_recomendadas || [])
+      .map(a => `<div class="action-item">${esc(a)}</div>`).join('');
+
+    document.getElementById('dash-results').innerHTML = (resultados.indicadores || []).map(item => `
+      <div class="result-item">
+        <div class="result-head">
+          <div class="result-name">${esc(item.area)}</div>
+          <div class="result-value">${item.valor}%</div>
         </div>
-        <span class="dist-count">${r.total}</span>
-      </div>`).join('');
+        <div class="bar-track"><div class="bar-fill" style="width:${Number(item.valor) || 0}%"></div></div>
+        <div class="muted-note"><strong>${esc(item.estado)}:</strong> ${esc(item.lectura)}</div>
+      </div>
+    `).join('');
 
-  } catch(err) {
-    document.getElementById('dash-kpis').innerHTML =
-      `<div class="empty-state"><div class="es-icon">⚠️</div><div class="es-text">Error cargando dashboard</div></div>`;
-  }
+    const model = d.risk_model || {};
+    document.getElementById('dash-model').innerHTML = `
+      <div class="muted-note" style="margin-bottom:10px"><strong>${esc(model.name)}</strong></div>
+      <div class="muted-note" style="margin-bottom:14px">${esc(model.description)}</div>
+      <table class="data-table">
+        <thead><tr><th>Factor</th><th>Peso</th></tr></thead>
+        <tbody>
+          ${(model.weights || []).map(w => `
+            <tr><td>${esc(w.factor)}<br/><span class="muted-note">${esc(w.rule)}</span></td><td><strong>${esc(w.weight)}</strong></td></tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+
+    document.getElementById('dash-rules').innerHTML = (d.alert_rules || []).map(rule => `
+      <div class="rule-card">
+        <div class="rule-title">${esc(rule.name)}</div>
+        <div class="rule-meta">${esc(rule.severity).toUpperCase()} · +${rule.score} pts · ${esc(rule.condition)}</div>
+        <div class="rule-focus">${esc(rule.focus)}</div>
+      </div>
+    `).join('');
+  } catch(e) {}
 }
 
-/*──────────────────────────────────────────────────────────────────────────────
-  STARTUP
-──────────────────────────────────────────────────────────────────────────────*/
-(async function init() {
-  const session = loadSession();
-  if (session) {
-    await initLogin();
-    enterApp(session.especialista);
-  } else {
-    await initLogin();
-    showScreen('screen-login');
-  }
-  hideGlobalLoading();
+/* Init */
+(async () => {
+  const s = sessionStorage.getItem('sugka_session');
+  await initLogin();
+  if(s) enterApp(JSON.parse(s).especialista);
+  else document.getElementById('screen-login').classList.add('active');
+  document.getElementById('global-loading').classList.add('hidden');
+  updateNetStatus(navigator.onLine);
 })();
 </script>
 </body>
