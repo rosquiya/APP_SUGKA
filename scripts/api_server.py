@@ -4,14 +4,19 @@ SUGKA LAB – API Server
 REST API Flask para la aplicacion de gestion educativa UGEL IBIR-IMAZA.
 Puerto: 8000
 """
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
+import hashlib
 import io
 import sqlite3
 import random
 import json
 import os
 import re
+import secrets
+import subprocess
+import tempfile
+import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -21,6 +26,7 @@ CORS(app)
 # Rutas relativas al directorio raíz del proyecto
 ROOT = Path(__file__).parent.parent
 DB_PATH = ROOT / 'data' / 'database' / 'sugka_demo.db'
+GENERIC_EMAIL_DOMAIN = 'ugel-imaza.edu.pe'
 
 def load_local_env():
     env_path = ROOT / '.env'
@@ -31,9 +37,26 @@ def load_local_env():
         if not line or line.startswith('#') or '=' not in line:
             continue
         key, value = line.split('=', 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if value and not os.environ.get(key):
+            os.environ[key] = value
 
 load_local_env()
+
+def get_azure_config():
+    load_local_env()
+    return (
+        os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", ""),
+        os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", ""),
+    )
+
+def get_gemini_key():
+    load_local_env()
+    key = os.getenv("GEMINI_API_KEY", "")
+    if key:
+        genai.configure(api_key=key)
+    return key
 
 def get_db():
     conn = sqlite3.connect(str(DB_PATH))
@@ -42,6 +65,433 @@ def get_db():
 
 def rows_to_list(rows):
     return [dict(r) for r in rows]
+
+def normalize_role(value='especialista'):
+    role = str(value or 'especialista').strip().lower()
+    if role in ('admin', 'administrador'):
+        return 'administrador'
+    return 'especialista'
+
+def role_label(role):
+    return 'Administrador' if normalize_role(role) == 'administrador' else 'Especialista'
+
+def hash_password(password, salt=None):
+    salt = salt or secrets.token_hex(16)
+    digest = hashlib.sha256(f'{salt}:{password}'.encode('utf-8')).hexdigest()
+    return salt, digest
+
+def verify_password(password, salt, digest):
+    if not password or not salt or not digest:
+        return False
+    _, candidate = hash_password(password, salt)
+    return secrets.compare_digest(candidate, digest)
+
+def slugify_username(value):
+    text = unicodedata.normalize('NFKD', str(value or '')).encode('ascii', 'ignore').decode('ascii')
+    text = re.sub(r'[^a-zA-Z0-9]+', '.', text).strip('.').lower()
+    return text or 'usuario'
+
+def public_user(row):
+    user = dict(row)
+    user.pop('password_hash', None)
+    user.pop('password_salt', None)
+    user['rol_label'] = role_label(user.get('rol'))
+    user['is_admin'] = normalize_role(user.get('rol')) == 'administrador'
+    return user
+
+def generic_email_for_name(nombre, domain=GENERIC_EMAIL_DOMAIN):
+    return f'{slugify_username(nombre)}@{domain}'
+
+def unique_account_identity(conn, username, email, exclude_user_id=None):
+    username = slugify_username(username)
+    email = str(email or generic_email_for_name(username)).strip().lower()
+    email_user, _, email_domain = email.partition('@')
+    if not email_domain:
+        email_domain = GENERIC_EMAIL_DOMAIN
+
+    base_username = username
+    base_email_user = slugify_username(email_user)
+    suffix = 1
+    while True:
+        params = [username, email]
+        exclude_sql = ''
+        if exclude_user_id:
+            exclude_sql = ' AND user_id != ?'
+            params.append(exclude_user_id)
+        exists = conn.execute(
+            f'''
+            SELECT 1 FROM app_user
+            WHERE (LOWER(username) = LOWER(?) OR LOWER(COALESCE(email, '')) = LOWER(?))
+            {exclude_sql}
+            LIMIT 1
+            ''',
+            params,
+        ).fetchone()
+        if not exists:
+            return username, email
+        suffix += 1
+        username = f'{base_username}.{suffix}'
+        email = f'{base_email_user}.{suffix}@{email_domain}'
+
+def create_app_user(conn, nombre, username, password, rol='especialista', especialista_id=None, activo=1, email=None):
+    if not nombre or not username or not password:
+        raise ValueError('Nombre, usuario y contraseña son obligatorios.')
+    username, email = unique_account_identity(
+        conn,
+        username,
+        email or generic_email_for_name(nombre),
+    )
+    salt, digest = hash_password(password)
+    user_id = f'user_{secrets.token_hex(6)}'
+    conn.execute('''
+        INSERT INTO app_user (
+            user_id, nombre, username, email, password_salt, password_hash,
+            rol, especialista_id, activo, creado_en, actualizado_en
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ''', (
+        user_id,
+        str(nombre).strip(),
+        username,
+        email,
+        salt,
+        digest,
+        normalize_role(rol),
+        especialista_id or None,
+        1 if activo else 0,
+    ))
+    return conn.execute('SELECT * FROM app_user WHERE user_id = ?', (user_id,)).fetchone()
+
+def json_dumps(value):
+    return json.dumps(value if value is not None else {}, ensure_ascii=False)
+
+def json_loads(value, default=None):
+    if value in (None, ''):
+        return default if default is not None else {}
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return default if default is not None else {}
+
+LEVEL_LABELS = ('NIVEL I', 'NIVEL II', 'NIVEL III', 'NIVEL IV')
+
+def normalize_question_code(value):
+    code = str(value or '').strip().upper()
+    code = re.sub(r'\s+', '-', code)
+    code = re.sub(r'[^A-Z0-9_-]+', '', code)
+    return code
+
+def normalize_levels_payload(value):
+    data = value if isinstance(value, dict) else {}
+    roman_by_index = {1: 'I', 2: 'II', 3: 'III', 4: 'IV'}
+    normalized = {}
+    for index, roman in roman_by_index.items():
+        label = f'NIVEL {roman}'
+        raw = (
+            data.get(label)
+            or data.get(label.lower())
+            or data.get(roman)
+            or data.get(roman.lower())
+            or data.get(f'nivel_{index}')
+            or data.get(str(index))
+            or ''
+        )
+        normalized[label] = str(raw).strip()
+    return normalized
+
+def build_instrument_payload(conn, row, include_inactive=False):
+    base = json_loads(row['estructura_json'], {})
+    item = dict(base)
+    item['instrumento_id'] = row['instrumento_id']
+    item['codigo'] = row['codigo']
+    item['formulario'] = item.get('formulario') or row['nombre']
+    item['tipo'] = row['tipo']
+    item['version'] = row['version']
+    item['fuente'] = row['fuente']
+
+    sections = conn.execute('''
+        SELECT *
+        FROM app_instrumento_seccion
+        WHERE instrumento_id = ?
+        ORDER BY orden, seccion_id
+    ''', (row['instrumento_id'],)).fetchall()
+
+    if not sections:
+        return item
+
+    section_payload = []
+    active_filter = '' if include_inactive else 'AND activo = 1'
+    for section in sections:
+        questions = conn.execute(f'''
+            SELECT *
+            FROM app_instrumento_pregunta
+            WHERE instrumento_id = ? AND seccion_id = ? {active_filter}
+            ORDER BY orden, pregunta_id
+        ''', (row['instrumento_id'], section['seccion_id'])).fetchall()
+        section_payload.append({
+            'seccion_id': section['seccion_id'],
+            'clave': section['clave'],
+            'nombre': section['nombre'],
+            'orden': section['orden'],
+            'preguntas': [
+                {
+                    'pregunta_id': question['pregunta_id'],
+                    'id': question['codigo'],
+                    'codigo': question['codigo'],
+                    'item': question['item'],
+                    'tipo_respuesta': question['tipo_respuesta'],
+                    'niveles': json_loads(question['niveles_json'], {}),
+                    'opciones': json_loads(question['opciones_json'], {}),
+                    'orden': question['orden'],
+                    'activo': question['activo'],
+                    'observaciones': '',
+                }
+                for question in questions
+            ],
+        })
+    item['secciones'] = section_payload
+    return item
+
+def get_dynamic_instrument_row(conn):
+    return conn.execute('''
+        SELECT *
+        FROM app_instrumento
+        WHERE tipo = 'dinamica' AND activo = 1
+        ORDER BY nombre
+        LIMIT 1
+    ''').fetchone()
+
+def sync_instrument_structure_json(conn, instrumento_id):
+    row = conn.execute(
+        'SELECT * FROM app_instrumento WHERE instrumento_id = ?',
+        (instrumento_id,),
+    ).fetchone()
+    if not row:
+        return
+    payload = build_instrument_payload(conn, row)
+    compact = {
+        'formulario': payload.get('formulario'),
+        'tipo': payload.get('tipo'),
+        'datos_identificacion': payload.get('datos_identificacion', {}),
+        'secciones': [
+            {
+                'clave': section.get('clave'),
+                'nombre': section.get('nombre'),
+                'preguntas': [
+                    {
+                        'id': question.get('codigo') or question.get('id'),
+                        'item': question.get('item'),
+                        'niveles': question.get('niveles', {}),
+                        'observaciones': '',
+                    }
+                    for question in section.get('preguntas', [])
+                ],
+            }
+            for section in payload.get('secciones', [])
+        ],
+        'campos_finales': payload.get('campos_finales', []),
+        'codigo': payload.get('codigo'),
+        'version': payload.get('version'),
+    }
+    conn.execute('''
+        UPDATE app_instrumento
+        SET estructura_json = ?, actualizado_en = CURRENT_TIMESTAMP
+        WHERE instrumento_id = ?
+    ''', (json_dumps(compact), instrumento_id))
+
+def dynamic_questions_payload(conn):
+    instrument = get_dynamic_instrument_row(conn)
+    if not instrument:
+        return None
+    payload = build_instrument_payload(conn, instrument, include_inactive=True)
+    sections = [
+        {
+            'seccion_id': section.get('seccion_id'),
+            'clave': section.get('clave'),
+            'nombre': section.get('nombre'),
+            'orden': section.get('orden'),
+        }
+        for section in payload.get('secciones', [])
+    ]
+    questions = []
+    for section in payload.get('secciones', []):
+        for question in section.get('preguntas', []):
+            questions.append({
+                **question,
+                'seccion_id': section.get('seccion_id'),
+                'seccion_clave': section.get('clave'),
+                'seccion_nombre': section.get('nombre'),
+            })
+    return {
+        'instrumento': {
+            'instrumento_id': instrument['instrumento_id'],
+            'codigo': instrument['codigo'],
+            'formulario': payload.get('formulario'),
+            'tipo': instrument['tipo'],
+            'version': instrument['version'],
+        },
+        'secciones': sections,
+        'preguntas': questions,
+    }
+
+def build_empty_ficha_pdf(instrumentos):
+    from fpdf import FPDF
+
+    pdf = FPDF('P', 'mm', 'A4')
+    font_family = 'Arial'
+    unicode_font = False
+    font_dir = Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Fonts'
+    regular_font = font_dir / 'arial.ttf'
+    bold_font = font_dir / 'arialbd.ttf'
+    if regular_font.exists() and bold_font.exists():
+        try:
+            try:
+                pdf.add_font('ArialUnicode', '', str(regular_font), uni=True)
+                pdf.add_font('ArialUnicode', 'B', str(bold_font), uni=True)
+            except TypeError:
+                pdf.add_font('ArialUnicode', '', str(regular_font))
+                pdf.add_font('ArialUnicode', 'B', str(bold_font))
+            font_family = 'ArialUnicode'
+            unicode_font = True
+        except Exception:
+            font_family = 'Arial'
+            unicode_font = False
+
+    def safe(value):
+        text = str(value or '')
+        if unicode_font:
+            return text
+        replacements = {
+            '\u2013': '-',
+            '\u2014': '-',
+            '\u2018': "'",
+            '\u2019': "'",
+            '\u201c': '"',
+            '\u201d': '"',
+            '\u2022': '-',
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        return text.encode('latin-1', 'replace').decode('latin-1')
+
+    def add_page_header():
+        pdf.set_fill_color(11, 53, 85)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font(font_family, 'B', 14)
+        pdf.cell(0, 10, safe('SUGKA LAB - Ficha completa vacia'), 0, 1, 'C', True)
+        pdf.set_text_color(16, 34, 53)
+        pdf.set_font(font_family, '', 8)
+        pdf.multi_cell(0, 5, safe('Instrumento imprimible generado desde las preguntas activas registradas en la base de datos.'))
+        pdf.ln(2)
+
+    def check_page(space=24):
+        if pdf.get_y() > (297 - 14 - space):
+            pdf.add_page()
+            add_page_header()
+
+    def section_title(title):
+        check_page(18)
+        pdf.set_fill_color(231, 242, 247)
+        pdf.set_text_color(21, 95, 131)
+        pdf.set_font(font_family, 'B', 10)
+        pdf.cell(0, 8, safe(title), 0, 1, 'L', True)
+        pdf.set_text_color(16, 34, 53)
+        pdf.ln(1)
+
+    def field_line(label):
+        check_page(9)
+        pdf.set_font(font_family, 'B', 8)
+        pdf.cell(52, 7, safe(label[:36]), 0, 0)
+        pdf.set_font(font_family, '', 8)
+        pdf.cell(0, 7, '_' * 82, 0, 1)
+
+    def grouped_identification(datos):
+        for group_key, fields in (datos or {}).items():
+            group_title = str(group_key).replace('_', ' ').title()
+            section_title(group_title)
+            for field in fields or []:
+                field_line(field.get('etiqueta') or field.get('campo') or '')
+            pdf.ln(1)
+
+    def render_question(question):
+        check_page(42)
+        code = question.get('codigo') or question.get('id') or ''
+        pdf.set_x(pdf.l_margin)
+        pdf.set_font(font_family, 'B', 8)
+        pdf.multi_cell(0, 5, safe(f'{code}. {question.get("item", "")}'), 0, 'L')
+        pdf.set_font(font_family, '', 7)
+        col_width = (pdf.w - pdf.l_margin - pdf.r_margin) / 4
+        pdf.set_x(pdf.l_margin)
+        for label in LEVEL_LABELS:
+            pdf.cell(col_width, 7, safe(f'[  ] {label}'), 1, 0, 'C')
+        pdf.ln(8)
+        niveles = question.get('niveles') or {}
+        for label in LEVEL_LABELS:
+            text = niveles.get(label, '')
+            if text:
+                pdf.set_x(pdf.l_margin)
+                pdf.multi_cell(0, 4, safe(f'{label}: {text}'))
+        pdf.set_font(font_family, '', 8)
+        pdf.set_x(pdf.l_margin)
+        pdf.cell(25, 6, safe('Observacion:'), 0, 0)
+        y = pdf.get_y() + 4
+        pdf.line(pdf.get_x(), y, pdf.w - pdf.r_margin, y)
+        pdf.ln(7)
+        y = pdf.get_y() + 4
+        pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
+        pdf.ln(7)
+        pdf.ln(2)
+
+    def render_final_fields(fields):
+        if not fields:
+            return
+        section_title('Campos finales')
+        for field in fields:
+            label = field.get('etiqueta') or field.get('campo') or ''
+            pdf.set_font(font_family, 'B', 8)
+            pdf.set_x(pdf.l_margin)
+            pdf.multi_cell(0, 5, safe(label))
+            pdf.set_font(font_family, '', 8)
+            y = pdf.get_y() + 4
+            pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
+            pdf.ln(7)
+            if field.get('tipo') == 'texto_libre':
+                y = pdf.get_y() + 4
+                pdf.line(pdf.l_margin, y, pdf.w - pdf.r_margin, y)
+                pdf.ln(7)
+            pdf.ln(1)
+
+    pdf.set_auto_page_break(auto=True, margin=14)
+    pdf.add_page()
+    add_page_header()
+
+    pdf.set_font(font_family, '', 9)
+    pdf.cell(0, 6, safe(f'Fecha de impresion: {datetime.now().strftime("%d/%m/%Y %H:%M")}'), 0, 1)
+    pdf.ln(2)
+
+    for index, instrumento in enumerate(instrumentos):
+        if index:
+            pdf.add_page()
+            add_page_header()
+        section_title(instrumento.get('formulario') or instrumento.get('codigo') or 'Instrumento')
+        pdf.set_font(font_family, '', 8)
+        pdf.cell(0, 5, safe(f'Tipo: {"SIMON / fijo" if instrumento.get("tipo") == "fija" else "Dinamico UGEL"}  |  Version: {instrumento.get("version", "2026")}'), 0, 1)
+        pdf.ln(1)
+        grouped_identification(instrumento.get('datos_identificacion'))
+        for section in instrumento.get('secciones', []):
+            section_title(section.get('nombre') or section.get('clave') or 'Seccion')
+            for question in section.get('preguntas', []):
+                render_question(question)
+        render_final_fields(instrumento.get('campos_finales') or [])
+
+    content = pdf.output(dest='S')
+    if isinstance(content, str):
+        content = content.encode('latin-1')
+    else:
+        content = bytes(content)
+    buffer = io.BytesIO(content)
+    buffer.seek(0)
+    return buffer
 
 FICHA_MONITOREO_COLUMNS = {
     'source': 'TEXT',
@@ -119,6 +569,290 @@ def ensure_db_schema():
         if name not in existing:
             conn.execute(f'ALTER TABLE fichas_monitoreo ADD COLUMN {name} {column_type}')
 
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS app_user (
+            user_id TEXT PRIMARY KEY,
+            nombre TEXT NOT NULL,
+            username TEXT NOT NULL UNIQUE,
+            email TEXT,
+            password_salt TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            rol TEXT NOT NULL DEFAULT 'especialista',
+            especialista_id TEXT,
+            activo INTEGER NOT NULL DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    user_existing = {
+        row['name'] for row in conn.execute('PRAGMA table_info(app_user)').fetchall()
+    }
+    user_columns = {
+        'nombre': 'TEXT',
+        'username': 'TEXT',
+        'email': 'TEXT',
+        'password_salt': 'TEXT',
+        'password_hash': 'TEXT',
+        'rol': "TEXT NOT NULL DEFAULT 'especialista'",
+        'especialista_id': 'TEXT',
+        'activo': 'INTEGER NOT NULL DEFAULT 1',
+        'creado_en': 'DATETIME DEFAULT CURRENT_TIMESTAMP',
+        'actualizado_en': 'DATETIME DEFAULT CURRENT_TIMESTAMP',
+    }
+    for name, column_type in user_columns.items():
+        if name not in user_existing:
+            conn.execute(f'ALTER TABLE app_user ADD COLUMN {name} {column_type}')
+
+    conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_app_user_username ON app_user(username)')
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_app_user_email ON app_user(email) "
+        "WHERE email IS NOT NULL AND email != ''"
+    )
+
+    if conn.execute('SELECT COUNT(*) FROM app_user').fetchone()[0] == 0:
+        create_app_user(
+            conn,
+            nombre='Administrador SUGKA',
+            username='admin',
+            email='admin@sugka.local',
+            password='admin123',
+            rol='administrador',
+        )
+        first_specialist = conn.execute(
+            'SELECT especialista_id, nombre FROM dim_especialista ORDER BY nombre LIMIT 1'
+        ).fetchone()
+        create_app_user(
+            conn,
+            nombre=first_specialist['nombre'] if first_specialist else 'Especialista Demo',
+            username='especialista',
+            email=generic_email_for_name(first_specialist['nombre']) if first_specialist else 'especialista@ugel-imaza.edu.pe',
+            password='especialista123',
+            rol='especialista',
+            especialista_id=first_specialist['especialista_id'] if first_specialist else None,
+        )
+
+    rosario = conn.execute(
+        "SELECT * FROM app_user WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)",
+        ('rosario.quispe@utec.edu.pe', 'rosario.quispe'),
+    ).fetchone()
+    if not rosario:
+        demo_admin = conn.execute(
+            "SELECT * FROM app_user WHERE LOWER(username) = 'admin' AND nombre = 'Administrador SUGKA'"
+        ).fetchone()
+        if demo_admin:
+            salt, digest = hash_password('Password123')
+            conn.execute('''
+                UPDATE app_user
+                SET nombre = ?, username = ?, email = ?, password_salt = ?, password_hash = ?,
+                    rol = 'administrador', activo = 1, actualizado_en = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+            ''', (
+                'Rosario Quispe Yauri',
+                'rosario.quispe',
+                'rosario.quispe@utec.edu.pe',
+                salt,
+                digest,
+                demo_admin['user_id'],
+            ))
+        else:
+            create_app_user(
+                conn,
+                nombre='Rosario Quispe Yauri',
+                username='rosario.quispe',
+                email='rosario.quispe@utec.edu.pe',
+                password='Password123',
+                rol='administrador',
+            )
+    else:
+        conn.execute('''
+            UPDATE app_user
+            SET nombre = ?, username = ?, email = ?, rol = 'administrador', activo = 1,
+                actualizado_en = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+        ''', ('Rosario Quispe Yauri', 'rosario.quispe', 'rosario.quispe@utec.edu.pe', rosario['user_id']))
+
+    conn.execute(
+        "DELETE FROM app_user WHERE LOWER(username) = 'admin' AND nombre = 'Administrador SUGKA'"
+    )
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS institucion_resumen (
+            codigo_modular TEXT PRIMARY KEY,
+            campo_documentos INTEGER DEFAULT 0,
+            simon_fichas INTEGER DEFAULT 0,
+            simon_indicadores INTEGER DEFAULT 0,
+            simon_promedio_nivel REAL,
+            total_alertas_campo INTEGER DEFAULT 0,
+            alertas_infraestructura_campo INTEGER DEFAULT 0,
+            alertas_pedagogicas_campo INTEGER DEFAULT 0,
+            coverage_category TEXT,
+            campo_sin_simon INTEGER DEFAULT 0,
+            simon_sin_campo INTEGER DEFAULT 0,
+            ambas_fuentes INTEGER DEFAULT 0,
+            priority_score REAL DEFAULT 0,
+            priority_reason TEXT,
+            campo_owners TEXT,
+            campo_topics TEXT,
+            simon_monitores TEXT,
+            simon_docentes TEXT,
+            simon_fechas TEXT,
+            risk_score_infra REAL DEFAULT 0,
+            risk_flags TEXT,
+            FOREIGN KEY (codigo_modular) REFERENCES dim_institucion(codigo_modular)
+        )
+    ''')
+    resumen_existing = {
+        row['name'] for row in conn.execute('PRAGMA table_info(institucion_resumen)').fetchall()
+    }
+    resumen_columns = {
+        'risk_score_infra': 'REAL DEFAULT 0',
+        'risk_flags': 'TEXT',
+    }
+    for name, column_type in resumen_columns.items():
+        if name not in resumen_existing:
+            conn.execute(f'ALTER TABLE institucion_resumen ADD COLUMN {name} {column_type}')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS infraestructura_censo_2025 (
+            codigo_modular TEXT PRIMARY KEY,
+            codigo_modular_original TEXT,
+            codigo_local TEXT,
+            nombre_iiee TEXT,
+            nivel_modalidad TEXT,
+            distrito TEXT,
+            centro_poblado TEXT,
+            alumnos_censo INTEGER DEFAULT 0,
+            edificaciones INTEGER DEFAULT 0,
+            edificaciones_en_uso INTEGER DEFAULT 0,
+            edificaciones_riesgo INTEGER DEFAULT 0,
+            aulas INTEGER DEFAULT 0,
+            aulas_en_uso INTEGER DEFAULT 0,
+            alumnos_por_aula_en_uso REAL,
+            alertas_infraestructura_campo INTEGER DEFAULT 0,
+            risk_score_infra REAL DEFAULT 0,
+            risk_flags TEXT,
+            fuente TEXT DEFAULT 'censo_educativo_2025',
+            actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_infra_censo_risk ON infraestructura_censo_2025(risk_score_infra)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_infra_censo_local ON infraestructura_censo_2025(codigo_local)')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS app_instrumento (
+            instrumento_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            codigo TEXT NOT NULL UNIQUE,
+            nombre TEXT NOT NULL,
+            tipo TEXT NOT NULL,
+            version TEXT DEFAULT '2026',
+            activo INTEGER NOT NULL DEFAULT 1,
+            fuente TEXT,
+            estructura_json TEXT NOT NULL,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            actualizado_en DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS app_instrumento_seccion (
+            seccion_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            instrumento_id INTEGER NOT NULL,
+            clave TEXT NOT NULL,
+            nombre TEXT NOT NULL,
+            orden INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (instrumento_id) REFERENCES app_instrumento(instrumento_id)
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS app_instrumento_pregunta (
+            pregunta_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            instrumento_id INTEGER NOT NULL,
+            seccion_id INTEGER,
+            codigo TEXT NOT NULL,
+            item TEXT NOT NULL,
+            tipo_respuesta TEXT NOT NULL DEFAULT 'nivel',
+            niveles_json TEXT,
+            opciones_json TEXT,
+            orden INTEGER NOT NULL DEFAULT 0,
+            activo INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (instrumento_id) REFERENCES app_instrumento(instrumento_id),
+            FOREIGN KEY (seccion_id) REFERENCES app_instrumento_seccion(seccion_id)
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS ficha_respuesta_instrumento (
+            respuesta_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ficha_id INTEGER NOT NULL,
+            instrumento_codigo TEXT NOT NULL,
+            instrumento_tipo TEXT,
+            seccion_clave TEXT,
+            pregunta_codigo TEXT NOT NULL,
+            nivel INTEGER,
+            respuesta_texto TEXT,
+            observacion TEXT,
+            metadata_json TEXT,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (ficha_id) REFERENCES fichas_monitoreo(id)
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS ficha_campo_instrumento (
+            campo_respuesta_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ficha_id INTEGER NOT NULL,
+            instrumento_codigo TEXT NOT NULL,
+            campo TEXT NOT NULL,
+            valor TEXT,
+            metadata_json TEXT,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (ficha_id) REFERENCES fichas_monitoreo(id)
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_ficha_respuesta_ficha ON ficha_respuesta_instrumento(ficha_id)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_ficha_respuesta_pregunta ON ficha_respuesta_instrumento(instrumento_codigo, pregunta_codigo)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_ficha_campo_ficha ON ficha_campo_instrumento(ficha_id)')
+
+    specialist_rows = conn.execute(
+        'SELECT especialista_id, nombre FROM dim_especialista ORDER BY nombre'
+    ).fetchall()
+    for esp in specialist_rows:
+        existing_user = conn.execute(
+            'SELECT * FROM app_user WHERE especialista_id = ?',
+            (esp['especialista_id'],),
+        ).fetchone()
+        base_username = slugify_username(esp['nombre'])
+        base_email = generic_email_for_name(esp['nombre'])
+        if existing_user:
+            username = existing_user['username'] or base_username
+            email = existing_user['email'] or base_email
+            if username == 'especialista':
+                username = base_username
+            username, email = unique_account_identity(conn, username, email, existing_user['user_id'])
+            if verify_password('especialista123', existing_user['password_salt'], existing_user['password_hash']):
+                salt, digest = hash_password('Password123')
+                conn.execute('''
+                    UPDATE app_user
+                    SET nombre = ?, username = ?, email = ?, password_salt = ?, password_hash = ?,
+                        rol = 'especialista', actualizado_en = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                ''', (esp['nombre'], username, email, salt, digest, existing_user['user_id']))
+            else:
+                conn.execute('''
+                    UPDATE app_user
+                    SET nombre = ?, username = ?, email = ?, rol = 'especialista',
+                        actualizado_en = CURRENT_TIMESTAMP
+                    WHERE user_id = ?
+                ''', (esp['nombre'], username, email, existing_user['user_id']))
+        else:
+            create_app_user(
+                conn,
+                nombre=esp['nombre'],
+                username=base_username,
+                email=base_email,
+                password='Password123',
+                rol='especialista',
+                especialista_id=esp['especialista_id'],
+            )
+
     conn.commit()
     conn.close()
 
@@ -148,8 +882,25 @@ def safe_float(value, default=0.0):
     try:
         return float(value)
     except (TypeError, ValueError):
-        match = re.search(r'-?\d+(?:[.,]\d+)?', str(value))
-        return float(match.group(0).replace(',', '.')) if match else default
+            match = re.search(r'-?\d+(?:[.,]\d+)?', str(value))
+            return float(match.group(0).replace(',', '.')) if match else default
+
+def canonical_codigo_modular(conn, value):
+    code = re.sub(r'\D+', '', str(value or '').strip())
+    if not code:
+        return ''
+    candidates = []
+    for candidate in (code, code.zfill(7), f'0{code}'):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    for candidate in candidates:
+        exists = conn.execute(
+            'SELECT 1 FROM dim_institucion WHERE codigo_modular = ? LIMIT 1',
+            (candidate,),
+        ).fetchone()
+        if exists:
+            return candidate
+    return code
 
 def normalize_level(value):
     if value is None or value == '':
@@ -173,6 +924,60 @@ def calculate_promedio(ficha):
     levels = [ficha.get(k, 0) for k in ('a1', 'a2', 'a3', 'b1', 'b2', 'b3', 'b4', 'b5')]
     valid = [level for level in levels if level > 0]
     return round(sum(valid) / len(valid), 2) if valid else 0.0
+
+SIMON_CODE_TO_FIELD = {
+    'A-01': 'a1',
+    'A-02': 'a2',
+    'A-03': 'a3',
+    'B-01': 'b1',
+    'B-02': 'b2',
+    'B-03': 'b3',
+    'B-04': 'b4',
+    'B-05': 'b5',
+}
+SIMON_FIELD_TO_CODE = {field: code for code, field in SIMON_CODE_TO_FIELD.items()}
+SIMON_LEVEL_FIELDS = tuple(SIMON_CODE_TO_FIELD.values())
+
+def iter_instrument_payload(data):
+    instruments = data.get('instrumentos') or data.get('instrument_responses') or []
+    if isinstance(instruments, dict):
+        instruments = [instruments]
+    return [item for item in instruments if isinstance(item, dict)]
+
+def apply_instrument_data_to_ficha(ficha, data):
+    compromisos = []
+    for instrumento in iter_instrument_payload(data):
+        tipo = str(instrumento.get('tipo') or instrumento.get('instrumento_tipo') or '').lower()
+        codigo = str(instrumento.get('codigo') or instrumento.get('instrumento_codigo') or '').lower()
+        is_simon = tipo == 'fija' or 'simon' in codigo or 'regional' in codigo
+
+        for respuesta in instrumento.get('respuestas') or []:
+            if not isinstance(respuesta, dict):
+                continue
+            pregunta_codigo = str(respuesta.get('pregunta_codigo') or respuesta.get('id') or '').upper()
+            field = SIMON_CODE_TO_FIELD.get(pregunta_codigo)
+            if is_simon and field:
+                ficha[field] = normalize_level(
+                    respuesta.get('nivel') or respuesta.get('respuesta') or respuesta.get('valor')
+                )
+                obs = first_text(respuesta, 'observacion', 'observaciones')
+                if obs:
+                    ficha[f'{field}_observacion'] = obs
+
+        campos = instrumento.get('campos_finales') or instrumento.get('campos') or {}
+        if isinstance(campos, dict):
+            obs = first_text(campos, 'observaciones_recomendaciones', 'observaciones')
+            if obs:
+                ficha['observaciones'] = obs
+                ficha['observaciones_recomendaciones'] = obs
+            for key, value in campos.items():
+                if str(key).startswith('compromiso_monitoreado') and str(value).strip():
+                    compromisos.append(str(value).strip())
+
+    if compromisos:
+        joined = '\n'.join(compromisos)
+        ficha['compromisos'] = joined
+        ficha['compromisos_monitoreado'] = joined
 
 def normalize_ficha(data, source='manual'):
     data = data if isinstance(data, dict) else {}
@@ -227,6 +1032,7 @@ def normalize_ficha(data, source='manual'):
     ficha['observaciones_recomendaciones'] = first_text(data, 'observaciones_recomendaciones') or observaciones
     ficha['compromisos'] = compromisos
     ficha['compromisos_monitoreado'] = first_text(data, 'compromisos_monitoreado') or compromisos
+    apply_instrument_data_to_ficha(ficha, data)
     ficha['promedio'] = safe_float(data.get('promedio', data.get('promedio_nivel')), 0.0) or calculate_promedio(ficha)
     ficha['promedio_nivel'] = str(ficha['promedio'])
 
@@ -235,24 +1041,73 @@ def normalize_ficha(data, source='manual'):
 
     return ficha
 
+def save_instrument_responses(conn, ficha_id, data):
+    for instrumento in iter_instrument_payload(data):
+        codigo = first_text(instrumento, 'codigo', 'instrumento_codigo') or 'instrumento'
+        tipo = first_text(instrumento, 'tipo', 'instrumento_tipo')
+        respuestas = instrumento.get('respuestas') or []
+        for respuesta in respuestas:
+            if not isinstance(respuesta, dict):
+                continue
+            pregunta_codigo = first_text(respuesta, 'pregunta_codigo', 'id')
+            if not pregunta_codigo:
+                continue
+            conn.execute('''
+                INSERT INTO ficha_respuesta_instrumento (
+                    ficha_id, instrumento_codigo, instrumento_tipo, seccion_clave,
+                    pregunta_codigo, nivel, respuesta_texto, observacion, metadata_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                ficha_id,
+                codigo,
+                tipo,
+                first_text(respuesta, 'seccion_clave', 'seccion'),
+                pregunta_codigo,
+                normalize_level(respuesta.get('nivel')),
+                first_text(respuesta, 'respuesta_texto', 'respuesta', 'valor'),
+                first_text(respuesta, 'observacion', 'observaciones'),
+                json_dumps(respuesta),
+            ))
+
+        campos = instrumento.get('campos_finales') or instrumento.get('campos') or {}
+        if isinstance(campos, dict):
+            for campo, valor in campos.items():
+                if valor is None or str(valor).strip() == '':
+                    continue
+                conn.execute('''
+                    INSERT INTO ficha_campo_instrumento (
+                        ficha_id, instrumento_codigo, campo, valor, metadata_json
+                    )
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (
+                    ficha_id,
+                    codigo,
+                    str(campo),
+                    str(valor),
+                    json_dumps({'campo': campo, 'valor': valor, 'tipo': tipo}),
+                ))
+
 def save_ficha_to_db(conn, data):
     data = data if isinstance(data, dict) else {}
     ficha = normalize_ficha(data, source=first_text(data, 'source') or 'manual')
     columns = list(FICHA_MONITOREO_COLUMNS.keys())
     placeholders = ', '.join('?' for _ in columns)
-    conn.execute(
+    cur = conn.execute(
         f'INSERT INTO fichas_monitoreo ({", ".join(columns)}) VALUES ({placeholders})',
         [ficha.get(column) for column in columns]
     )
+    ficha['id'] = cur.lastrowid
+    save_instrument_responses(conn, cur.lastrowid, data)
     return ficha
 
 RISK_MODEL = {
     'name': 'Modelo de Riesgo Educativo SUGKA v0.1',
     'type': 'Reglas ponderadas explicables',
     'description': (
-        'Clasifica cada IE con una puntuacion de 0 a 100 para priorizar '
-        'acompanamiento. No es un modelo predictivo de caja negra; es una '
-        'matriz de riesgo auditable que combina evidencia SIMON, campo y OCR.'
+        'Clasifica cada IE con una puntuacion de 0 a 100 usando reglas auditables. '
+        'La priorizacion actual se calcula con fichas SIMON reales, alertas abiertas '
+        'e infraestructura del Censo Educativo 2025; no usa datos inventados ni un modelo de caja negra.'
     ),
     'levels': [
         {'level': 'Critico', 'range': '75-100', 'action': 'Visita prioritaria y plan de accion inmediato'},
@@ -261,54 +1116,59 @@ RISK_MODEL = {
         {'level': 'Bajo', 'range': '0-39', 'action': 'Seguimiento ordinario'},
     ],
     'weights': [
-        {'factor': 'Alertas pedagogicas y de infraestructura', 'weight': '30%', 'rule': 'Mas alertas abiertas elevan el riesgo'},
-        {'factor': 'Brecha de cobertura SIMON/campo', 'weight': '25%', 'rule': 'Sin evidencia o solo una fuente aumenta incertidumbre'},
-        {'factor': 'Priority score existente', 'weight': '25%', 'rule': 'Usa la priorizacion ya calculada por la base'},
-        {'factor': 'Desempeno observado', 'weight': '15%', 'rule': 'Promedio menor a 2.5 eleva el riesgo'},
-        {'factor': 'Volumen de evidencias', 'weight': '5%', 'rule': 'Muchas evidencias sin cierre aumentan necesidad de revision'},
+        {'factor': 'Prioridad base de institucion_resumen', 'weight': 'hasta 28 pts', 'rule': 'priority_score se escala como base de priorizacion.'},
+        {'factor': 'Cobertura de evidencia', 'weight': '+25 / +16 / +6 pts', 'rule': 'Sin evidencia, solo campo o solo SIMON agregan incertidumbre operativa.'},
+        {'factor': 'Alertas acumuladas', 'weight': 'hasta 34 pts', 'rule': 'Suma alertas de campo, pedagogicas e infraestructura/servicios.'},
+        {'factor': 'Infraestructura censal', 'weight': 'hasta 53 pts', 'rule': 'risk_score_infra y banderas censales elevan prioridad.'},
+        {'factor': 'Promedio SIMON', 'weight': '+30 / +24 / +14 pts', 'rule': 'Promedios menores a Nivel III requieren refuerzo pedagogico.'},
     ],
 }
 
 ALERT_RULES = [
     {
-        'code': 'COBERTURA_SIN_EVIDENCIA',
-        'name': 'IE sin evidencia reciente',
+        'code': 'COBERTURA_EVIDENCIA',
+        'name': 'Cobertura de evidencia',
         'severity': 'alta',
-        'condition': 'coverage_category = "Sin evidencia"',
+        'condition': 'coverage_category = Sin evidencia / Solo campo / Solo SIMON',
         'score': 25,
-        'focus': 'Programar primera visita o carga de ficha OCR/SIMON.',
+        'description': 'La matriz aumenta la prioridad cuando la IE no tiene evidencia reciente o cuando solo existe una fuente para contrastar el seguimiento.',
+        'focus': 'Completar la evidencia faltante antes de cerrar la priorizacion.',
     },
     {
-        'code': 'CAMPO_SIN_SIMON',
-        'name': 'Campo sin ficha SIMON',
+        'code': 'SIMON_REFUERZO',
+        'name': 'Desempeno SIMON en refuerzo',
         'severity': 'media',
-        'condition': 'campo_sin_simon = 1',
-        'score': 16,
-        'focus': 'Regularizar ficha y contrastar hallazgos de campo.',
+        'condition': 'simon_promedio_nivel < 3 o respuestas en Nivel I/II',
+        'score': 30,
+        'description': 'Se prioriza cuando el promedio SIMON queda por debajo de Nivel III o cuando hay concentracion de respuestas en Nivel I y II.',
+        'focus': 'Revisar preparacion, ensenanza y compromisos de mejora docente.',
     },
     {
-        'code': 'ALERTAS_PEDAGOGICAS_ALTAS',
+        'code': 'ALERTAS_PEDAGOGICAS',
         'name': 'Alertas pedagogicas acumuladas',
         'severity': 'alta',
-        'condition': 'alertas_pedagogicas_campo >= 20',
+        'condition': 'alertas_pedagogicas_campo >= 8 / >= 20',
         'score': 18,
-        'focus': 'Priorizar acompanamiento pedagogico y compromisos.',
+        'description': 'Las respuestas SIMON en Nivel I/II alimentan alertas pedagogicas; a mayor acumulacion, mayor prioridad de acompanamiento.',
+        'focus': 'Priorizar acompanamiento pedagogico y compromisos verificables.',
     },
     {
-        'code': 'INFRA_SERVICIOS',
-        'name': 'Infraestructura o servicios criticos',
+        'code': 'INFRA_CENSO_2025',
+        'name': 'Riesgo censal de infraestructura',
         'severity': 'alta',
-        'condition': 'alertas_infraestructura_campo >= 10',
-        'score': 14,
-        'focus': 'Coordinar respuesta con gestion institucional.',
+        'condition': 'risk_score_infra > 0 o risk_flags activos',
+        'score': 53,
+        'description': 'Usa risk_score_infra del Censo Educativo 2025 y banderas como riesgo estructural, aulas no usadas, alta densidad o falta de senalizacion.',
+        'focus': 'Coordinar respuesta con gestion institucional e infraestructura.',
     },
     {
-        'code': 'DESEMPENO_BAJO',
-        'name': 'Desempeno observado bajo',
+        'code': 'ALERTAS_INFRA_SERVICIOS',
+        'name': 'Alertas de infraestructura/servicios',
         'severity': 'media',
-        'condition': 'promedio_nivel < 2.5',
-        'score': 15,
-        'focus': 'Revisar planificacion, retroalimentacion y convivencia.',
+        'condition': 'alertas_infraestructura_campo >= 4 / >= 10',
+        'score': 8,
+        'description': 'Las menciones de conectividad, energia, agua/saneamiento, transporte/acceso y servicios incrementan la prioridad operativa.',
+        'focus': 'Atender brechas de servicios que afectan el funcionamiento de la IE.',
     },
 ]
 
@@ -333,6 +1193,11 @@ def calculate_risk(row):
     simon_fichas = safe_int(row.get('simon_fichas'), 0)
     campo_docs = safe_int(row.get('campo_documentos'), 0)
     simon_average = safe_float(row.get('simon_promedio_nivel'), 0.0)
+    infra_risk = safe_float(row.get('risk_score_infra'), 0.0)
+    risk_flags = [
+        flag for flag in str(row.get('risk_flags') or '').split('|')
+        if flag
+    ]
 
     score = min(priority * 3.2, 28)
     reasons = []
@@ -344,8 +1209,8 @@ def calculate_risk(row):
         score += 16
         reasons.append('campo sin contraste SIMON')
     elif coverage == 'Solo SIMON':
-        score += 10
-        reasons.append('SIMON sin contraste de campo')
+        score += 6
+        reasons.append('evidencia SIMON cargada')
 
     alert_score = min(total_alerts * 0.07, 16)
     score += alert_score
@@ -364,12 +1229,32 @@ def calculate_risk(row):
     elif infra_alerts >= 4:
         score += 4
 
+    if infra_risk:
+        score += min(infra_risk * 4, 28)
+        reasons.append(f'riesgo infraestructura {round(infra_risk, 2)}')
+
+    if 'edificacion_con_riesgo_estructural' in risk_flags:
+        score += 10
+        reasons.append('riesgo estructural censal')
+    if 'alta_densidad_alumnos_por_aula_en_uso' in risk_flags:
+        score += 6
+        reasons.append('alta densidad por aula')
+    if 'aulas_registradas_no_en_uso' in risk_flags:
+        score += 5
+        reasons.append('aulas registradas sin uso')
+    if 'sin_registros_edificaciones' in risk_flags or 'sin_registros_aulas' in risk_flags:
+        score += 4
+        reasons.append('brecha de registros censales')
+
     if simon_average and simon_average < 2:
-        score += 15
+        score += 30
         reasons.append('desempeno menor a nivel 2')
     elif simon_average and simon_average < 2.5:
-        score += 9
+        score += 24
         reasons.append('desempeno por debajo de 2.5')
+    elif simon_average and simon_average < 3:
+        score += 14
+        reasons.append('desempeno regular con necesidad de refuerzo')
     elif not simon_fichas and campo_docs:
         score += 6
         reasons.append('evidencia de campo pendiente de ficha')
@@ -381,18 +1266,912 @@ def calculate_risk(row):
         'risk_reasons': reasons[:4] or ['sin alertas criticas acumuladas'],
     }
 
+SEMAFORO_PEDAGOGICO = [
+    {
+        'excel_value': 'bajo rendimiento',
+        'label': 'Critico',
+        'color': 'Rojo',
+        'status_key': 'danger',
+        'action': 'Intervencion inmediata y acompanamiento focalizado.',
+    },
+    {
+        'excel_value': 'regular',
+        'label': 'Alerta',
+        'color': 'Amarillo',
+        'status_key': 'warning',
+        'action': 'Refuerzo especifico y seguimiento en la siguiente visita.',
+    },
+    {
+        'excel_value': 'bueno',
+        'label': 'Estable',
+        'color': 'Verde',
+        'status_key': 'ok',
+        'action': 'Mantener seguimiento ordinario y buenas practicas.',
+    },
+]
+
+INFRA_FLAG_DESCRIPTIONS = {
+    'sin_codigo_local_para_cruce': 'La IE no tenia codigo de local suficiente para cruzar con infraestructura.',
+    'sin_registros_edificaciones': 'Tiene codigo local, pero no se encontraron registros en edificaciones.',
+    'sin_registros_aulas': 'Tiene codigo local, pero no se encontraron registros de aulas.',
+    'edificacion_con_riesgo_estructural': 'Al menos una edificacion presenta riesgo estructural o de colapso.',
+    'aulas_registradas_no_en_uso': 'Existen aulas registradas, pero ninguna aparece en uso.',
+    'alta_densidad_alumnos_por_aula_en_uso': 'La relacion alumnos por aula en uso es mayor a 35.',
+    'conservacion_mala_en_puertas_o_ventanas': 'Alguna aula tiene puertas o ventanas en mal estado.',
+    'aulas_en_uso_sin_senalizacion_completa': 'Hay aulas en uso, pero no todas tienen senalizacion de seguridad completa.',
+}
+
+INFRA_DEFINITIONS = {
+    'alertas_infraestructura_campo': (
+        'Numero de alertas de infraestructura o servicios detectadas en informes de campo vinculados a la IE. '
+        'Incluye conectividad, energia/luz, agua/saneamiento y transporte/acceso.'
+    ),
+    'risk_flags': (
+        'Etiquetas explicativas del riesgo detectado en infraestructura, aulas, seguridad o disponibilidad de datos.'
+    ),
+    'risk_score_infra': (
+        'Puntaje de priorizacion de riesgo de infraestructura calculado con evidencias censales de edificios/aulas '
+        'y alertas de campo. A mayor puntaje, mayor prioridad de atencion.'
+    ),
+    'formula': [
+        '+3.0 si hay edificacion con riesgo estructural.',
+        '+2.0 si no hay registros de edificaciones.',
+        '+2.0 si no hay registros de aulas.',
+        '+1.5 si alumnos por aula en uso > 35.',
+        '+1.0 si hay puertas o ventanas en mal estado.',
+        '+1.0 si hay aulas en uso sin senalizacion completa.',
+        '+min(alertas_infraestructura_campo, 50) / 25, hasta 2 puntos por alertas de campo.',
+    ],
+    'flags': INFRA_FLAG_DESCRIPTIONS,
+}
+
+RADAR_CATEGORIES = [
+    'Planificacion',
+    'Ejecucion pedagogica',
+    'Retroalimentacion',
+    'Convivencia',
+    'Gestion de evidencias',
+]
+
+INFRA_CATEGORIES = [
+    'Aulas seguras',
+    'Servicios basicos',
+    'Conectividad',
+    'Mobiliario',
+    'Material pedagogico',
+]
+
+STUDENT_AREAS = [
+    'Comunicacion',
+    'Matematica',
+    'Ciencia y Tecnologia',
+    'Personal Social',
+]
+
+TEACHER_NAMES = [
+    'Ana Rojas',
+    'Carlos Mendoza',
+    'Rosa Huaman',
+    'Luis Tello',
+    'Mariela Pinedo',
+    'Jose Chujandama',
+    'Elena Vargas',
+    'Miguel Amasifuen',
+    'Patricia Diaz',
+    'Ruben Salas',
+]
+
+def clamp_score(value, low=0, high=100):
+    return max(low, min(high, int(round(value))))
+
+def seed_from_row(row, offset=0):
+    code = safe_int(str(row.get('codigo_modular', ''))[-5:], 0)
+    priority = int(round(safe_float(row.get('priority_score'), 0) * 10))
+    return code + priority + offset
+
+def semaforo_from_score(score):
+    if score < 60:
+        return dict(SEMAFORO_PEDAGOGICO[0])
+    if score < 75:
+        return dict(SEMAFORO_PEDAGOGICO[1])
+    return dict(SEMAFORO_PEDAGOGICO[2])
+
+def semaforo_from_color(color):
+    color = (color or '').lower()
+    if color == 'rojo':
+        return dict(SEMAFORO_PEDAGOGICO[0])
+    if color == 'amarillo':
+        return dict(SEMAFORO_PEDAGOGICO[1])
+    return dict(SEMAFORO_PEDAGOGICO[2])
+
+def simon_level_state(level):
+    level = safe_float(level, 0.0)
+    if level < 2.5:
+        return dict(SEMAFORO_PEDAGOGICO[0])
+    if level < 3.5:
+        return dict(SEMAFORO_PEDAGOGICO[1])
+    return dict(SEMAFORO_PEDAGOGICO[2])
+
+def simon_level_percent(level):
+    return clamp_score(safe_float(level, 0.0) / 4 * 100)
+
+def get_simon_question_labels(conn):
+    rows = conn.execute('''
+        SELECT p.codigo, p.item, s.nombre AS seccion_nombre, s.clave AS seccion_clave
+        FROM app_instrumento_pregunta p
+        JOIN app_instrumento i ON i.instrumento_id = p.instrumento_id
+        LEFT JOIN app_instrumento_seccion s ON s.seccion_id = p.seccion_id
+        WHERE i.codigo = 'simon_docente_2026'
+        ORDER BY p.orden, p.pregunta_id
+    ''').fetchall()
+    return {
+        row['codigo']: {
+            'item': row['item'],
+            'seccion_nombre': row['seccion_nombre'],
+            'seccion_clave': row['seccion_clave'],
+        }
+        for row in rows
+    }
+
+def simon_values_from_row(row):
+    values = []
+    for field in SIMON_LEVEL_FIELDS:
+        level = safe_int(row.get(field), 0)
+        if level > 0:
+            values.append(level)
+    return values
+
+def rebuild_simon_operational_summary(conn):
+    conn.execute('DELETE FROM app_alerta_priorizada')
+    conn.execute('DELETE FROM institucion_resumen')
+
+    ficha_rows = conn.execute('''
+        SELECT *
+        FROM fichas_monitoreo
+        WHERE COALESCE(codigo_modular, '') != ''
+    ''').fetchall()
+    infra_rows = conn.execute('SELECT * FROM infraestructura_censo_2025').fetchall()
+
+    grouped = {}
+    for row in ficha_rows:
+        code = canonical_codigo_modular(conn, row['codigo_modular'])
+        if not code:
+            continue
+        grouped.setdefault(code, []).append(dict(row))
+
+    infra_by_code = {
+        canonical_codigo_modular(conn, row['codigo_modular']): dict(row)
+        for row in infra_rows
+        if row['codigo_modular']
+    }
+
+    all_codes = sorted(set(grouped) | set(infra_by_code))
+    now = datetime.now().isoformat(timespec='seconds')
+
+    for code in all_codes:
+        fichas = grouped.get(code, [])
+        infra = infra_by_code.get(code, {})
+        all_values = []
+        low_total = 0
+        prep_low = 0
+        teaching_low = 0
+        for ficha in fichas:
+            values = simon_values_from_row(ficha)
+            all_values.extend(values)
+            low_total += sum(1 for value in values if value < 3)
+            prep_low += sum(1 for field in ('a1', 'a2', 'a3') if safe_int(ficha.get(field), 0) in (1, 2))
+            teaching_low += sum(1 for field in ('b1', 'b2', 'b3', 'b4', 'b5') if safe_int(ficha.get(field), 0) in (1, 2))
+
+        indicators = len(all_values)
+        average = round(sum(all_values) / indicators, 2) if indicators else 0.0
+        low_share = low_total / indicators if indicators else 0.0
+        simon_priority = round(min(22, 5 + (low_share * 11) + max(0, 3 - average) * 5), 2) if indicators else 0.0
+        infra_alerts = safe_int(infra.get('alertas_infraestructura_campo'), 0)
+        infra_score = safe_float(infra.get('risk_score_infra'), 0.0)
+        risk_flags = first_text(infra, 'risk_flags')
+        infra_priority = round(min(22, infra_score * 2.7 + min(infra_alerts, 50) / 10), 2) if infra else 0.0
+        priority_score = round(max(simon_priority, infra_priority), 2)
+
+        reasons = []
+        if indicators and average < 2.5:
+            priority_reason = 'Desempeno SIMON por debajo de 2.5; requiere refuerzo pedagogico'
+            reasons.append(priority_reason)
+        elif indicators and average < 3:
+            priority_reason = 'Desempeno SIMON regular; seguimiento pedagogico recomendado'
+            reasons.append(priority_reason)
+        elif indicators:
+            priority_reason = 'Desempeno SIMON estable con seguimiento ordinario'
+            reasons.append(priority_reason)
+        else:
+            priority_reason = ''
+
+        if infra:
+            reasons.append(f'Riesgo infraestructura censo 2025: {round(infra_score, 2)}')
+            if risk_flags:
+                readable_flags = [
+                    INFRA_FLAG_DESCRIPTIONS.get(flag, flag)
+                    for flag in risk_flags.split('|')
+                    if flag
+                ]
+                reasons.extend(readable_flags[:3])
+
+        if fichas and infra:
+            coverage = 'SIMON + Censo 2025'
+        elif fichas:
+            coverage = 'Solo SIMON'
+        elif infra:
+            coverage = 'Censo 2025'
+        else:
+            coverage = 'Sin evidencia'
+
+        monitors = sorted({first_text(f, 'monitor') for f in fichas if first_text(f, 'monitor')})
+        docentes = sorted({first_text(f, 'docente') for f in fichas if first_text(f, 'docente')})
+        fechas = sorted({first_text(f, 'fecha_ejecucion') for f in fichas if first_text(f, 'fecha_ejecucion')})
+
+        conn.execute('''
+            INSERT OR REPLACE INTO institucion_resumen (
+                codigo_modular, campo_documentos, simon_fichas, simon_indicadores,
+                simon_promedio_nivel, total_alertas_campo, alertas_infraestructura_campo,
+                alertas_pedagogicas_campo, coverage_category, campo_sin_simon,
+                simon_sin_campo, ambas_fuentes, priority_score, priority_reason,
+                campo_owners, campo_topics, simon_monitores, simon_docentes, simon_fechas,
+                risk_score_infra, risk_flags
+            )
+            VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, '', '', ?, ?, ?, ?, ?)
+        ''', (
+            code,
+            len(fichas),
+            indicators,
+            average,
+            low_total + infra_alerts,
+            infra_alerts,
+            low_total,
+            coverage,
+            1 if fichas and not infra else 0,
+            1 if fichas and infra else 0,
+            priority_score,
+            '; '.join(reasons[:5]) or priority_reason,
+            '|'.join(monitors),
+            '|'.join(docentes[:12]),
+            '|'.join(fechas),
+            infra_score,
+            risk_flags,
+        ))
+
+        if low_total:
+            severity = 'alta' if average < 2.25 or low_share >= 0.65 else 'media'
+            alert_id = 'simon_' + hashlib.md5(f'{code}:desempeno:{average}:{low_total}'.encode('utf-8')).hexdigest()[:12]
+            simon_desc = (
+                f'SIMON: {low_total} de {indicators} respuestas estan en Nivel I o II; '
+                f'promedio general {average}. Requiere refuerzo pedagogico focalizado.'
+            )
+            conn.execute('''
+                INSERT OR REPLACE INTO app_alerta_priorizada (
+                    alerta_id, codigo_modular, alerta_codigo, fuente, severidad,
+                    score, titulo, descripcion, evidencia_count, estado, created_at
+                )
+                VALUES (?, ?, 'seguimiento_curricular', 'simon', ?, ?, ?, ?, ?, 'pendiente', ?)
+            ''', (
+                alert_id,
+                code,
+                severity,
+                round(priority_score, 2),
+                'Desempeno SIMON requiere refuerzo',
+                simon_desc,
+                len(fichas),
+                now,
+            ))
+
+        if prep_low:
+            alert_id = 'simon_' + hashlib.md5(f'{code}:preparacion:{prep_low}'.encode('utf-8')).hexdigest()[:12]
+            conn.execute('''
+                INSERT OR REPLACE INTO app_alerta_priorizada (
+                    alerta_id, codigo_modular, alerta_codigo, fuente, severidad,
+                    score, titulo, descripcion, evidencia_count, estado, created_at
+                )
+                VALUES (?, ?, 'seguimiento_curricular', 'simon', ?, ?, ?, ?, ?, 'pendiente', ?)
+            ''', (
+                alert_id,
+                code,
+                'alta' if prep_low >= len(fichas) * 2 else 'media',
+                round(min(18, prep_low * 0.9), 2),
+                'Preparacion para el aprendizaje en refuerzo',
+                f'SIMON Preparacion: {prep_low} respuestas de los items A1-A3 estan en Nivel I o II.',
+                prep_low,
+                now,
+            ))
+
+        if teaching_low:
+            alert_id = 'simon_' + hashlib.md5(f'{code}:ensenanza:{teaching_low}'.encode('utf-8')).hexdigest()[:12]
+            conn.execute('''
+                INSERT OR REPLACE INTO app_alerta_priorizada (
+                    alerta_id, codigo_modular, alerta_codigo, fuente, severidad,
+                    score, titulo, descripcion, evidencia_count, estado, created_at
+                )
+                VALUES (?, ?, 'capacitacion_docente', 'simon', ?, ?, ?, ?, ?, 'pendiente', ?)
+            ''', (
+                alert_id,
+                code,
+                'alta' if teaching_low >= len(fichas) * 3 else 'media',
+                round(min(18, teaching_low * 0.7), 2),
+                'Ensenanza para el aprendizaje en refuerzo',
+                f'SIMON Ensenanza: {teaching_low} respuestas de los items B1-B5 estan en Nivel I o II.',
+                teaching_low,
+                now,
+            ))
+
+        if infra and infra_score > 0:
+            severity = 'alta' if infra_score >= 5 or 'edificacion_con_riesgo_estructural' in risk_flags else 'media'
+            alert_id = 'infra_' + hashlib.md5(f'{code}:infra:{infra_score}:{risk_flags}'.encode('utf-8')).hexdigest()[:12]
+            flag_labels = [
+                INFRA_FLAG_DESCRIPTIONS.get(flag, flag)
+                for flag in risk_flags.split('|')
+                if flag
+            ]
+            infra_desc = (
+                f'Censo Educativo 2025: risk_score_infra={round(infra_score, 2)}. '
+                + (f'Motivos: {"; ".join(flag_labels[:4])}.' if flag_labels else 'Sin banderas especificas registradas.')
+            )
+            conn.execute('''
+                INSERT OR REPLACE INTO app_alerta_priorizada (
+                    alerta_id, codigo_modular, alerta_codigo, fuente, severidad,
+                    score, titulo, descripcion, evidencia_count, estado, created_at
+                )
+                VALUES (?, ?, 'agua_saneamiento', 'censo_2025', ?, ?, ?, ?, ?, 'pendiente', ?)
+            ''', (
+                alert_id,
+                code,
+                severity,
+                round(infra_score, 2),
+                'Riesgo de infraestructura censal',
+                infra_desc,
+                max(1, len([flag for flag in risk_flags.split('|') if flag])),
+                now,
+            ))
+
+def unavailable_sheet(kind, message):
+    return {
+        'source': 'sin_datos',
+        'resumen': {
+            'estado': {
+                'excel_value': 'sin dato',
+                'label': 'Sin datos',
+                'color': '-',
+                'status_key': 'info',
+                'action': message,
+            },
+            'mensaje': message,
+        },
+        'items': [],
+        'radar': [],
+    }
+
+def build_real_teacher_sheet(fichas):
+    docentes = []
+    for ficha in fichas:
+        values = simon_values_from_row(ficha)
+        average = round(sum(values) / len(values), 2) if values else 0.0
+        semaforo = simon_level_state(average)
+        docentes.append({
+            'nombre': first_text(ficha, 'docente') or 'Docente sin nombre',
+            'grado': first_text(ficha, 'grado') or first_text(ficha, 'seccion') or 'Sin grado',
+            'area': first_text(ficha, 'area') or 'SIMON',
+            'fecha': first_text(ficha, 'fecha_ejecucion'),
+            'nivel_promedio': average,
+            'visita1': {
+                'label': 'Visita 1 - Diagnostico',
+                'score': simon_level_percent(average),
+                'nivel_promedio': average,
+                'estado_excel': semaforo['excel_value'],
+                'semaforo': semaforo,
+            },
+            'visita2': None,
+            'delta': None,
+            'necesita_refuerzo': average < 3,
+        })
+
+    needs = sum(1 for docente in docentes if docente['necesita_refuerzo'])
+    stable = len(docentes) - needs
+    critical_initial = sum(1 for docente in docentes if docente['nivel_promedio'] < 2.5)
+    return {
+        'source': 'simon_real',
+        'resumen': {
+            'total': len(docentes),
+            'necesitan_refuerzo': needs,
+            'estables': stable,
+            'critico_a_estable': 0,
+            'criticos_iniciales': critical_initial,
+            'ieap': None,
+            'promedio_nivel': round(sum(d['nivel_promedio'] for d in docentes) / len(docentes), 2) if docentes else 0.0,
+        },
+        'items': docentes,
+    }
+
+def infra_status_from_score(score):
+    score = safe_float(score, 0.0)
+    if score >= 5:
+        return dict(SEMAFORO_PEDAGOGICO[0])
+    if score >= 3:
+        return dict(SEMAFORO_PEDAGOGICO[1])
+    return dict(SEMAFORO_PEDAGOGICO[2])
+
+def build_real_infra_sheet(infra):
+    if not infra:
+        return unavailable_sheet('infraestructura', 'No hay registro de infraestructura censal 2025 para esta IE.')
+
+    score = safe_float(infra.get('risk_score_infra'), 0.0)
+    flags = [flag for flag in first_text(infra, 'risk_flags').split('|') if flag]
+    estado = infra_status_from_score(score)
+    flags_detail = [
+        {
+            'flag': flag,
+            'descripcion': INFRA_FLAG_DESCRIPTIONS.get(flag, flag),
+        }
+        for flag in flags
+    ]
+
+    critical_flags = {
+        'edificacion_con_riesgo_estructural',
+        'sin_codigo_local_para_cruce',
+        'sin_registros_edificaciones',
+        'sin_registros_aulas',
+        'aulas_registradas_no_en_uso',
+    }
+    warning_flags = {
+        'alta_densidad_alumnos_por_aula_en_uso',
+        'conservacion_mala_en_puertas_o_ventanas',
+        'aulas_en_uso_sin_senalizacion_completa',
+    }
+    brechas_criticas = sum(1 for flag in flags if flag in critical_flags)
+    brechas_alerta = sum(1 for flag in flags if flag in warning_flags)
+
+    items = [
+        {
+            'categoria': 'Edificaciones',
+            'valor': safe_int(infra.get('edificaciones'), 0),
+            'en_uso': safe_int(infra.get('edificaciones_en_uso'), 0),
+            'riesgo': safe_int(infra.get('edificaciones_riesgo'), 0),
+            'semaforo': dict(SEMAFORO_PEDAGOGICO[0]) if safe_int(infra.get('edificaciones_riesgo'), 0) else dict(SEMAFORO_PEDAGOGICO[2]),
+            'observacion': 'Edificaciones con riesgo estructural' if safe_int(infra.get('edificaciones_riesgo'), 0) else 'Sin riesgo estructural registrado',
+        },
+        {
+            'categoria': 'Aulas',
+            'valor': safe_int(infra.get('aulas'), 0),
+            'en_uso': safe_int(infra.get('aulas_en_uso'), 0),
+            'riesgo': 1 if 'aulas_registradas_no_en_uso' in flags else 0,
+            'semaforo': dict(SEMAFORO_PEDAGOGICO[0]) if 'aulas_registradas_no_en_uso' in flags else dict(SEMAFORO_PEDAGOGICO[2]),
+            'observacion': 'Aulas registradas no aparecen en uso' if 'aulas_registradas_no_en_uso' in flags else 'Aulas en uso registradas',
+        },
+        {
+            'categoria': 'Densidad',
+            'valor': safe_float(infra.get('alumnos_por_aula_en_uso'), 0.0),
+            'en_uso': safe_int(infra.get('alumnos_censo'), 0),
+            'riesgo': 1 if 'alta_densidad_alumnos_por_aula_en_uso' in flags else 0,
+            'semaforo': dict(SEMAFORO_PEDAGOGICO[1]) if 'alta_densidad_alumnos_por_aula_en_uso' in flags else dict(SEMAFORO_PEDAGOGICO[2]),
+            'observacion': 'Mas de 35 estudiantes por aula en uso' if 'alta_densidad_alumnos_por_aula_en_uso' in flags else 'Densidad dentro de rango',
+        },
+        {
+            'categoria': 'Alertas de campo',
+            'valor': safe_int(infra.get('alertas_infraestructura_campo'), 0),
+            'en_uso': None,
+            'riesgo': safe_int(infra.get('alertas_infraestructura_campo'), 0),
+            'semaforo': infra_status_from_score(min(safe_int(infra.get('alertas_infraestructura_campo'), 0), 50) / 25 * 3),
+            'observacion': 'Alertas de infraestructura o servicios asociadas a la IE',
+        },
+    ]
+
+    return {
+        'source': 'censo_2025',
+        'resumen': {
+            'estado': estado,
+            'risk_score_infra': round(score, 2),
+            'risk_flags': flags,
+            'flags_detalle': flags_detail,
+            'alertas_infraestructura_campo': safe_int(infra.get('alertas_infraestructura_campo'), 0),
+            'edificaciones': safe_int(infra.get('edificaciones'), 0),
+            'edificaciones_en_uso': safe_int(infra.get('edificaciones_en_uso'), 0),
+            'edificaciones_riesgo': safe_int(infra.get('edificaciones_riesgo'), 0),
+            'aulas': safe_int(infra.get('aulas'), 0),
+            'aulas_en_uso': safe_int(infra.get('aulas_en_uso'), 0),
+            'alumnos_por_aula_en_uso': safe_float(infra.get('alumnos_por_aula_en_uso'), 0.0),
+            'brechas_criticas': brechas_criticas,
+            'brechas_en_alerta': brechas_alerta,
+            'componentes_estables': max(0, 4 - brechas_criticas - brechas_alerta),
+        },
+        'items': items,
+    }
+
+def build_real_simon_dashboard(conn, scored):
+    ficha_rows = conn.execute('''
+        SELECT *
+        FROM fichas_monitoreo
+        WHERE COALESCE(codigo_modular, '') != ''
+        ORDER BY codigo_modular, fecha_ejecucion, docente
+    ''').fetchall()
+    infra_rows = conn.execute('SELECT * FROM infraestructura_censo_2025').fetchall()
+    if not ficha_rows and not infra_rows:
+        return {
+            'source': 'empty',
+            'sheets': ['Docentes', 'Infraestructura', 'Alumnos', 'Progreso comparativo'],
+            'selected_codigo': None,
+            'semaforo': SEMAFORO_PEDAGOGICO,
+            'instituciones': [],
+            'definition': {
+                'ieap': 'Pendiente: requiere Visita 2 real para comparar Critico a Estable.',
+                'rtbg': 'Pendiente: requiere datos reales de brechas de gestion.',
+            },
+        }
+
+    grouped = {}
+    for row in ficha_rows:
+        item = dict(row)
+        code = canonical_codigo_modular(conn, item.get('codigo_modular'))
+        item['codigo_modular'] = code
+        grouped.setdefault(code, []).append(item)
+    infra_by_code = {
+        canonical_codigo_modular(conn, row['codigo_modular']): dict(row)
+        for row in infra_rows
+        if row['codigo_modular']
+    }
+
+    risk_lookup = {str(row.get('codigo_modular')): row for row in scored}
+    institutions = []
+    all_codes = sorted(set(grouped) | set(infra_by_code))
+    for code in all_codes:
+        fichas = grouped.get(code, [])
+        infra = infra_by_code.get(code, {})
+        official = conn.execute('''
+            SELECT codigo_modular, nombre_iiee, nivel_modalidad, distrito
+            FROM dim_institucion
+            WHERE codigo_modular = ?
+        ''', (code,)).fetchone()
+        base = dict(official) if official else {
+            'codigo_modular': code,
+            'nombre_iiee': first_text(infra, 'nombre_iiee') or (first_text(fichas[0], 'nombre_ie') if fichas else code),
+            'nivel_modalidad': first_text(infra, 'nivel_modalidad') or (first_text(fichas[0], 'nivel_modalidad') if fichas else ''),
+            'distrito': first_text(infra, 'distrito'),
+        }
+        risk = dict(risk_lookup.get(code, {}))
+        if not risk:
+            summary = conn.execute('SELECT * FROM institucion_resumen WHERE codigo_modular = ?', (code,)).fetchone()
+            risk = dict(summary) if summary else {}
+            risk.update(calculate_risk(risk))
+
+        docentes = build_real_teacher_sheet(fichas) if fichas else {
+            'source': 'sin_datos',
+            'resumen': {
+                'total': 0,
+                'necesitan_refuerzo': 0,
+                'estables': 0,
+                'critico_a_estable': 0,
+                'criticos_iniciales': 0,
+                'ieap': None,
+                'promedio_nivel': 0.0,
+                'mensaje': 'No hay ficha SIMON cargada para esta IE.',
+            },
+            'items': [],
+        }
+        promedio_ie = docentes['resumen']['promedio_nivel']
+        progreso = {
+            'source': 'sin_visita_2',
+            'resumen': {
+                'promedio_visita1': simon_level_percent(promedio_ie),
+                'promedio_visita2': None,
+                'mejora': None,
+                'dias_brecha_visita1': None,
+                'dias_brecha_visita2': None,
+                'rtbg': None,
+                'mensaje': 'El CSV cargado corresponde a SIMON/Visita 1. Falta Visita 2 real para calcular evolucion.',
+            },
+            'radar': [],
+        }
+        base.update(risk)
+        base.update({
+            'simon_fichas': len(fichas),
+            'simon_promedio_nivel': promedio_ie,
+            'campo_documentos': safe_int(risk.get('campo_documentos'), 0),
+            'total_alertas_campo': safe_int(risk.get('total_alertas_campo'), 0),
+            'docentes': docentes,
+            'infraestructura': build_real_infra_sheet(infra),
+            'alumnos': unavailable_sheet('alumnos', 'El CSV cargado no contiene indicadores reales de alumnos.'),
+            'progreso': progreso,
+            'kpis': {
+                'ieap': None,
+                'rtbg': None,
+                'docentes_refuerzo': docentes['resumen']['necesitan_refuerzo'],
+                'simon_promedio': promedio_ie,
+                'risk_score_infra': safe_float(infra.get('risk_score_infra'), 0.0) if infra else 0.0,
+            },
+        })
+        institutions.append(base)
+
+    institutions.sort(
+        key=lambda item: (
+            safe_float(item.get('risk_score'), 0),
+            safe_float(((item.get('infraestructura') or {}).get('resumen') or {}).get('risk_score_infra'), 0),
+            item['docentes']['resumen']['necesitan_refuerzo'],
+        ),
+        reverse=True,
+    )
+    return {
+        'source': 'real_simon_infra',
+        'sheets': ['Docentes', 'Infraestructura', 'Alumnos', 'Progreso comparativo'],
+        'selected_codigo': institutions[0]['codigo_modular'] if institutions else None,
+        'semaforo': SEMAFORO_PEDAGOGICO,
+        'instituciones': institutions,
+        'definition': {
+            'ieap': 'Pendiente: el CSV contiene Visita 1 SIMON; se calculara cuando exista Visita 2 real.',
+            'rtbg': 'Pendiente: requiere datos reales de cierre de brechas de gestion.',
+            'infraestructura': 'Censo Educativo 2025 cruzado con edificaciones, aulas y alertas de infraestructura.',
+        },
+    }
+
+def build_simon_indicator_results(conn):
+    labels = get_simon_question_labels(conn)
+    rows = conn.execute('SELECT * FROM fichas_monitoreo').fetchall()
+    if not rows:
+        return []
+    indicators = []
+    for code, field in SIMON_CODE_TO_FIELD.items():
+        values = [safe_int(row[field], 0) for row in rows if safe_int(row[field], 0) > 0]
+        if not values:
+            continue
+        good = sum(1 for value in values if value >= 3)
+        low = len(values) - good
+        average = round(sum(values) / len(values), 2)
+        stable_pct = round(good / len(values) * 100)
+        state = simon_level_state(average)
+        label = labels.get(code, {}).get('item') or code
+        indicators.append({
+            'area': code,
+            'valor': stable_pct,
+            'estado': state['label'],
+            'lectura': f'{low} de {len(values)} fichas por debajo de Nivel III. Promedio {average}.',
+            'pregunta': label,
+            'promedio': average,
+            'bajo_nivel': low,
+            'total': len(values),
+        })
+    return indicators
+
+def build_teacher_sheet(row, idx):
+    risk = safe_float(row.get('risk_score'), 0)
+    seed = seed_from_row(row, idx * 19)
+    docentes = []
+    for i, name in enumerate(TEACHER_NAMES):
+        variation = ((seed + i * 11) % 13) - 6
+        v1 = clamp_score(83 - (risk * 0.52) + variation, 35, 88)
+        improvement = 7 + ((seed + i * 7) % 17)
+        if risk >= 75 and i % 4:
+            improvement -= 4
+        v2 = clamp_score(v1 + improvement, 40, 96)
+        v1_state = semaforo_from_score(v1)
+        v2_state = semaforo_from_score(v2)
+        docentes.append({
+            'nombre': name,
+            'grado': f'{(i % 6) + 1} grado',
+            'area': STUDENT_AREAS[i % len(STUDENT_AREAS)],
+            'visita1': {
+                'label': 'Visita 1 - Diagnostico',
+                'score': v1,
+                'estado_excel': v1_state['excel_value'],
+                'semaforo': v1_state,
+            },
+            'visita2': {
+                'label': 'Visita 2 - Seguimiento',
+                'score': v2,
+                'estado_excel': v2_state['excel_value'],
+                'semaforo': v2_state,
+            },
+            'delta': v2 - v1,
+            'necesita_refuerzo': v2_state['excel_value'] != 'bueno',
+        })
+
+    if risk >= 75:
+        promoted = 0
+        for docente in docentes:
+            if promoted >= 2:
+                break
+            if docente['visita1']['estado_excel'] == 'bajo rendimiento':
+                new_score = 76 + promoted * 3
+                docente['visita2']['score'] = new_score
+                docente['visita2']['semaforo'] = semaforo_from_score(new_score)
+                docente['visita2']['estado_excel'] = docente['visita2']['semaforo']['excel_value']
+                docente['delta'] = new_score - docente['visita1']['score']
+                docente['necesita_refuerzo'] = False
+                promoted += 1
+
+    needs = sum(1 for docente in docentes if docente['necesita_refuerzo'])
+    critical_v1 = [d for d in docentes if d['visita1']['estado_excel'] == 'bajo rendimiento']
+    critical_to_stable = [
+        d for d in critical_v1
+        if d['visita2']['estado_excel'] == 'bueno'
+    ]
+    ieap = round(len(critical_to_stable) / len(critical_v1) * 100) if critical_v1 else 0
+    return {
+        'resumen': {
+            'total': len(docentes),
+            'necesitan_refuerzo': needs,
+            'estables': len(docentes) - needs,
+            'critico_a_estable': len(critical_to_stable),
+            'criticos_iniciales': len(critical_v1),
+            'ieap': ieap,
+        },
+        'items': docentes,
+    }
+
+def build_infra_sheet(row, idx):
+    risk = safe_float(row.get('risk_score'), 0)
+    seed = seed_from_row(row, 80 + idx * 13)
+    items = []
+    for i, category in enumerate(INFRA_CATEGORIES):
+        v1 = clamp_score(82 - (risk * 0.45) + ((seed + i * 9) % 18) - 8, 32, 92)
+        v2 = clamp_score(v1 + 8 + ((seed + i * 5) % 18), 38, 98)
+        semaforo = semaforo_from_score(v2)
+        items.append({
+            'categoria': category,
+            'visita1': v1,
+            'visita2': v2,
+            'delta': v2 - v1,
+            'estado_excel': semaforo['excel_value'],
+            'semaforo': semaforo,
+            'observacion': (
+                'Requiere accion de gestion' if semaforo['status_key'] == 'danger'
+                else 'Mantener seguimiento' if semaforo['status_key'] == 'warning'
+                else 'Condicion adecuada'
+            ),
+        })
+
+    if any(i['semaforo']['status_key'] == 'danger' for i in items):
+        overall = semaforo_from_color('rojo')
+    elif any(i['semaforo']['status_key'] == 'warning' for i in items):
+        overall = semaforo_from_color('amarillo')
+    else:
+        overall = semaforo_from_color('verde')
+
+    return {
+        'resumen': {
+            'estado': overall,
+            'brechas_criticas': sum(1 for i in items if i['semaforo']['status_key'] == 'danger'),
+            'brechas_en_alerta': sum(1 for i in items if i['semaforo']['status_key'] == 'warning'),
+            'componentes_estables': sum(1 for i in items if i['semaforo']['status_key'] == 'ok'),
+        },
+        'items': items,
+    }
+
+def build_student_sheet(row, idx):
+    risk = safe_float(row.get('risk_score'), 0)
+    seed = seed_from_row(row, 140 + idx * 17)
+    items = []
+    for i, area in enumerate(STUDENT_AREAS):
+        v1 = clamp_score(78 - (risk * 0.42) + ((seed + i * 13) % 20) - 8, 34, 90)
+        v2 = clamp_score(v1 + 9 + ((seed + i * 6) % 15), 42, 97)
+        semaforo = semaforo_from_score(v2)
+        items.append({
+            'area': area,
+            'visita1': v1,
+            'visita2': v2,
+            'delta': v2 - v1,
+            'estado_excel': semaforo['excel_value'],
+            'semaforo': semaforo,
+        })
+
+    avg_v1 = round(sum(i['visita1'] for i in items) / len(items))
+    avg_v2 = round(sum(i['visita2'] for i in items) / len(items))
+    return {
+        'resumen': {
+            'promedio_visita1': avg_v1,
+            'promedio_visita2': avg_v2,
+            'mejora': avg_v2 - avg_v1,
+            'estado': semaforo_from_score(avg_v2),
+        },
+        'items': items,
+    }
+
+def build_progress_sheet(row, idx):
+    risk = safe_float(row.get('risk_score'), 0)
+    seed = seed_from_row(row, 210 + idx * 23)
+    categories = []
+    for i, category in enumerate(RADAR_CATEGORIES):
+        v1 = clamp_score(79 - (risk * 0.38) + ((seed + i * 8) % 17) - 7, 36, 90)
+        v2 = clamp_score(v1 + 10 + ((seed + i * 4) % 16), 44, 98)
+        categories.append({
+            'categoria': category,
+            'visita1': v1,
+            'visita2': v2,
+            'delta': v2 - v1,
+        })
+
+    avg_v1 = round(sum(c['visita1'] for c in categories) / len(categories))
+    avg_v2 = round(sum(c['visita2'] for c in categories) / len(categories))
+    brecha_v1 = 26 + (seed % 18) + int(risk / 6)
+    brecha_v2 = max(6, brecha_v1 - (9 + (seed % 12)))
+    rtbg = round((brecha_v1 - brecha_v2) / brecha_v1 * 100)
+    return {
+        'resumen': {
+            'promedio_visita1': avg_v1,
+            'promedio_visita2': avg_v2,
+            'mejora': avg_v2 - avg_v1,
+            'dias_brecha_visita1': brecha_v1,
+            'dias_brecha_visita2': brecha_v2,
+            'rtbg': rtbg,
+        },
+        'radar': categories,
+    }
+
+def build_excel_dashboard(scored):
+    rows = scored[:8]
+    institutions = []
+    for idx, row in enumerate(rows):
+        item = dict(row)
+        docentes = build_teacher_sheet(item, idx)
+        infraestructura = build_infra_sheet(item, idx)
+        alumnos = build_student_sheet(item, idx)
+        progreso = build_progress_sheet(item, idx)
+
+        item.update({
+            'docentes': docentes,
+            'infraestructura': infraestructura,
+            'alumnos': alumnos,
+            'progreso': progreso,
+            'kpis': {
+                'ieap': docentes['resumen']['ieap'],
+                'rtbg': progreso['resumen']['rtbg'],
+                'docentes_refuerzo': docentes['resumen']['necesitan_refuerzo'],
+                'infra_estado': infraestructura['resumen']['estado'],
+                'alumnos_estado': alumnos['resumen']['estado'],
+            },
+        })
+        institutions.append(item)
+
+    return {
+        'source': 'demo',
+        'sheets': ['Docentes', 'Infraestructura', 'Alumnos', 'Progreso comparativo'],
+        'selected_codigo': institutions[0]['codigo_modular'] if institutions else None,
+        'semaforo': SEMAFORO_PEDAGOGICO,
+        'instituciones': institutions,
+        'definition': {
+            'ieap': 'Porcentaje de docentes que pasan de Critico en Visita 1 a Estable en Visita 2.',
+            'rtbg': 'Reduccion porcentual de dias para cerrar brechas de gestion entre visita diagnostica y seguimiento.',
+        },
+    }
+
 # ─── HEALTH / API INDEX ───────────────────────────────────────────────────────
 
 @app.route('/', methods=['GET'])
+def frontend_index():
+    return send_from_directory(str(ROOT), 'index.html')
+
+
+@app.route('/sw.js', methods=['GET'])
+def service_worker():
+    return send_from_directory(str(ROOT), 'sw.js')
+
+
+@app.route('/logo/<path:filename>', methods=['GET'])
+def logo_assets(filename):
+    return send_from_directory(str(ROOT / 'logo'), filename)
+
+
 @app.route('/api', methods=['GET'])
 def api_index():
+    azure_endpoint, azure_key = get_azure_config()
     return jsonify({
         'service': 'SUGKA LAB API',
         'status': 'ok',
-        'frontend_url': 'http://localhost:8080',
+        'frontend_url': request.host_url.rstrip('/'),
+        'ocr_status': {
+            'azure_configured': bool(azure_endpoint and azure_key),
+            'gemini_configured': bool(os.getenv("GEMINI_API_KEY", "")),
+            'fallback': 'windows_ocr',
+        },
         'endpoints': {
             'dashboard': '/api/dashboard',
             'especialistas': '/api/especialistas',
+            'usuarios': '/api/usuarios',
+            'instrumentos': '/api/instrumentos',
+            'preguntas_dinamicas': '/api/instrumentos/dinamico/preguntas',
+            'ficha_vacia_pdf': '/api/ficha-vacia/pdf',
             'instituciones': '/api/instituciones',
             'alertas': '/api/alertas',
             'fichas': '/api/fichas',
@@ -406,38 +2185,368 @@ def api_index():
 
 @app.route('/api/especialistas', methods=['GET'])
 def get_especialistas():
+    ensure_db_schema()
     conn = get_db()
     rows = conn.execute(
         'SELECT especialista_id, nombre, rol_inferido, total_fichas_simon, total_documentos_campo '
         'FROM dim_especialista ORDER BY nombre'
     ).fetchall()
     conn.close()
-    result = []
-    for r in rows:
-        d = dict(r)
-        # Demo PIN = first 4 chars of hash after 'esp_'
-        d['pin_hint'] = d['especialista_id'].replace('esp_', '')[:4]
-        result.append(d)
-    return jsonify(result)
+    return jsonify(rows_to_list(rows))
+
+@app.route('/api/usuarios', methods=['GET', 'POST'])
+def usuarios():
+    ensure_db_schema()
+    conn = get_db()
+    try:
+        if request.method == 'GET':
+            rows = conn.execute('''
+                SELECT u.*, e.rol_inferido AS especialidad
+                FROM app_user u
+                LEFT JOIN dim_especialista e ON u.especialista_id = e.especialista_id
+                ORDER BY
+                    CASE WHEN u.rol = 'administrador' THEN 0 ELSE 1 END,
+                    u.nombre
+            ''').fetchall()
+            return jsonify([public_user(r) for r in rows])
+
+        data = request.get_json() or {}
+        password = str(data.get('password') or '').strip()
+        if len(password) < 4:
+            return jsonify({'error': 'La contraseña debe tener al menos 4 caracteres.'}), 400
+
+        try:
+            user = create_app_user(
+                conn,
+                nombre=data.get('nombre', ''),
+                username=data.get('username') or data.get('email') or data.get('correo') or '',
+                email=data.get('email') or data.get('correo') or '',
+                password=password,
+                rol=data.get('rol', 'especialista'),
+                especialista_id=data.get('especialista_id') or None,
+                activo=data.get('activo', 1),
+            )
+            conn.commit()
+            return jsonify({'success': True, 'user': public_user(user)})
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            return jsonify({'error': 'Ese usuario ya existe.'}), 400
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({'error': str(exc)}), 400
+    finally:
+        conn.close()
+
+@app.route('/api/usuarios/<user_id>', methods=['PUT'])
+def actualizar_usuario(user_id):
+    ensure_db_schema()
+    data = request.get_json() or {}
+    conn = get_db()
+    try:
+        user = conn.execute('SELECT * FROM app_user WHERE user_id = ?', (user_id,)).fetchone()
+        if not user:
+            return jsonify({'error': 'Usuario no encontrado.'}), 404
+
+        updates = []
+        params = []
+        for key in ('nombre', 'username', 'email', 'especialista_id'):
+            if key in data:
+                updates.append(f'{key} = ?')
+                value = data.get(key)
+                params.append(str(value).strip().lower() if key in ('username', 'email') else (value or None))
+        if 'rol' in data:
+            updates.append('rol = ?')
+            params.append(normalize_role(data.get('rol')))
+        if 'activo' in data:
+            new_active = 1 if data.get('activo') else 0
+            if user['rol'] == 'administrador' and new_active == 0:
+                active_admins = conn.execute(
+                    "SELECT COUNT(*) FROM app_user WHERE rol = 'administrador' AND activo = 1"
+                ).fetchone()[0]
+                if active_admins <= 1:
+                    return jsonify({'error': 'Debe quedar al menos un administrador activo.'}), 400
+            updates.append('activo = ?')
+            params.append(new_active)
+
+        if not updates:
+            return jsonify({'success': True, 'user': public_user(user)})
+
+        updates.append('actualizado_en = CURRENT_TIMESTAMP')
+        params.append(user_id)
+        conn.execute(f'UPDATE app_user SET {", ".join(updates)} WHERE user_id = ?', params)
+        conn.commit()
+        updated = conn.execute('SELECT * FROM app_user WHERE user_id = ?', (user_id,)).fetchone()
+        return jsonify({'success': True, 'user': public_user(updated)})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'Ese usuario ya existe.'}), 400
+    finally:
+        conn.close()
+
+@app.route('/api/usuarios/<user_id>/password', methods=['PUT'])
+def cambiar_password_usuario(user_id):
+    ensure_db_schema()
+    data = request.get_json() or {}
+    password = str(data.get('password') or '').strip()
+    if len(password) < 4:
+        return jsonify({'error': 'La contraseña debe tener al menos 4 caracteres.'}), 400
+
+    conn = get_db()
+    try:
+        user = conn.execute('SELECT * FROM app_user WHERE user_id = ?', (user_id,)).fetchone()
+        if not user:
+            return jsonify({'error': 'Usuario no encontrado.'}), 404
+
+        salt, digest = hash_password(password)
+        conn.execute('''
+            UPDATE app_user
+            SET password_salt = ?, password_hash = ?, actualizado_en = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+        ''', (salt, digest, user_id))
+        conn.commit()
+        updated = conn.execute('SELECT * FROM app_user WHERE user_id = ?', (user_id,)).fetchone()
+        return jsonify({'success': True, 'user': public_user(updated)})
+    finally:
+        conn.close()
+
+# ─── INSTRUMENTOS / PREGUNTAS ────────────────────────────────────────────────
+
+@app.route('/api/instrumentos', methods=['GET'])
+def get_instrumentos():
+    ensure_db_schema()
+    conn = get_db()
+    try:
+        rows = conn.execute('''
+            SELECT *
+            FROM app_instrumento
+            WHERE activo = 1
+            ORDER BY CASE tipo WHEN 'fija' THEN 0 ELSE 1 END, nombre
+        ''').fetchall()
+        instrumentos = []
+        for row in rows:
+            instrumentos.append(build_instrument_payload(conn, row))
+        return jsonify(instrumentos)
+    finally:
+        conn.close()
+
+@app.route('/api/instrumentos/dinamico/preguntas', methods=['GET', 'POST'])
+def preguntas_dinamicas():
+    ensure_db_schema()
+    conn = get_db()
+    try:
+        payload = dynamic_questions_payload(conn)
+        if not payload:
+            return jsonify({'error': 'No hay instrumento dinámico activo.'}), 404
+
+        if request.method == 'GET':
+            return jsonify(payload)
+
+        data = request.get_json() or {}
+        instrumento_id = payload['instrumento']['instrumento_id']
+        seccion_id = safe_int(data.get('seccion_id'), 0)
+        codigo = normalize_question_code(data.get('codigo'))
+        item = str(data.get('item') or '').strip()
+        niveles = normalize_levels_payload(data.get('niveles'))
+        activo = 1 if data.get('activo', 1) else 0
+
+        if not seccion_id or not codigo or not item:
+            return jsonify({'error': 'Sección, código e ítem son obligatorios.'}), 400
+        if any(not value for value in niveles.values()):
+            return jsonify({'error': 'Completa la descripción de los cuatro niveles.'}), 400
+
+        section = conn.execute('''
+            SELECT *
+            FROM app_instrumento_seccion
+            WHERE instrumento_id = ? AND seccion_id = ?
+        ''', (instrumento_id, seccion_id)).fetchone()
+        if not section:
+            return jsonify({'error': 'La sección seleccionada no pertenece al instrumento dinámico.'}), 400
+
+        exists = conn.execute('''
+            SELECT 1
+            FROM app_instrumento_pregunta
+            WHERE instrumento_id = ? AND UPPER(codigo) = UPPER(?)
+            LIMIT 1
+        ''', (instrumento_id, codigo)).fetchone()
+        if exists:
+            return jsonify({'error': 'Ya existe una pregunta dinámica con ese código.'}), 400
+
+        order_row = conn.execute('''
+            SELECT COALESCE(MAX(orden), 0) + 1 AS next_order
+            FROM app_instrumento_pregunta
+            WHERE instrumento_id = ? AND seccion_id = ?
+        ''', (instrumento_id, seccion_id)).fetchone()
+        next_order = safe_int(order_row['next_order'], 1) if order_row else 1
+
+        cursor = conn.execute('''
+            INSERT INTO app_instrumento_pregunta (
+                instrumento_id, seccion_id, codigo, item, tipo_respuesta,
+                niveles_json, opciones_json, orden, activo
+            )
+            VALUES (?, ?, ?, ?, 'nivel', ?, ?, ?, ?)
+        ''', (
+            instrumento_id,
+            seccion_id,
+            codigo,
+            item,
+            json_dumps(niveles),
+            json_dumps({}),
+            next_order,
+            activo,
+        ))
+        sync_instrument_structure_json(conn, instrumento_id)
+        conn.commit()
+        updated = dynamic_questions_payload(conn)
+        question = next(
+            (q for q in updated['preguntas'] if q['pregunta_id'] == cursor.lastrowid),
+            None,
+        )
+        return jsonify({'success': True, 'pregunta': question, 'data': updated})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'No se pudo guardar la pregunta dinámica.'}), 400
+    finally:
+        conn.close()
+
+@app.route('/api/instrumentos/dinamico/preguntas/<int:pregunta_id>', methods=['PUT', 'DELETE'])
+def pregunta_dinamica_detalle(pregunta_id):
+    ensure_db_schema()
+    conn = get_db()
+    try:
+        instrument = get_dynamic_instrument_row(conn)
+        if not instrument:
+            return jsonify({'error': 'No hay instrumento dinámico activo.'}), 404
+
+        question = conn.execute('''
+            SELECT *
+            FROM app_instrumento_pregunta
+            WHERE pregunta_id = ? AND instrumento_id = ?
+        ''', (pregunta_id, instrument['instrumento_id'])).fetchone()
+        if not question:
+            return jsonify({'error': 'Pregunta dinámica no encontrada.'}), 404
+
+        if request.method == 'DELETE':
+            conn.execute('DELETE FROM app_instrumento_pregunta WHERE pregunta_id = ?', (pregunta_id,))
+            sync_instrument_structure_json(conn, instrument['instrumento_id'])
+            conn.commit()
+            return jsonify({'success': True, 'deleted_id': pregunta_id, 'data': dynamic_questions_payload(conn)})
+
+        data = request.get_json() or {}
+        seccion_id = safe_int(data.get('seccion_id', question['seccion_id']), question['seccion_id'])
+        codigo = normalize_question_code(data.get('codigo', question['codigo']))
+        item = str(data.get('item', question['item']) or '').strip()
+        niveles = normalize_levels_payload(data.get('niveles', json_loads(question['niveles_json'], {})))
+        activo = 1 if data.get('activo', question['activo']) else 0
+
+        if not seccion_id or not codigo or not item:
+            return jsonify({'error': 'Sección, código e ítem son obligatorios.'}), 400
+        if any(not value for value in niveles.values()):
+            return jsonify({'error': 'Completa la descripción de los cuatro niveles.'}), 400
+
+        section = conn.execute('''
+            SELECT *
+            FROM app_instrumento_seccion
+            WHERE instrumento_id = ? AND seccion_id = ?
+        ''', (instrument['instrumento_id'], seccion_id)).fetchone()
+        if not section:
+            return jsonify({'error': 'La sección seleccionada no pertenece al instrumento dinámico.'}), 400
+
+        exists = conn.execute('''
+            SELECT 1
+            FROM app_instrumento_pregunta
+            WHERE instrumento_id = ? AND UPPER(codigo) = UPPER(?) AND pregunta_id != ?
+            LIMIT 1
+        ''', (instrument['instrumento_id'], codigo, pregunta_id)).fetchone()
+        if exists:
+            return jsonify({'error': 'Ya existe una pregunta dinámica con ese código.'}), 400
+
+        conn.execute('''
+            UPDATE app_instrumento_pregunta
+            SET seccion_id = ?, codigo = ?, item = ?, niveles_json = ?, activo = ?
+            WHERE pregunta_id = ? AND instrumento_id = ?
+        ''', (
+            seccion_id,
+            codigo,
+            item,
+            json_dumps(niveles),
+            activo,
+            pregunta_id,
+            instrument['instrumento_id'],
+        ))
+        sync_instrument_structure_json(conn, instrument['instrumento_id'])
+        conn.commit()
+        updated = dynamic_questions_payload(conn)
+        saved = next((q for q in updated['preguntas'] if q['pregunta_id'] == pregunta_id), None)
+        return jsonify({'success': True, 'pregunta': saved, 'data': updated})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'No se pudo actualizar la pregunta dinámica.'}), 400
+    finally:
+        conn.close()
+
+@app.route('/api/ficha-vacia/pdf', methods=['GET'])
+def ficha_vacia_pdf():
+    ensure_db_schema()
+    conn = get_db()
+    try:
+        rows = conn.execute('''
+            SELECT *
+            FROM app_instrumento
+            WHERE activo = 1
+            ORDER BY CASE tipo WHEN 'fija' THEN 0 ELSE 1 END, nombre
+        ''').fetchall()
+        instrumentos = [build_instrument_payload(conn, row) for row in rows]
+        pdf_buffer = build_empty_ficha_pdf(instrumentos)
+        return send_file(
+            pdf_buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name='ficha_monitoreo_vacia_sugka.pdf',
+        )
+    finally:
+        conn.close()
 
 @app.route('/api/login', methods=['POST'])
 def login():
+    ensure_db_schema()
     data = request.get_json() or {}
-    esp_id = data.get('especialista_id', '')
-    pin    = data.get('pin', '')
+    username = str(data.get('username') or data.get('usuario') or data.get('email') or '').strip().lower()
+    password = str(data.get('password') or data.get('clave') or data.get('pin') or '')
 
     conn = get_db()
-    esp  = conn.execute('SELECT * FROM dim_especialista WHERE especialista_id = ?', (esp_id,)).fetchone()
-    conn.close()
+    try:
+        user = conn.execute(
+            '''
+            SELECT * FROM app_user
+            WHERE LOWER(username) = LOWER(?) OR LOWER(COALESCE(email, '')) = LOWER(?)
+            ''',
+            (username, username),
+        ).fetchone()
 
-    if not esp:
-        return jsonify({'error': 'Especialista no encontrado'}), 401
+        if not user or not user['activo']:
+            return jsonify({'error': 'Usuario no encontrado o inactivo. Contacte con el administrador.'}), 401
 
-    expected = esp_id.replace('esp_', '')[:4]
-    if pin != expected:
-        return jsonify({'error': 'PIN incorrecto'}), 401
+        if not verify_password(password, user['password_salt'], user['password_hash']):
+            return jsonify({'error': 'Contraseña incorrecta. Si la olvidaste, contacte con el administrador.'}), 401
 
-    return jsonify({'success': True, 'especialista': dict(esp), 'token': f'demo_{esp_id}'})
+        public = public_user(user)
+        public['rol_inferido'] = public['rol_label']
+        public['rol'] = normalize_role(user['rol'])
+
+        if user['especialista_id']:
+            esp = conn.execute(
+                'SELECT * FROM dim_especialista WHERE especialista_id = ?',
+                (user['especialista_id'],)
+            ).fetchone()
+            if esp:
+                public['especialista'] = dict(esp)
+                public['especialidad'] = esp['rol_inferido']
+                public['total_fichas_simon'] = esp['total_fichas_simon']
+                public['total_documentos_campo'] = esp['total_documentos_campo']
+
+        return jsonify({'success': True, 'user': public, 'especialista': public, 'token': f'demo_{user["user_id"]}'})
+    finally:
+        conn.close()
 
 # ─── INSTITUCIONES ────────────────────────────────────────────────────────────
 
@@ -483,6 +2592,7 @@ def get_instituciones():
 @app.route('/api/alertas', methods=['GET'])
 def get_alertas():
     cm   = request.args.get('codigo_modular')
+    limit = min(max(safe_int(request.args.get('limit'), 60), 1), 1000)
     conn = get_db()
     if cm:
         rows = conn.execute('''
@@ -500,8 +2610,8 @@ def get_alertas():
             LEFT JOIN dim_alerta_categoria c ON a.alerta_codigo = c.alerta_codigo
             LEFT JOIN dim_institucion      i ON a.codigo_modular = i.codigo_modular
             WHERE a.estado = 'pendiente'
-            ORDER BY a.score DESC LIMIT 60
-        ''').fetchall()
+            ORDER BY a.score DESC LIMIT ?
+        ''', (limit,)).fetchall()
     conn.close()
     return jsonify(rows_to_list(rows))
 
@@ -509,6 +2619,7 @@ def get_alertas():
 
 @app.route('/api/dashboard', methods=['GET'])
 def get_dashboard():
+    ensure_db_schema()
     conn = get_db()
 
     total_ies        = conn.execute('SELECT COUNT(*) FROM dim_institucion').fetchone()[0]
@@ -522,7 +2633,7 @@ def get_dashboard():
                r.priority_score, r.coverage_category, r.total_alertas_campo,
                r.alertas_infraestructura_campo, r.alertas_pedagogicas_campo,
                r.campo_documentos, r.simon_fichas, r.simon_promedio_nivel,
-               r.priority_reason
+               r.priority_reason, r.risk_score_infra, r.risk_flags
         FROM institucion_resumen r
         JOIN dim_institucion i ON r.codigo_modular = i.codigo_modular
         ORDER BY r.priority_score DESC LIMIT 20
@@ -549,7 +2660,9 @@ def get_dashboard():
                COALESCE(r.campo_documentos, 0) AS campo_documentos,
                COALESCE(r.simon_fichas, 0) AS simon_fichas,
                COALESCE(r.simon_promedio_nivel, 0) AS simon_promedio_nivel,
-               COALESCE(r.priority_reason, '') AS priority_reason
+               COALESCE(r.priority_reason, '') AS priority_reason,
+               COALESCE(r.risk_score_infra, 0) AS risk_score_infra,
+               COALESCE(r.risk_flags, '') AS risk_flags
         FROM dim_institucion i
         LEFT JOIN institucion_resumen r ON i.codigo_modular = r.codigo_modular
     ''').fetchall()
@@ -576,48 +2689,51 @@ def get_dashboard():
     ''').fetchone()
 
     actual_fichas = safe_int(ficha_stats['total'], 0) if ficha_stats else 0
-    demo_mode = actual_fichas == 0
-    fichas_recolectadas = actual_fichas or 48
+    demo_mode = False
+    fichas_recolectadas = actual_fichas
     ocr_total = safe_int(ficha_stats['ocr_total'], 0) if ficha_stats else 0
-    ocr_total = ocr_total or (12 if demo_mode else 0)
     promedio_observado = safe_float(ficha_stats['promedio'], 0.0) if ficha_stats else 0.0
-    promedio_observado = promedio_observado or 2.7
     compromisos = safe_int(ficha_stats['compromisos'], 0) if ficha_stats else 0
-    compromisos = compromisos or (19 if demo_mode else 0)
-
-    resultados = [
-        {
-            'area': 'Preparacion para el aprendizaje',
-            'valor': pseudo_percent(total_ies, 68, 14),
-            'estado': 'En observacion',
-            'lectura': 'Fortalecer planificacion curricular y criterios de evaluacion.',
-        },
-        {
-            'area': 'Ensenanza y participacion',
-            'valor': pseudo_percent(alertas_pend, 63, 16),
-            'estado': 'Prioritario',
-            'lectura': 'Acompanamiento focalizado en interacciones y actividades retadoras.',
-        },
-        {
-            'area': 'Retroalimentacion formativa',
-            'valor': pseudo_percent(alertas_altas, 58, 18),
-            'estado': 'Prioritario',
-            'lectura': 'Revisar evidencias y compromisos del monitoreado.',
-        },
-        {
-            'area': 'Clima y convivencia',
-            'valor': pseudo_percent(especialistas, 72, 12),
-            'estado': 'Estable',
-            'lectura': 'Mantener seguimiento regular y deteccion temprana.',
-        },
-    ]
+    infra_stats = conn.execute('''
+        SELECT
+            COUNT(*) AS total_ie,
+            SUM(CASE WHEN risk_score_infra >= 5 THEN 1 ELSE 0 END) AS criticas,
+            SUM(CASE WHEN risk_score_infra >= 3 AND risk_score_infra < 5 THEN 1 ELSE 0 END) AS en_alerta,
+            AVG(risk_score_infra) AS promedio_score,
+            SUM(CASE WHEN edificaciones_riesgo > 0 THEN 1 ELSE 0 END) AS edificaciones_riesgo,
+            SUM(CASE WHEN aulas_en_uso = 0 THEN 1 ELSE 0 END) AS sin_aulas_en_uso,
+            SUM(alertas_infraestructura_campo) AS alertas_infraestructura
+        FROM infraestructura_censo_2025
+    ''').fetchone()
+    infra_summary = {
+        'total_ie': safe_int(infra_stats['total_ie'], 0) if infra_stats else 0,
+        'criticas': safe_int(infra_stats['criticas'], 0) if infra_stats else 0,
+        'en_alerta': safe_int(infra_stats['en_alerta'], 0) if infra_stats else 0,
+        'promedio_score': round(safe_float(infra_stats['promedio_score'], 0.0), 2) if infra_stats else 0.0,
+        'edificaciones_riesgo': safe_int(infra_stats['edificaciones_riesgo'], 0) if infra_stats else 0,
+        'sin_aulas_en_uso': safe_int(infra_stats['sin_aulas_en_uso'], 0) if infra_stats else 0,
+        'alertas_infraestructura': safe_int(infra_stats['alertas_infraestructura'], 0) if infra_stats else 0,
+    }
+    resultados = build_simon_indicator_results(conn)
+    docentes_refuerzo_total = conn.execute('''
+        SELECT COUNT(*) AS total
+        FROM fichas_monitoreo
+        WHERE promedio > 0 AND promedio < 3
+    ''').fetchone()[0]
+    item_critico = sorted(
+        resultados,
+        key=lambda item: (safe_int(item.get('bajo_nivel'), 0), -safe_float(item.get('promedio'), 0)),
+        reverse=True,
+    )[0] if resultados else {}
 
     acciones_recomendadas = [
-        'Atender primero las IEs en riesgo Critico y Alto.',
-        'Cruzar cada alerta con ficha OCR/SIMON antes de cerrar el caso.',
-        'Registrar compromisos del monitoreado y revisar avance en la siguiente visita.',
-        'Usar el score como priorizador, no como sentencia definitiva.',
+        'Atender primero docentes con promedio SIMON menor a Nivel III.',
+        'Priorizar IEs con risk_score_infra alto o riesgo estructural censal.',
+        'Programar Visita 2 para calcular mejora real e IEAP.',
+        'Revisar los item con mayor concentracion de Nivel I y II.',
     ]
+
+    excel_dashboard = build_real_simon_dashboard(conn, scored)
 
     conn.close()
     return jsonify({
@@ -634,6 +2750,9 @@ def get_dashboard():
         'top_riesgo': top_riesgo,
         'risk_model': RISK_MODEL,
         'alert_rules': ALERT_RULES,
+        'infra_definitions': INFRA_DEFINITIONS,
+        'infraestructura_censo': infra_summary,
+        'excel_dashboard': excel_dashboard,
         'demo_mode': demo_mode,
         'resultados_recolectados': {
             'fichas_recolectadas': fichas_recolectadas,
@@ -641,6 +2760,14 @@ def get_dashboard():
             'promedio_observado': round(promedio_observado, 2),
             'compromisos_registrados': compromisos,
             'indicadores': resultados,
+            'simon': {
+                'docentes_refuerzo': docentes_refuerzo_total,
+                'promedio_nivel': round(promedio_observado, 2),
+                'item_critico_codigo': item_critico.get('area', ''),
+                'item_critico_brecha': item_critico.get('bajo_nivel', 0),
+                'item_critico_total': item_critico.get('total', 0),
+            },
+            'infraestructura': infra_summary,
             'acciones_recomendadas': acciones_recomendadas,
         },
     })
@@ -650,9 +2777,8 @@ import google.generativeai as genai
 from azure.core.credentials import AzureKeyCredential
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 
-AZURE_ENDPOINT = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "")
-AZURE_KEY = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY", "")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+AZURE_ENDPOINT, AZURE_KEY = get_azure_config()
+GEMINI_KEY = get_gemini_key()
 
 if GEMINI_KEY:
     genai.configure(api_key=GEMINI_KEY)
@@ -670,11 +2796,12 @@ def extract_with_python(file_bytes):
     return text.strip()
 
 def extract_with_azure(file_bytes, content_type='application/octet-stream'):
-    if not AZURE_ENDPOINT or not AZURE_KEY:
+    endpoint, key = get_azure_config()
+    if not endpoint or not key:
         print("Azure OCR no configurado: define AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT y AZURE_DOCUMENT_INTELLIGENCE_KEY.")
         return ""
     try:
-        client = DocumentIntelligenceClient(endpoint=AZURE_ENDPOINT, credential=AzureKeyCredential(AZURE_KEY))
+        client = DocumentIntelligenceClient(endpoint=endpoint, credential=AzureKeyCredential(key))
         poller = client.begin_analyze_document(
             "prebuilt-read",
             file_bytes,
@@ -685,6 +2812,77 @@ def extract_with_azure(file_bytes, content_type='application/octet-stream'):
     except Exception as e:
         print(f"Error Azure: {e}")
         return ""
+
+def extract_with_windows_ocr(file_bytes, filename='documento.jpeg'):
+    suffix = Path(filename or 'documento.jpeg').suffix or '.jpeg'
+    temp_path = None
+    script_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(file_bytes)
+            temp_path = Path(tmp.name)
+
+        ps_path = str(temp_path).replace("'", "''")
+        script = f"""
+$imagePath = '{ps_path}'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Storage.StorageFile, Windows.Storage, ContentType=WindowsRuntime]
+$null = [Windows.Storage.FileAccessMode, Windows.Storage, ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.SoftwareBitmap, Windows.Graphics.Imaging, ContentType=WindowsRuntime]
+$null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType=WindowsRuntime]
+$null = [Windows.Globalization.Language, Windows.Globalization, ContentType=WindowsRuntime]
+function AwaitOperation($Operation, $ResultType) {{
+  $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {{ $_.Name -eq 'AsTask' -and $_.IsGenericMethod -and $_.GetParameters().Count -eq 1 }})[0]
+  $task = $asTask.MakeGenericMethod($ResultType).Invoke($null, @($Operation))
+  $task.Wait() | Out-Null
+  $task.Result
+}}
+$file = AwaitOperation ([Windows.Storage.StorageFile]::GetFileFromPathAsync($imagePath)) ([Windows.Storage.StorageFile])
+$stream = AwaitOperation ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+$decoder = AwaitOperation ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+$bitmap = AwaitOperation ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+$engine = $null
+foreach ($tag in @('es-ES','es-MX')) {{
+  $lang = [Windows.Globalization.Language]::new($tag)
+  $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
+  if ($null -ne $engine) {{ break }}
+}}
+if ($null -eq $engine) {{ $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }}
+if ($null -eq $engine) {{ throw 'Windows OCR no tiene idiomas disponibles.' }}
+$result = AwaitOperation ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+$result.Text
+"""
+        with tempfile.NamedTemporaryFile('w', delete=False, suffix='.ps1', encoding='utf-8-sig') as ps_file:
+            ps_file.write(script)
+            script_path = Path(ps_file.name)
+
+        result = subprocess.run(
+            ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script_path)],
+            text=True,
+            capture_output=True,
+            timeout=45,
+            encoding='utf-8',
+            errors='replace',
+        )
+        if result.returncode != 0:
+            print(f"Error Windows OCR: {result.stderr.strip()}")
+            return ""
+        return re.sub(r'\s+', ' ', result.stdout).strip()
+    except Exception as e:
+        print(f"Error Windows OCR: {e}")
+        return ""
+    finally:
+        if temp_path:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+        if script_path:
+            try:
+                script_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 def is_pdf_file(filename, mimetype=''):
     lower = (filename or '').lower()
@@ -698,13 +2896,22 @@ def extract_text_from_upload(file_storage):
     if is_pdf_file(filename, mimetype):
         text = extract_with_python(file_bytes)
         if len(text) >= 100:
-            return text, 'pdfplumber', filename
+            return text, 'pdfplumber', filename, file_bytes, mimetype
         print("Usando Azure OCR como fallback para PDF...")
         text = extract_with_azure(file_bytes, mimetype)
-        return text, 'azure', filename
+        return text, 'azure', filename, file_bytes, mimetype
 
     text = extract_with_azure(file_bytes, mimetype)
-    return text, 'azure', filename
+    if len(text) >= 50:
+        return text, 'azure', filename, file_bytes, mimetype
+
+    print("Usando Windows OCR como fallback para imagen...")
+    local_text = extract_with_windows_ocr(file_bytes, filename)
+    if local_text:
+        method = 'windows_ocr' if not text else 'azure+windows_ocr'
+        return local_text, method, filename, file_bytes, mimetype
+
+    return text, 'azure', filename, file_bytes, mimetype
 
 FORM_LABELS = {
     'REGIÓN', 'REGION', 'UGEL', 'I.E.', 'IE', 'NIVEL/MODALIDAD', 'DIRECTOR(A)',
@@ -903,7 +3110,7 @@ def parse_ficha_from_text(text):
     return parsed
 
 def process_with_gemini(text):
-    if not GEMINI_KEY:
+    if not get_gemini_key():
         print("Gemini no configurado: define GEMINI_API_KEY.")
         return None
 
@@ -986,6 +3193,98 @@ def process_with_gemini(text):
         print(f"Error Gemini JSON: {e}, Raw: {raw}")
         return None
 
+def process_images_with_gemini(files_payload):
+    if not get_gemini_key():
+        print("Gemini Vision no configurado: define GEMINI_API_KEY.")
+        return None
+
+    image_parts = [
+        {
+            'mime_type': item.get('mimetype') or 'image/jpeg',
+            'data': item.get('bytes') or b'',
+        }
+        for item in files_payload
+        if not is_pdf_file(item.get('filename', ''), item.get('mimetype', ''))
+    ]
+    image_parts = [part for part in image_parts if part['data']]
+    if not image_parts:
+        return None
+
+    prompt = """
+    Eres un asistente experto en leer fotos de fichas de monitoreo docente de Peru.
+    Analiza todas las imagenes como paginas de una misma ficha y devuelve solo JSON valido.
+    Lee texto impreso y manuscrito. Extrae marcas X o check en NIVEL I, II, III o IV.
+
+    Usa exactamente estas claves:
+    {
+      "region": "string",
+      "ugel": "string",
+      "n_visita": "string",
+      "fecha_ejecucion": "YYYY-MM-DD",
+      "codigo_modular": "string",
+      "nombre_ie": "string",
+      "nivel_modalidad": "string",
+      "director": "string",
+      "director_cel": "string",
+      "director_email": "string",
+      "director_situacion_laboral": "string",
+      "docente": "string",
+      "docente_dni": "string",
+      "docente_cel": "string",
+      "docente_email": "string",
+      "docente_situacion_laboral": "string",
+      "grado": "string",
+      "seccion": "string",
+      "nro_estudiantes": "entero",
+      "area": "string",
+      "competencia": "string",
+      "titulo_sesion": "string",
+      "monitor": "string",
+      "monitor_dni": "string",
+      "iged": "string",
+      "monitor_email": "string",
+      "a1": "entero (1 al 4)",
+      "a2": "entero (1 al 4)",
+      "a3": "entero (1 al 4)",
+      "b1": "entero (1 al 4)",
+      "b2": "entero (1 al 4)",
+      "b3": "entero (1 al 4)",
+      "b4": "entero (1 al 4)",
+      "b5": "entero (1 al 4)",
+      "a1_observacion": "string",
+      "a2_observacion": "string",
+      "a3_observacion": "string",
+      "b1_observacion": "string",
+      "b2_observacion": "string",
+      "b3_observacion": "string",
+      "b4_observacion": "string",
+      "b5_observacion": "string",
+      "observaciones_recomendaciones": "string",
+      "compromisos_monitoreado": "string"
+    }
+
+    Reglas:
+    - Si no encuentras un dato, usa "" para textos y 0 para numeros.
+    - Convierte NIVEL I, II, III, IV a 1, 2, 3, 4.
+    - No inventes datos fuera de lo visible.
+    - Si hay dos bloques de compromisos, une ambos con salto de linea.
+    - Responde estrictamente JSON, sin markdown.
+    """
+
+    try:
+        model = genai.GenerativeModel(os.getenv('GEMINI_MODEL', 'gemini-1.5-flash'))
+        response = model.generate_content([prompt, *image_parts])
+    except Exception as e:
+        print(f"Error Gemini Vision request: {e}")
+        return None
+
+    raw = response.text.replace('```json', '').replace('```', '').strip()
+    try:
+        return json.loads(raw)
+    except Exception as e:
+        print(f"Error Gemini Vision JSON: {e}, Raw: {raw}")
+        return None
+
 # ─── OCR Y SINCRONIZACIÓN ─────────────────────────────────────────────────────
 
 @app.route('/api/ocr/upload_advanced', methods=['POST'])
@@ -998,21 +3297,29 @@ def ocr_upload_advanced():
     extracted_parts = []
     methods = []
     filenames = []
+    files_payload = []
     for idx, file in enumerate(uploaded_files, start=1):
-        text_part, method, filename = extract_text_from_upload(file)
+        text_part, method, filename, file_bytes, mimetype = extract_text_from_upload(file)
         methods.append(method)
         filenames.append(filename)
+        files_payload.append({
+            'filename': filename,
+            'mimetype': mimetype,
+            'bytes': file_bytes,
+        })
         if text_part:
             extracted_parts.append(f'--- DOCUMENTO {idx}: {filename} ---\n{text_part}')
 
     text = '\n\n'.join(extracted_parts).strip()
     method = '+'.join(sorted(set(methods))) if methods else 'unknown'
 
-    if len(text) < 50:
+    raw_extracted = process_images_with_gemini(files_payload)
+    parser = 'gemini_vision'
+    if not raw_extracted and len(text) >= 50:
+        raw_extracted = process_with_gemini(text)
+        parser = 'gemini'
+    if len(text) < 50 and not raw_extracted:
         return jsonify({'error': 'No se detectó texto en el documento.'}), 400
-
-    raw_extracted = process_with_gemini(text)
-    parser = 'gemini'
     if not raw_extracted:
         raw_extracted = parse_ficha_from_text(text)
         parser = 'fallback_reglas'
@@ -1021,7 +3328,7 @@ def ocr_upload_advanced():
     extracted_data['file_name'] = ' | '.join(filenames)
     extracted_data['extraction_method'] = method
     extracted_data['parser'] = parser
-    extracted_data['confidence'] = 0.95 if method == 'pdfplumber' else (0.78 if parser == 'fallback_reglas' else 0.85)
+    extracted_data['confidence'] = 0.95 if method == 'pdfplumber' else (0.9 if parser == 'gemini_vision' else (0.78 if parser == 'fallback_reglas' else 0.85))
     extracted_data['raw_text'] = text
     extracted_data['extracted_json'] = json.dumps(raw_extracted, ensure_ascii=False)
 
@@ -1054,6 +3361,7 @@ def fichas():
         if request.method == 'POST':
             data = request.get_json() or {}
             ficha = save_ficha_to_db(conn, data)
+            rebuild_simon_operational_summary(conn)
             conn.commit()
             return jsonify({'success': True, 'ficha': ficha})
 
@@ -1080,6 +3388,7 @@ def sync_data():
         for f in data:
             save_ficha_to_db(conn, f)
             inserted += 1
+        rebuild_simon_operational_summary(conn)
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -1099,9 +3408,11 @@ def sync_data():
 
 if __name__ == '__main__':
     ensure_db_schema()
+    port = int(os.getenv('PORT', '8000'))
+    debug = os.getenv('FLASK_DEBUG', '0') == '1'
     print('=' * 50)
     print('  SUGKA LAB API Server')
     print(f'  DB : {DB_PATH}')
-    print('  URL: http://localhost:8000')
+    print(f'  URL: http://localhost:{port}')
     print('=' * 50)
-    app.run(host='0.0.0.0', port=8000, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=debug)

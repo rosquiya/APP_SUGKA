@@ -1,7 +1,8 @@
-const CACHE_NAME = 'sugka-lab-v4';
+const CACHE_NAME = 'sugka-lab-v18';
 const ASSETS = [
   '/',
   '/index.html',
+  '/logo/logo-transparent.png',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css',
