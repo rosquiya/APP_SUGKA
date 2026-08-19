@@ -4,8 +4,10 @@ SUGKA LAB – API Server
 REST API Flask para la aplicacion de gestion educativa UGEL IBIR-IMAZA.
 Puerto: 8000
 """
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file, send_from_directory, g
 from flask_cors import CORS
+from functools import wraps
+import base64
 import hashlib
 import io
 import sqlite3
@@ -14,18 +16,32 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import tempfile
 import unicodedata
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
 app = Flask(__name__)
-CORS(app)
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20MB por request (protege /api/ocr/upload_advanced)
+
+# Orígenes permitidos para CORS. En producción, define ALLOWED_ORIGINS en el
+# entorno con el/los dominios reales del frontend (separados por coma), p.ej.
+# "https://app-sugka.onrender.com". Sin definir, se mantiene abierto (*) para
+# no romper el desarrollo local.
+_allowed_origins = [o.strip() for o in os.getenv('ALLOWED_ORIGINS', '*').split(',') if o.strip()]
+CORS(app, origins=_allowed_origins if _allowed_origins != ['*'] else '*')
+
+@app.errorhandler(413)
+def handle_file_too_large(_e):
+    return jsonify({'error': 'El archivo supera el tamaño máximo permitido (20MB).'}), 413
 
 # Rutas relativas al directorio raíz del proyecto
 ROOT = Path(__file__).parent.parent
-DB_PATH = ROOT / 'data' / 'database' / 'sugka_demo.db'
+SEED_DB_PATH = ROOT / 'data' / 'database' / 'sugka_demo.db'
 GENERIC_EMAIL_DOMAIN = 'ugel-imaza.edu.pe'
 
 def load_local_env():
@@ -44,6 +60,17 @@ def load_local_env():
 
 load_local_env()
 
+# En local, la BD vive en el repo (data/database/sugka_demo.db). En Render,
+# SUGKA_DB_PATH apunta al disco persistente montado (ver render.yaml) --
+# necesario porque el filesystem del contenedor es efimero y sin esto la BD
+# se perderia en cada redeploy. Si el disco esta vacio (primer deploy), se
+# copia una vez la BD semilla del repo para no arrancar sin instituciones,
+# especialistas ni usuarios.
+DB_PATH = Path(os.getenv('SUGKA_DB_PATH') or SEED_DB_PATH)
+if DB_PATH.resolve() != SEED_DB_PATH.resolve() and not DB_PATH.exists() and SEED_DB_PATH.exists():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(SEED_DB_PATH, DB_PATH)
+
 def get_azure_config():
     load_local_env()
     return (
@@ -58,10 +85,149 @@ def get_gemini_key():
         genai.configure(api_key=key)
     return key
 
+def get_openai_key():
+    load_local_env()
+    return os.getenv("OPENAI_API_KEY", "")
+
+# Variables concretas del subproyecto "informes_campo_v3" (ver
+# config/variables_concretas.json en ese subproyecto). Cada variable es una
+# bandera 1/None con evidencia textual obligatoria en span_<variable>; no se
+# calculan puntajes de gravedad/urgencia/confianza -- mismo principio que se
+# uso para no "adivinar" en SIMON.
+CAMPO_CONCRETE_VARIABLES = [
+    'presenta_violencia',
+    'ausencia_docente',
+    'falta_materiales',
+    'infraestructura_deficiente',
+    'riesgo_salud_seguridad',
+    'inasistencia_estudiantes',
+    'eib_no_practicado',
+    'gestion_directiva_debil',
+    'retroalimentacion_debil',
+    'acceso_dificil',
+    'alimentacion_qaliwarma_problema',
+]
+
+# Metadata documentada de cada variable concreta (ver
+# docs/01_diccionario_features.md y config/variables_concretas.json del
+# subproyecto informes_campo_v3). Se usa para: (1) instruir a la IA con el
+# criterio textual exacto en vez de un criterio generico, y (2) mostrarle al
+# especialista, junto a cada hallazgo detectado, por que se marco y que
+# significa -- nunca se calculan puntajes de gravedad/urgencia/confianza.
+# `severidad` es una decision editorial de priorizacion de la app (no algo
+# que la IA infiera del texto).
+CAMPO_VARIABLE_META = {
+    'presenta_violencia': {
+        'label': 'Violencia o conflicto reportado',
+        'criterio': 'Frase con violencia, maltrato, denuncia, agresion, conflicto, bullying o acoso.',
+        'importancia': 'Senal social/institucional que SIMON no observa; puede requerir derivacion a otra instancia.',
+        'ejemplo': 'denuncia de maltrato',
+        'severidad': 'alta',
+    },
+    'ausencia_docente': {
+        'label': 'Ausencia docente',
+        'criterio': 'Frase de no asistio, docente ausente, falta docente, sin docente, plaza vacante.',
+        'importancia': 'Afecta directamente la continuidad del servicio educativo.',
+        'ejemplo': 'presentes 2 de 4 docentes',
+        'severidad': 'alta',
+    },
+    'falta_materiales': {
+        'label': 'Falta de materiales educativos',
+        'criterio': 'Frase de no cuenta con materiales, falta material educativo, sin textos/cuadernos.',
+        'importancia': 'Condicion operativa que limita el aprendizaje aunque el docente tenga buen desempeno.',
+        'ejemplo': 'no llegaron los cuadernos de trabajo',
+        'severidad': 'media',
+    },
+    'infraestructura_deficiente': {
+        'label': 'Infraestructura o servicios deficientes',
+        'criterio': 'Frase de deterioro, inoperatividad, sin agua/luz, SS.HH., aulas/mobiliario en mal estado.',
+        'importancia': 'Se puede cruzar con Censo (P53/P61) para distinguir alerta puntual de condicion estructural conocida.',
+        'ejemplo': 'aula sin techo, mobiliario deteriorado',
+        'severidad': 'media',
+    },
+    'riesgo_salud_seguridad': {
+        'label': 'Riesgo de salud o seguridad',
+        'criterio': 'Frase de riesgo, peligro, seguridad, botiquin, primeros auxilios, condicion sanitaria.',
+        'importancia': 'Variable mas frecuente en la corrida historica (41.9%); prioridad inmediata de acompanamiento.',
+        'ejemplo': 'no presenta plan de gestion de riesgo',
+        'severidad': 'alta',
+    },
+    'inasistencia_estudiantes': {
+        'label': 'Inasistencia de estudiantes',
+        'criterio': 'Frase de inasistencia, estudiantes ausentes, abandono, desercion.',
+        'importancia': 'Alerta temprana de riesgo de desercion, complementaria a la matricula del Censo.',
+        'ejemplo': 'alumnos ausentes de forma reiterada',
+        'severidad': 'media',
+    },
+    'eib_no_practicado': {
+        'label': 'EIB no practicado',
+        'criterio': 'Frase explicita de no uso/no realizacion de actividades EIB o lengua materna.',
+        'importancia': 'Relevante en Imaza por el contexto intercultural de la zona; mide brecha de pertinencia cultural.',
+        'ejemplo': 'no se usa lengua materna en el aula',
+        'severidad': 'media',
+    },
+    'gestion_directiva_debil': {
+        'label': 'Gestion directiva debil',
+        'criterio': 'Frase sobre PEI, PAT, RI, PCI, RD, comites no conformados o documentos ausentes.',
+        'importancia': 'Senala capacidad institucional de la IE, factor que sostiene o debilita cualquier intervencion.',
+        'ejemplo': 'no esta conformado el comite de gestion',
+        'severidad': 'media',
+    },
+    'retroalimentacion_debil': {
+        'label': 'Retroalimentacion pedagogica debil',
+        'criterio': 'Frase de retroalimentacion elemental, no realizada o no reflexiva.',
+        'importancia': 'Punto de triangulacion directo con AR02.3 de SIMON; refuerza o contrasta la senal pedagogica.',
+        'ejemplo': 'retroalimentacion no descriptiva',
+        'severidad': 'media',
+    },
+    'acceso_dificil': {
+        'label': 'Acceso dificil a la IE',
+        'criterio': 'Frase de dificil acceso, rio, trocha, traslado, distancia, llegada tarde por procedencia.',
+        'importancia': 'Explica limitaciones operativas de la UGEL para monitorear con la frecuencia deseada.',
+        'ejemplo': 'se accede solo por rio, 4 horas de traslado',
+        'severidad': 'baja',
+    },
+    'alimentacion_qaliwarma_problema': {
+        'label': 'Problema con alimentacion escolar (Qali Warma)',
+        'criterio': 'Frase que menciona Qali Warma, alimentos o desayuno con problema.',
+        'importancia': 'Afecta condiciones basicas de permanencia escolar, relevante en zona de alta ruralidad.',
+        'ejemplo': 'no llego el desayuno escolar',
+        'severidad': 'media',
+    },
+}
+
+# Como cada IE solo tiene dos "cubetas" operativas historicas (infraestructura
+# y pedagogica), agrupamos las 11 variables concretas de campo en esas dos
+# para alimentar los contadores existentes; el resto (violencia, gestion
+# directiva) entra en la cubeta pedagogica/institucional por ser mas cercana
+# a seguimiento pedagogico-institucional que a infraestructura fisica.
+CAMPO_INFRA_BUCKET = {
+    'infraestructura_deficiente', 'riesgo_salud_seguridad',
+    'acceso_dificil', 'alimentacion_qaliwarma_problema',
+}
+CAMPO_PEDAGOGIC_BUCKET = {
+    'ausencia_docente', 'retroalimentacion_debil', 'eib_no_practicado',
+    'inasistencia_estudiantes', 'falta_materiales', 'gestion_directiva_debil',
+    'presenta_violencia',
+}
+
 def get_db():
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Conexion sqlite3 cacheada en el contexto de la request actual (flask.g).
+
+    Se cierra automaticamente en close_db_connection() al terminar la
+    request, incluso si el handler lanza una excepcion antes de llegar a su
+    propio conn.close() -- eso evita fugas de conexiones bajo carga.
+    """
+    if 'db_conn' not in g:
+        g.db_conn = sqlite3.connect(str(DB_PATH))
+        g.db_conn.row_factory = sqlite3.Row
+    return g.db_conn
+
+@app.teardown_appcontext
+def close_db_connection(_exception=None):
+    conn = g.pop('db_conn', None)
+    if conn is not None:
+        conn.close()
 
 def rows_to_list(rows):
     return [dict(r) for r in rows]
@@ -75,16 +241,48 @@ def normalize_role(value='especialista'):
 def role_label(role):
     return 'Administrador' if normalize_role(role) == 'administrador' else 'Especialista'
 
+PBKDF2_ITERATIONS = 260_000
+
 def hash_password(password, salt=None):
     salt = salt or secrets.token_hex(16)
-    digest = hashlib.sha256(f'{salt}:{password}'.encode('utf-8')).hexdigest()
+    digest = hashlib.pbkdf2_hmac(
+        'sha256', password.encode('utf-8'), salt.encode('utf-8'), PBKDF2_ITERATIONS
+    ).hex()
     return salt, digest
 
 def verify_password(password, salt, digest):
     if not password or not salt or not digest:
         return False
     _, candidate = hash_password(password, salt)
-    return secrets.compare_digest(candidate, digest)
+    if secrets.compare_digest(candidate, digest):
+        return True
+    # Compatibilidad con hashes antiguos (SHA-256 de una sola vuelta, sin
+    # KDF). Permite que cuentas creadas antes de este cambio sigan
+    # funcionando; en su proximo cambio de contraseña quedan migradas a
+    # PBKDF2 automaticamente porque hash_password() ya usa el nuevo esquema.
+    legacy_digest = hashlib.sha256(f'{salt}:{password}'.encode('utf-8')).hexdigest()
+    return secrets.compare_digest(legacy_digest, digest)
+
+def _seed_password(env_var, label):
+    """Contrasena de un usuario semilla.
+
+    Se toma de la variable de entorno indicada (en Render se configura con
+    generateValue: true, asi que cada despliegue tiene una contrasena unica
+    y aleatoria). Si no esta definida (por ejemplo en un entorno local sin
+    .env), se genera una aleatoria en memoria y se imprime UNA vez en el
+    log del proceso para que quien lo ejecute la pueda copiar. Nunca queda
+    escrita en el codigo ni en el repositorio.
+    """
+    value = os.getenv(env_var)
+    if value:
+        return value
+    generated = secrets.token_urlsafe(12)
+    print(
+        f"[SEED] {env_var} no definido: se genero una contrasena aleatoria "
+        f"para el usuario '{label}': {generated}",
+        flush=True,
+    )
+    return generated
 
 def slugify_username(value):
     text = unicodedata.normalize('NFKD', str(value or '')).encode('ascii', 'ignore').decode('ascii')
@@ -547,6 +745,9 @@ FICHA_MONITOREO_COLUMNS = {
     'observaciones_recomendaciones': 'TEXT',
     'compromisos': 'TEXT',
     'compromisos_monitoreado': 'TEXT',
+    # Estandar de auditoria: nunca se borra fisico, se marca estado_fila=0.
+    'estado_fila': 'INTEGER DEFAULT 1',
+    'actualizado_en': 'DATETIME',
 }
 
 def ensure_db_schema():
@@ -568,6 +769,25 @@ def ensure_db_schema():
     for name, column_type in FICHA_MONITOREO_COLUMNS.items():
         if name not in existing:
             conn.execute(f'ALTER TABLE fichas_monitoreo ADD COLUMN {name} {column_type}')
+
+    # dim_institucion existe desde antes de este archivo (creada por el import
+    # censal); solo le sumamos las columnas de auditoria/soft-delete si faltan.
+    dim_institucion_tables = {
+        row['name'] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='dim_institucion'"
+        ).fetchall()
+    }
+    if dim_institucion_tables:
+        dim_existing = {
+            row['name'] for row in conn.execute('PRAGMA table_info(dim_institucion)').fetchall()
+        }
+        for name, column_type in {
+            'estado_fila': 'INTEGER DEFAULT 1',
+            'creado_en': 'DATETIME',
+            'actualizado_en': 'DATETIME',
+        }.items():
+            if name not in dim_existing:
+                conn.execute(f'ALTER TABLE dim_institucion ADD COLUMN {name} {column_type}')
 
     conn.execute('''
         CREATE TABLE IF NOT EXISTS app_user (
@@ -610,13 +830,24 @@ def ensure_db_schema():
         "WHERE email IS NOT NULL AND email != ''"
     )
 
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS app_session (
+            token TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            expira_en DATETIME NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES app_user(user_id)
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_app_session_user ON app_session(user_id)')
+
     if conn.execute('SELECT COUNT(*) FROM app_user').fetchone()[0] == 0:
         create_app_user(
             conn,
             nombre='Administrador SUGKA',
             username='admin',
             email='admin@sugka.local',
-            password='admin123',
+            password=_seed_password('SEED_ADMIN_PASSWORD', 'admin'),
             rol='administrador',
         )
         first_specialist = conn.execute(
@@ -627,54 +858,10 @@ def ensure_db_schema():
             nombre=first_specialist['nombre'] if first_specialist else 'Especialista Demo',
             username='especialista',
             email=generic_email_for_name(first_specialist['nombre']) if first_specialist else 'especialista@ugel-imaza.edu.pe',
-            password='especialista123',
+            password=_seed_password('SEED_ESPECIALISTA_PASSWORD', 'especialista'),
             rol='especialista',
             especialista_id=first_specialist['especialista_id'] if first_specialist else None,
         )
-
-    rosario = conn.execute(
-        "SELECT * FROM app_user WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)",
-        ('rosario.quispe@utec.edu.pe', 'rosario.quispe'),
-    ).fetchone()
-    if not rosario:
-        demo_admin = conn.execute(
-            "SELECT * FROM app_user WHERE LOWER(username) = 'admin' AND nombre = 'Administrador SUGKA'"
-        ).fetchone()
-        if demo_admin:
-            salt, digest = hash_password('Password123')
-            conn.execute('''
-                UPDATE app_user
-                SET nombre = ?, username = ?, email = ?, password_salt = ?, password_hash = ?,
-                    rol = 'administrador', activo = 1, actualizado_en = CURRENT_TIMESTAMP
-                WHERE user_id = ?
-            ''', (
-                'Rosario Quispe Yauri',
-                'rosario.quispe',
-                'rosario.quispe@utec.edu.pe',
-                salt,
-                digest,
-                demo_admin['user_id'],
-            ))
-        else:
-            create_app_user(
-                conn,
-                nombre='Rosario Quispe Yauri',
-                username='rosario.quispe',
-                email='rosario.quispe@utec.edu.pe',
-                password='Password123',
-                rol='administrador',
-            )
-    else:
-        conn.execute('''
-            UPDATE app_user
-            SET nombre = ?, username = ?, email = ?, rol = 'administrador', activo = 1,
-                actualizado_en = CURRENT_TIMESTAMP
-            WHERE user_id = ?
-        ''', ('Rosario Quispe Yauri', 'rosario.quispe', 'rosario.quispe@utec.edu.pe', rosario['user_id']))
-
-    conn.execute(
-        "DELETE FROM app_user WHERE LOWER(username) = 'admin' AND nombre = 'Administrador SUGKA'"
-    )
 
     conn.execute('''
         CREATE TABLE IF NOT EXISTS institucion_resumen (
@@ -708,6 +895,9 @@ def ensure_db_schema():
     resumen_columns = {
         'risk_score_infra': 'REAL DEFAULT 0',
         'risk_flags': 'TEXT',
+        'riesgo_intervencion_simon': 'TEXT',
+        'simon_promedio_general_desempeno': 'REAL',
+        'simon_porcentaje_items_bajos': 'REAL',
     }
     for name, column_type in resumen_columns.items():
         if name not in resumen_existing:
@@ -738,6 +928,131 @@ def ensure_db_schema():
     ''')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_infra_censo_risk ON infraestructura_censo_2025(risk_score_infra)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_infra_censo_local ON infraestructura_censo_2025(codigo_local)')
+
+    # ── Informes de campo: modelo relacional auditable ────────────────────
+    # archivo_subido -> informe_campo_documento (1 doc puede citar varias IE)
+    #   -> informe_campo_visita (1 fila = 1 visita a 1 IE)
+    #     -> informe_campo_hallazgo (cada hallazgo/parrafo que sostiene una
+    #        bandera, para poder auditar exactamente que evidencia la genero)
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS archivo_subido (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo TEXT NOT NULL,
+            nombre_archivo TEXT,
+            mimetype TEXT,
+            tamano_bytes INTEGER DEFAULT 0,
+            contenido BLOB,
+            hash_sha1 TEXT,
+            subido_por TEXT,
+            estado_fila INTEGER DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (subido_por) REFERENCES app_user(user_id)
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_archivo_subido_hash ON archivo_subido(hash_sha1)')
+
+    # Vincula un archivo_subido (imagen/PDF que el especialista subio al OCR)
+    # con la ficha SIMON que se confirmo a partir de el. Tabla puente en vez
+    # de una FK directa en fichas_monitoreo porque una ficha puede venir de
+    # varias fotos/paginas, y porque fichas_monitoreo es una tabla externa
+    # (creada por el importador original) que no debemos tocar con columnas
+    # nuevas mas alla de lo ya migrado en FICHA_MONITOREO_COLUMNS.
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS ficha_archivo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ficha_id INTEGER NOT NULL,
+            archivo_subido_id INTEGER NOT NULL,
+            orden INTEGER DEFAULT 0,
+            estado_fila INTEGER DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (ficha_id) REFERENCES fichas_monitoreo(id),
+            FOREIGN KEY (archivo_subido_id) REFERENCES archivo_subido(id)
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_ficha_archivo_ficha ON ficha_archivo(ficha_id)')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS informe_campo_documento (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            archivo_subido_id INTEGER,
+            nombre_archivo TEXT,
+            ruta_relativa TEXT,
+            hash_sha1 TEXT,
+            tipo_documento TEXT,
+            subtipo_documento TEXT,
+            especialista_detectado TEXT,
+            fecha_visita_inicio TEXT,
+            fecha_visita_fin TEXT,
+            metodo_extraccion TEXT,
+            requiere_ocr INTEGER DEFAULT 0,
+            longitud_texto_documento INTEGER DEFAULT 0,
+            texto_extraido TEXT,
+            fuente TEXT DEFAULT 'app_upload',
+            subido_por TEXT,
+            estado_fila INTEGER DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            actualizado_en DATETIME,
+            FOREIGN KEY (archivo_subido_id) REFERENCES archivo_subido(id),
+            FOREIGN KEY (subido_por) REFERENCES app_user(user_id)
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_campo_doc_hash ON informe_campo_documento(hash_sha1)')
+
+    campo_variable_columns = ',\n            '.join(
+        f'{var} INTEGER,\n            span_{var} TEXT' for var in CAMPO_CONCRETE_VARIABLES
+    )
+    conn.execute(f'''
+        CREATE TABLE IF NOT EXISTS informe_campo_visita (
+            visita_campo_id TEXT PRIMARY KEY,
+            documento_id INTEGER,
+            codigo_modular TEXT,
+            nombre_ie_detectado TEXT,
+            nombre_ie_padron TEXT,
+            nivel_padron TEXT,
+            centro_poblado_padron TEXT,
+            distrito_padron TEXT,
+            codlocal_padron TEXT,
+            fecha_visita TEXT,
+            anio_visita TEXT,
+            mes_visita TEXT,
+            especialista_detectado TEXT,
+            {campo_variable_columns},
+            n_variables_observadas INTEGER DEFAULT 0,
+            variables_observadas TEXT,
+            metodo_match_ie TEXT,
+            flag_match_dudoso INTEGER DEFAULT 0,
+            requiere_revision INTEGER DEFAULT 0,
+            motivo_revision TEXT,
+            fuente TEXT DEFAULT 'app_upload',
+            estado_fila INTEGER DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            actualizado_en DATETIME,
+            FOREIGN KEY (documento_id) REFERENCES informe_campo_documento(id)
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_campo_visita_codigo ON informe_campo_visita(codigo_modular)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_campo_visita_documento ON informe_campo_visita(documento_id)')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS informe_campo_hallazgo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            visita_campo_id TEXT,
+            documento_id INTEGER,
+            codigo_modular_hallazgo TEXT,
+            variable_detectada TEXT,
+            tema TEXT,
+            descripcion TEXT,
+            evidencia_textual TEXT,
+            requiere_revision INTEGER DEFAULT 0,
+            motivo_revision TEXT,
+            estado_fila INTEGER DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (visita_campo_id) REFERENCES informe_campo_visita(visita_campo_id),
+            FOREIGN KEY (documento_id) REFERENCES informe_campo_documento(id)
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_campo_hallazgo_visita ON informe_campo_hallazgo(visita_campo_id)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_campo_hallazgo_variable ON informe_campo_hallazgo(variable_detectada)')
 
     conn.execute('''
         CREATE TABLE IF NOT EXISTS app_instrumento (
@@ -827,34 +1142,34 @@ def ensure_db_schema():
             if username == 'especialista':
                 username = base_username
             username, email = unique_account_identity(conn, username, email, existing_user['user_id'])
-            if verify_password('especialista123', existing_user['password_salt'], existing_user['password_hash']):
-                salt, digest = hash_password('Password123')
-                conn.execute('''
-                    UPDATE app_user
-                    SET nombre = ?, username = ?, email = ?, password_salt = ?, password_hash = ?,
-                        rol = 'especialista', actualizado_en = CURRENT_TIMESTAMP
-                    WHERE user_id = ?
-                ''', (esp['nombre'], username, email, salt, digest, existing_user['user_id']))
-            else:
-                conn.execute('''
-                    UPDATE app_user
-                    SET nombre = ?, username = ?, email = ?, rol = 'especialista',
-                        actualizado_en = CURRENT_TIMESTAMP
-                    WHERE user_id = ?
-                ''', (esp['nombre'], username, email, existing_user['user_id']))
+            conn.execute('''
+                UPDATE app_user
+                SET nombre = ?, username = ?, email = ?, rol = 'especialista',
+                    actualizado_en = CURRENT_TIMESTAMP
+                WHERE user_id = ?
+            ''', (esp['nombre'], username, email, existing_user['user_id']))
         else:
             create_app_user(
                 conn,
                 nombre=esp['nombre'],
                 username=base_username,
                 email=base_email,
-                password='Password123',
+                password=_seed_password('SEED_ESPECIALISTA_PASSWORD', base_username),
                 rol='especialista',
                 especialista_id=esp['especialista_id'],
             )
 
     conn.commit()
     conn.close()
+
+# La migracion de esquema y el seed de usuarios se ejecutan UNA sola vez al
+# cargar el modulo (ya sea con `python api_server.py` o al ser importado por
+# gunicorn), no en cada request. Antes se llamaba a ensure_db_schema() al
+# inicio de casi cada endpoint, lo que repetia ~25 sentencias DDL/DML y el
+# hashing de contraseñas en cada peticion -- costoso y, bajo trafico
+# concurrente, una fuente de errores "database is locked" en SQLite.
+with app.app_context():
+    ensure_db_schema()
 
 def first_text(data, *keys):
     for key in keys:
@@ -1088,6 +1403,35 @@ def save_instrument_responses(conn, ficha_id, data):
                     json_dumps({'campo': campo, 'valor': valor, 'tipo': tipo}),
                 ))
 
+def save_ficha_archivos(conn, ficha_id, archivos):
+    """Persiste en BD las imagenes/PDF que el especialista subio para el OCR
+    de esta ficha (base64 en 'file_b64'), una fila de archivo_subido por
+    archivo mas su vinculo en ficha_archivo -- asi lo pedido explicitamente
+    de no perder el documento original tras extraerle el texto."""
+    if not archivos:
+        return
+    try:
+        user_id = g.current_user['user_id'] if getattr(g, 'current_user', None) else None
+    except RuntimeError:
+        user_id = None
+    for idx, item in enumerate(archivos):
+        if not isinstance(item, dict) or not item.get('file_b64'):
+            continue
+        try:
+            contenido = base64.b64decode(item['file_b64'])
+        except Exception:
+            continue
+        cur = conn.execute('''
+            INSERT INTO archivo_subido (tipo, nombre_archivo, mimetype, tamano_bytes, contenido, hash_sha1, subido_por)
+            VALUES ('ficha_ocr', ?, ?, ?, ?, ?, ?)
+        ''', (
+            item.get('filename', ''), item.get('mimetype', ''), len(contenido),
+            contenido, item.get('hash_sha1', ''), user_id,
+        ))
+        conn.execute('''
+            INSERT INTO ficha_archivo (ficha_id, archivo_subido_id, orden) VALUES (?, ?, ?)
+        ''', (ficha_id, cur.lastrowid, idx))
+
 def save_ficha_to_db(conn, data):
     data = data if isinstance(data, dict) else {}
     ficha = normalize_ficha(data, source=first_text(data, 'source') or 'manual')
@@ -1099,6 +1443,7 @@ def save_ficha_to_db(conn, data):
     )
     ficha['id'] = cur.lastrowid
     save_instrument_responses(conn, cur.lastrowid, data)
+    save_ficha_archivos(conn, cur.lastrowid, data.get('archivos'))
     return ficha
 
 RISK_MODEL = {
@@ -1421,6 +1766,76 @@ def simon_values_from_row(row):
             values.append(level)
     return values
 
+# Regla oficial de "riesgo_intervencion" documentada en el subproyecto de datos SIMON
+# (docs/02_criterios_riesgo_intervencion.md), validada 24/24 contra el dataset real
+# de fichas SIMON de UGEL Imaza. Se recalcula en vivo a partir de los niveles (a1..b5)
+# realmente registrados en cada ficha; no es un valor inventado ni importado como texto.
+SIMON_RISK_ORDER = {'Bajo': 0, 'Medio': 1, 'Alto': 2}
+
+def simon_documented_risk(values):
+    """values: lista de niveles 1-4 (Nivel I..IV) de una o mas fichas SIMON.
+    Implementa exactamente la regla de docs/02_criterios_riesgo_intervencion.md."""
+    values = [v for v in values if v and v > 0]
+    if not values:
+        return None
+    total = len(values)
+    promedio = sum(values) / total
+    nivel_minimo = min(values)
+    bajos = sum(1 for v in values if v <= 2)
+    porcentaje_bajos = bajos / total
+
+    if nivel_minimo <= 1 or promedio < 2.25 or porcentaje_bajos >= 0.75:
+        etiqueta = 'Alto'
+    elif promedio < 2.75 or bajos >= 3:
+        etiqueta = 'Medio'
+    else:
+        etiqueta = 'Bajo'
+
+    return {
+        'riesgo_intervencion': etiqueta,
+        'promedio_general_desempeno': round(promedio, 2),
+        'porcentaje_items_bajos': round(porcentaje_bajos, 2),
+        'cantidad_items_bajos': bajos,
+        'nivel_minimo_obtenido': nivel_minimo,
+    }
+
+def worst_case_simon_risk(risk_labels):
+    """Agrega varias fichas de una IE con la regla de 'peor caso' entre docentes,
+    igual que target_ie_simon.csv del subproyecto SIMON."""
+    labels = [label for label in risk_labels if label]
+    if not labels:
+        return None
+    return max(labels, key=lambda label: SIMON_RISK_ORDER.get(label, -1))
+
+FIXED_SIMON_CODES = set(SIMON_CODE_TO_FIELD.keys())
+
+def get_dynamic_responses_for_fichas(conn, ficha_ids):
+    """Respuestas de preguntas dinamicas (fuera de las 8 fijas A-01..B-05) registradas
+    para un conjunto de fichas, para que se muestren cuando los especialistas las llenan."""
+    ficha_ids = [fid for fid in ficha_ids if fid]
+    if not ficha_ids:
+        return {}
+    placeholders = ', '.join('?' for _ in ficha_ids)
+    rows = conn.execute(f'''
+        SELECT ficha_id, instrumento_codigo, pregunta_codigo, nivel, respuesta_texto, observacion
+        FROM ficha_respuesta_instrumento
+        WHERE ficha_id IN ({placeholders})
+        ORDER BY ficha_id, pregunta_codigo
+    ''', ficha_ids).fetchall()
+    out = {}
+    for row in rows:
+        codigo = str(row['pregunta_codigo'] or '').upper()
+        if codigo in FIXED_SIMON_CODES:
+            continue
+        out.setdefault(row['ficha_id'], []).append({
+            'pregunta_codigo': row['pregunta_codigo'],
+            'instrumento_codigo': row['instrumento_codigo'],
+            'nivel': row['nivel'],
+            'respuesta_texto': row['respuesta_texto'],
+            'observacion': row['observacion'],
+        })
+    return out
+
 def rebuild_simon_operational_summary(conn):
     conn.execute('DELETE FROM app_alerta_priorizada')
     conn.execute('DELETE FROM institucion_resumen')
@@ -1431,6 +1846,19 @@ def rebuild_simon_operational_summary(conn):
         WHERE COALESCE(codigo_modular, '') != ''
     ''').fetchall()
     infra_rows = conn.execute('SELECT * FROM infraestructura_censo_2025').fetchall()
+    campo_rows = conn.execute('SELECT * FROM informe_campo_visita WHERE estado_fila = 1').fetchall()
+    # Respuestas del instrumento DINAMICO (UGEL) en Nivel I/II -- alimentan su
+    # propia fuente de alertas ('dinamica'), separada de SIMON, para que el
+    # selector de fuente del KPI (SIMON / dinamicas / campo / todas) tenga
+    # las 4 fuentes con datos reales en vez de solo 3.
+    dinamica_rows = conn.execute('''
+        SELECT fm.codigo_modular AS raw_code, fri.seccion_clave, fri.pregunta_codigo,
+               fri.nivel, fri.observacion
+        FROM ficha_respuesta_instrumento fri
+        JOIN fichas_monitoreo fm ON fm.id = fri.ficha_id
+        WHERE fri.instrumento_tipo = 'dinamica' AND fri.nivel IN (1, 2)
+          AND COALESCE(fm.codigo_modular, '') != ''
+    ''').fetchall()
 
     grouped = {}
     for row in ficha_rows:
@@ -1445,22 +1873,65 @@ def rebuild_simon_operational_summary(conn):
         if row['codigo_modular']
     }
 
-    all_codes = sorted(set(grouped) | set(infra_by_code))
+    campo_by_code = {}
+    for row in campo_rows:
+        code = canonical_codigo_modular(conn, row['codigo_modular'])
+        if not code:
+            continue
+        campo_by_code.setdefault(code, []).append(dict(row))
+
+    dinamica_by_code = {}
+    for row in dinamica_rows:
+        code = canonical_codigo_modular(conn, row['raw_code'])
+        if not code:
+            continue
+        bucket = dinamica_by_code.setdefault(code, {})
+        seccion = row['seccion_clave'] or 'General'
+        entry = bucket.setdefault(seccion, {'count': 0, 'sample': ''})
+        entry['count'] += 1
+        if not entry['sample'] and row['observacion']:
+            entry['sample'] = row['observacion']
+
+    all_codes = sorted(set(grouped) | set(infra_by_code) | set(campo_by_code))
     now = datetime.now().isoformat(timespec='seconds')
 
     for code in all_codes:
         fichas = grouped.get(code, [])
         infra = infra_by_code.get(code, {})
+        campo_visitas = campo_by_code.get(code, [])
         all_values = []
         low_total = 0
         prep_low = 0
         teaching_low = 0
+        ficha_risk_labels = []
         for ficha in fichas:
             values = simon_values_from_row(ficha)
             all_values.extend(values)
             low_total += sum(1 for value in values if value < 3)
             prep_low += sum(1 for field in ('a1', 'a2', 'a3') if safe_int(ficha.get(field), 0) in (1, 2))
             teaching_low += sum(1 for field in ('b1', 'b2', 'b3', 'b4', 'b5') if safe_int(ficha.get(field), 0) in (1, 2))
+            ficha_risk = simon_documented_risk(values)
+            if ficha_risk:
+                ficha_risk_labels.append(ficha_risk['riesgo_intervencion'])
+
+        # Riesgo de intervencion documentado (regla SIMON), agregado por "peor caso"
+        # entre los docentes de la IE -- misma metodologia que target_ie_simon.csv.
+        riesgo_intervencion_simon = worst_case_simon_risk(ficha_risk_labels)
+
+        # Senales de informes de campo: conteo de variables concretas observadas
+        # (cada una con evidencia textual real, nunca inventada) y una cita
+        # representativa por variable para la descripcion de la alerta.
+        campo_var_counts = {}
+        campo_var_span = {}
+        for visita in campo_visitas:
+            for var in CAMPO_CONCRETE_VARIABLES:
+                if safe_int(visita.get(var), 0) == 1:
+                    campo_var_counts[var] = campo_var_counts.get(var, 0) + 1
+                    if var not in campo_var_span and visita.get(f'span_{var}'):
+                        campo_var_span[var] = visita.get(f'span_{var}')
+        campo_alertas_total = sum(campo_var_counts.values())
+        campo_infra_count = sum(campo_var_counts.get(v, 0) for v in CAMPO_INFRA_BUCKET)
+        campo_pedagogic_count = sum(campo_var_counts.get(v, 0) for v in CAMPO_PEDAGOGIC_BUCKET)
 
         indicators = len(all_values)
         average = round(sum(all_values) / indicators, 2) if indicators else 0.0
@@ -1485,6 +1956,9 @@ def rebuild_simon_operational_summary(conn):
         else:
             priority_reason = ''
 
+        if riesgo_intervencion_simon:
+            reasons.append(f'Riesgo de intervencion SIMON (regla documentada): {riesgo_intervencion_simon}')
+
         if infra:
             reasons.append(f'Riesgo infraestructura censo 2025: {round(infra_score, 2)}')
             if risk_flags:
@@ -1495,18 +1969,34 @@ def rebuild_simon_operational_summary(conn):
                 ]
                 reasons.extend(readable_flags[:3])
 
-        if fichas and infra:
-            coverage = 'SIMON + Censo 2025'
-        elif fichas:
-            coverage = 'Solo SIMON'
-        elif infra:
-            coverage = 'Censo 2025'
-        else:
+        if campo_visitas:
+            reasons.append(
+                f'{len(campo_visitas)} visita(s) de campo con {campo_alertas_total} senal(es) '
+                f'concretas con evidencia textual'
+            )
+
+        sources = []
+        if fichas:
+            sources.append('SIMON')
+        if campo_visitas:
+            sources.append('Campo')
+        if infra:
+            sources.append('Censo 2025')
+        if not sources:
             coverage = 'Sin evidencia'
+        elif len(sources) == 1:
+            coverage = f'Solo {sources[0]}'
+        else:
+            coverage = ' + '.join(sources)
 
         monitors = sorted({first_text(f, 'monitor') for f in fichas if first_text(f, 'monitor')})
         docentes = sorted({first_text(f, 'docente') for f in fichas if first_text(f, 'docente')})
         fechas = sorted({first_text(f, 'fecha_ejecucion') for f in fichas if first_text(f, 'fecha_ejecucion')})
+        campo_especialistas = sorted({
+            first_text(v, 'especialista_detectado') for v in campo_visitas
+            if first_text(v, 'especialista_detectado')
+        })
+        campo_temas = sorted(campo_var_counts.keys())
 
         conn.execute('''
             INSERT OR REPLACE INTO institucion_resumen (
@@ -1515,35 +2005,50 @@ def rebuild_simon_operational_summary(conn):
                 alertas_pedagogicas_campo, coverage_category, campo_sin_simon,
                 simon_sin_campo, ambas_fuentes, priority_score, priority_reason,
                 campo_owners, campo_topics, simon_monitores, simon_docentes, simon_fechas,
-                risk_score_infra, risk_flags
+                risk_score_infra, risk_flags, riesgo_intervencion_simon,
+                simon_promedio_general_desempeno, simon_porcentaje_items_bajos
             )
-            VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, '', '', ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             code,
+            len(campo_visitas),
             len(fichas),
             indicators,
             average,
-            low_total + infra_alerts,
-            infra_alerts,
-            low_total,
+            low_total + infra_alerts + campo_alertas_total,
+            infra_alerts + campo_infra_count,
+            low_total + campo_pedagogic_count,
             coverage,
             1 if fichas and not infra else 0,
             1 if fichas and infra else 0,
             priority_score,
             '; '.join(reasons[:5]) or priority_reason,
+            '|'.join(campo_especialistas),
+            '|'.join(campo_temas),
             '|'.join(monitors),
             '|'.join(docentes[:12]),
             '|'.join(fechas),
             infra_score,
             risk_flags,
+            riesgo_intervencion_simon,
+            average if indicators else None,
+            round(low_share, 2) if indicators else None,
         ))
 
         if low_total:
-            severity = 'alta' if average < 2.25 or low_share >= 0.65 else 'media'
+            # Severidad basada en la regla documentada de riesgo_intervencion cuando hay
+            # fichas SIMON reales; si no hay suficiente evidencia por ficha, se usa el
+            # umbral operativo previo como respaldo.
+            if riesgo_intervencion_simon:
+                severity = 'alta' if riesgo_intervencion_simon == 'Alto' else 'media'
+            else:
+                severity = 'alta' if average < 2.25 or low_share >= 0.65 else 'media'
             alert_id = 'simon_' + hashlib.md5(f'{code}:desempeno:{average}:{low_total}'.encode('utf-8')).hexdigest()[:12]
             simon_desc = (
                 f'SIMON: {low_total} de {indicators} respuestas estan en Nivel I o II; '
-                f'promedio general {average}. Requiere refuerzo pedagogico focalizado.'
+                f'promedio general {average}.'
+                + (f' Riesgo de intervencion (regla SIMON documentada): {riesgo_intervencion_simon}.' if riesgo_intervencion_simon else '')
+                + ' Requiere refuerzo pedagogico focalizado.'
             )
             conn.execute('''
                 INSERT OR REPLACE INTO app_alerta_priorizada (
@@ -1629,6 +2134,61 @@ def rebuild_simon_operational_summary(conn):
                 now,
             ))
 
+        # Una alerta por cada variable concreta de campo observada, con la
+        # cita textual real como evidencia -- nunca se inventa severidad a
+        # partir del texto, solo se aplica la prioridad editorial fija por
+        # variable (CAMPO_VARIABLE_META).
+        for var, count in campo_var_counts.items():
+            meta = CAMPO_VARIABLE_META.get(var, {})
+            alert_id = 'campo_' + hashlib.md5(f'{code}:{var}:{count}'.encode('utf-8')).hexdigest()[:12]
+            span = campo_var_span.get(var, '')
+            descripcion = (
+                f"{meta.get('label', var)}: observado en {count} visita(s) de campo. "
+                f"{meta.get('importancia', '')} "
+                + (f'Evidencia: "{span[:280]}"' if span else '')
+            )
+            conn.execute('''
+                INSERT OR REPLACE INTO app_alerta_priorizada (
+                    alerta_id, codigo_modular, alerta_codigo, fuente, severidad,
+                    score, titulo, descripcion, evidencia_count, estado, created_at
+                )
+                VALUES (?, ?, 'informe_campo', 'campo', ?, ?, ?, ?, ?, 'pendiente', ?)
+            ''', (
+                alert_id,
+                code,
+                meta.get('severidad', 'media'),
+                round(min(20, count * 5), 2),
+                meta.get('label', var),
+                descripcion,
+                count,
+                now,
+            ))
+
+        # Alertas del instrumento dinamico UGEL (opcional): una por seccion con
+        # respuestas en Nivel I/II, con una observacion de ejemplo si existe.
+        # Nunca amplia all_codes -- una IE solo tiene respuestas dinamicas si
+        # ya tiene una ficha SIMON (mismo formulario), asi que ya esta incluida.
+        for seccion, info in dinamica_by_code.get(code, {}).items():
+            dyn_count = info['count']
+            if dyn_count <= 0:
+                continue
+            dyn_severity = 'alta' if dyn_count >= 3 else 'media'
+            dyn_alert_id = 'dinamica_' + hashlib.md5(f'{code}:{seccion}:{dyn_count}'.encode('utf-8')).hexdigest()[:12]
+            dyn_desc = (
+                f'Instrumento dinamico UGEL: {dyn_count} pregunta(s) de la seccion "{seccion}" en Nivel I o II.'
+                + (f' Ejemplo de observacion: "{info["sample"][:200]}"' if info['sample'] else '')
+            )
+            conn.execute('''
+                INSERT OR REPLACE INTO app_alerta_priorizada (
+                    alerta_id, codigo_modular, alerta_codigo, fuente, severidad,
+                    score, titulo, descripcion, evidencia_count, estado, created_at
+                )
+                VALUES (?, ?, 'preguntas_dinamicas', 'dinamica', ?, ?, ?, ?, ?, 'pendiente', ?)
+            ''', (
+                dyn_alert_id, code, dyn_severity, round(min(15, dyn_count * 4), 2),
+                f'Instrumento dinámico: {seccion}', dyn_desc, dyn_count, now,
+            ))
+
 def unavailable_sheet(kind, message):
     return {
         'source': 'sin_datos',
@@ -1646,12 +2206,14 @@ def unavailable_sheet(kind, message):
         'radar': [],
     }
 
-def build_real_teacher_sheet(fichas):
+def build_real_teacher_sheet(fichas, conn=None):
+    dynamic_by_ficha = get_dynamic_responses_for_fichas(conn, [f.get('id') for f in fichas]) if conn else {}
     docentes = []
     for ficha in fichas:
         values = simon_values_from_row(ficha)
         average = round(sum(values) / len(values), 2) if values else 0.0
         semaforo = simon_level_state(average)
+        documented_risk = simon_documented_risk(values)
         docentes.append({
             'nombre': first_text(ficha, 'docente') or 'Docente sin nombre',
             'grado': first_text(ficha, 'grado') or first_text(ficha, 'seccion') or 'Sin grado',
@@ -1668,6 +2230,14 @@ def build_real_teacher_sheet(fichas):
             'visita2': None,
             'delta': None,
             'necesita_refuerzo': average < 3,
+            # Riesgo de intervencion segun la regla documentada del subproyecto SIMON
+            # (docs/02_criterios_riesgo_intervencion.md), calculado en vivo desde los
+            # niveles reales de la ficha -- no es un valor adivinado.
+            'riesgo_intervencion_simon': documented_risk['riesgo_intervencion'] if documented_risk else None,
+            'riesgo_intervencion_detalle': documented_risk,
+            # Respuestas a preguntas dinamicas (fuera del instrumento fijo A-01..B-05)
+            # que los especialistas hayan llenado para esta ficha.
+            'respuestas_dinamicas': dynamic_by_ficha.get(ficha.get('id'), []),
         })
 
     needs = sum(1 for docente in docentes if docente['necesita_refuerzo'])
@@ -1837,7 +2407,7 @@ def build_real_simon_dashboard(conn, scored):
             risk = dict(summary) if summary else {}
             risk.update(calculate_risk(risk))
 
-        docentes = build_real_teacher_sheet(fichas) if fichas else {
+        docentes = build_real_teacher_sheet(fichas, conn) if fichas else {
             'source': 'sin_datos',
             'resumen': {
                 'total': 0,
@@ -2136,9 +2706,56 @@ def build_excel_dashboard(scored):
         },
     }
 
+# ─── AUTENTICACION ────────────────────────────────────────────────────────────
+
+def get_current_user():
+    """Usuario autenticado a partir del header 'Authorization: Bearer <token>'.
+
+    Devuelve None si no hay token, el token no existe, expiro, o el usuario
+    fue desactivado. No lanza excepciones.
+    """
+    auth_header = request.headers.get('Authorization', '')
+    token = auth_header[7:].strip() if auth_header.lower().startswith('bearer ') else ''
+    if not token:
+        return None
+    conn = get_db()
+    row = conn.execute('''
+        SELECT u.* FROM app_session s
+        JOIN app_user u ON u.user_id = s.user_id
+        WHERE s.token = ? AND s.expira_en > CURRENT_TIMESTAMP
+    ''', (token,)).fetchone()
+    if not row or not row['activo']:
+        return None
+    return row
+
+def require_auth(fn):
+    """Exige una sesion valida (cualquier rol) para acceder al endpoint."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            return jsonify({'error': 'Sesión inválida o expirada. Vuelve a iniciar sesión.'}), 401
+        g.current_user = user
+        return fn(*args, **kwargs)
+    return wrapper
+
+def require_admin(fn):
+    """Exige una sesion valida con rol administrador."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            return jsonify({'error': 'Sesión inválida o expirada. Vuelve a iniciar sesión.'}), 401
+        if normalize_role(user['rol']) != 'administrador':
+            return jsonify({'error': 'Esta acción requiere permisos de administrador.'}), 403
+        g.current_user = user
+        return fn(*args, **kwargs)
+    return wrapper
+
 # ─── HEALTH / API INDEX ───────────────────────────────────────────────────────
 
 @app.route('/', methods=['GET'])
+@app.route('/index.html', methods=['GET'])
 def frontend_index():
     return send_from_directory(str(ROOT), 'index.html')
 
@@ -2184,8 +2801,8 @@ def api_index():
 # ─── ESPECIALISTAS / AUTH ─────────────────────────────────────────────────────
 
 @app.route('/api/especialistas', methods=['GET'])
+@require_auth
 def get_especialistas():
-    ensure_db_schema()
     conn = get_db()
     rows = conn.execute(
         'SELECT especialista_id, nombre, rol_inferido, total_fichas_simon, total_documentos_campo '
@@ -2195,8 +2812,8 @@ def get_especialistas():
     return jsonify(rows_to_list(rows))
 
 @app.route('/api/usuarios', methods=['GET', 'POST'])
+@require_auth
 def usuarios():
-    ensure_db_schema()
     conn = get_db()
     try:
         if request.method == 'GET':
@@ -2209,6 +2826,10 @@ def usuarios():
                     u.nombre
             ''').fetchall()
             return jsonify([public_user(r) for r in rows])
+
+        # Crear usuarios es una accion administrativa.
+        if normalize_role(g.current_user['rol']) != 'administrador':
+            return jsonify({'error': 'Esta acción requiere permisos de administrador.'}), 403
 
         data = request.get_json() or {}
         password = str(data.get('password') or '').strip()
@@ -2238,8 +2859,8 @@ def usuarios():
         conn.close()
 
 @app.route('/api/usuarios/<user_id>', methods=['PUT'])
+@require_admin
 def actualizar_usuario(user_id):
-    ensure_db_schema()
     data = request.get_json() or {}
     conn = get_db()
     try:
@@ -2284,8 +2905,8 @@ def actualizar_usuario(user_id):
         conn.close()
 
 @app.route('/api/usuarios/<user_id>/password', methods=['PUT'])
+@require_admin
 def cambiar_password_usuario(user_id):
-    ensure_db_schema()
     data = request.get_json() or {}
     password = str(data.get('password') or '').strip()
     if len(password) < 4:
@@ -2309,11 +2930,40 @@ def cambiar_password_usuario(user_id):
     finally:
         conn.close()
 
+@app.route('/api/usuarios/<user_id>', methods=['DELETE'])
+@require_admin
+def eliminar_usuario(user_id):
+    """Elimina un usuario -- en realidad un soft-delete (activo=0), nunca un
+    DELETE real de la fila, para conservar el historico y la auditoria de
+    quien hizo que. app_user ya tenia esta columna 'activo' desde antes, asi
+    que no se duplica con un 'estado_fila' nuevo; es el mismo estandar."""
+    conn = get_db()
+    try:
+        user = conn.execute('SELECT * FROM app_user WHERE user_id = ?', (user_id,)).fetchone()
+        if not user:
+            return jsonify({'error': 'Usuario no encontrado.'}), 404
+        if normalize_role(user['rol']) == 'administrador':
+            active_admins = conn.execute(
+                "SELECT COUNT(*) FROM app_user WHERE rol = 'administrador' AND activo = 1"
+            ).fetchone()[0]
+            if active_admins <= 1:
+                return jsonify({'error': 'Debe quedar al menos un administrador activo.'}), 400
+        if user['user_id'] == g.current_user['user_id']:
+            return jsonify({'error': 'No puedes eliminar tu propio usuario.'}), 400
+        conn.execute(
+            "UPDATE app_user SET activo = 0, actualizado_en = CURRENT_TIMESTAMP WHERE user_id = ?",
+            (user_id,)
+        )
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
 # ─── INSTRUMENTOS / PREGUNTAS ────────────────────────────────────────────────
 
 @app.route('/api/instrumentos', methods=['GET'])
+@require_auth
 def get_instrumentos():
-    ensure_db_schema()
     conn = get_db()
     try:
         rows = conn.execute('''
@@ -2330,8 +2980,8 @@ def get_instrumentos():
         conn.close()
 
 @app.route('/api/instrumentos/dinamico/preguntas', methods=['GET', 'POST'])
+@require_admin
 def preguntas_dinamicas():
-    ensure_db_schema()
     conn = get_db()
     try:
         payload = dynamic_questions_payload(conn)
@@ -2409,8 +3059,8 @@ def preguntas_dinamicas():
         conn.close()
 
 @app.route('/api/instrumentos/dinamico/preguntas/<int:pregunta_id>', methods=['PUT', 'DELETE'])
+@require_admin
 def pregunta_dinamica_detalle(pregunta_id):
-    ensure_db_schema()
     conn = get_db()
     try:
         instrument = get_dynamic_instrument_row(conn)
@@ -2486,7 +3136,9 @@ def pregunta_dinamica_detalle(pregunta_id):
 
 @app.route('/api/ficha-vacia/pdf', methods=['GET'])
 def ficha_vacia_pdf():
-    ensure_db_schema()
+    # Publico a proposito: es solo la plantilla vacia (sin datos de ninguna
+    # IE) y el frontend la descarga con un <a href> normal, que no puede
+    # adjuntar el header Authorization.
     conn = get_db()
     try:
         rows = conn.execute('''
@@ -2506,9 +3158,43 @@ def ficha_vacia_pdf():
     finally:
         conn.close()
 
+SESSION_TTL_HOURS = safe_int(os.getenv('SESSION_TTL_HOURS'), 12) or 12
+EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+def build_login_payload(conn, user):
+    """Arma la respuesta de sesion (usuario + token) para login y registro.
+
+    Emite un token de sesion nuevo, lo guarda en app_session y de paso
+    limpia sesiones vencidas de cualquier usuario (mantenimiento barato).
+    """
+    public = public_user(user)
+    public['rol_inferido'] = public['rol_label']
+    public['rol'] = normalize_role(user['rol'])
+
+    if user['especialista_id']:
+        esp = conn.execute(
+            'SELECT * FROM dim_especialista WHERE especialista_id = ?',
+            (user['especialista_id'],)
+        ).fetchone()
+        if esp:
+            public['especialista'] = dict(esp)
+            public['especialidad'] = esp['rol_inferido']
+            public['total_fichas_simon'] = esp['total_fichas_simon']
+            public['total_documentos_campo'] = esp['total_documentos_campo']
+
+    token = secrets.token_urlsafe(32)
+    expira_en = (datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS)).strftime('%Y-%m-%d %H:%M:%S')
+    conn.execute(
+        'INSERT INTO app_session (token, user_id, expira_en) VALUES (?, ?, ?)',
+        (token, user['user_id'], expira_en),
+    )
+    conn.execute('DELETE FROM app_session WHERE expira_en <= CURRENT_TIMESTAMP')
+    conn.commit()
+
+    return {'success': True, 'user': public, 'especialista': public, 'token': token}
+
 @app.route('/api/login', methods=['POST'])
 def login():
-    ensure_db_schema()
     data = request.get_json() or {}
     username = str(data.get('username') or data.get('usuario') or data.get('email') or '').strip().lower()
     password = str(data.get('password') or data.get('clave') or data.get('pin') or '')
@@ -2529,28 +3215,93 @@ def login():
         if not verify_password(password, user['password_salt'], user['password_hash']):
             return jsonify({'error': 'Contraseña incorrecta. Si la olvidaste, contacte con el administrador.'}), 401
 
-        public = public_user(user)
-        public['rol_inferido'] = public['rol_label']
-        public['rol'] = normalize_role(user['rol'])
-
-        if user['especialista_id']:
-            esp = conn.execute(
-                'SELECT * FROM dim_especialista WHERE especialista_id = ?',
-                (user['especialista_id'],)
-            ).fetchone()
-            if esp:
-                public['especialista'] = dict(esp)
-                public['especialidad'] = esp['rol_inferido']
-                public['total_fichas_simon'] = esp['total_fichas_simon']
-                public['total_documentos_campo'] = esp['total_documentos_campo']
-
-        return jsonify({'success': True, 'user': public, 'especialista': public, 'token': f'demo_{user["user_id"]}'})
+        return jsonify(build_login_payload(conn, user))
     finally:
         conn.close()
+
+_registro_attempts = {}
+REGISTRO_MAX_POR_HORA = 8
+
+def registro_rate_limited(ip):
+    """Limite simple en memoria (por IP) para frenar registros masivos.
+
+    Vale para un solo proceso worker (el que usa este servicio en
+    render.yaml, --workers 1); con varios workers cada uno llevaria su
+    propio contador, lo cual sigue siendo una mitigacion razonable aunque
+    no perfecta.
+    """
+    now = datetime.utcnow().timestamp()
+    attempts = [t for t in _registro_attempts.get(ip, []) if now - t < 3600]
+    attempts.append(now)
+    _registro_attempts[ip] = attempts
+    return len(attempts) > REGISTRO_MAX_POR_HORA
+
+@app.route('/api/registro', methods=['POST'])
+def registro():
+    if registro_rate_limited(request.remote_addr or 'unknown'):
+        return jsonify({'error': 'Demasiados intentos de registro. Intenta de nuevo más tarde.'}), 429
+
+    data = request.get_json() or {}
+    nombre = str(data.get('nombre') or '').strip()
+    email = str(data.get('email') or data.get('correo') or '').strip().lower()
+    password = str(data.get('password') or '').strip()
+
+    if not nombre:
+        return jsonify({'error': 'El nombre es obligatorio.'}), 400
+    if not EMAIL_RE.match(email):
+        return jsonify({'error': 'Ingresa un correo electrónico válido.'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'La contraseña debe tener al menos 6 caracteres.'}), 400
+
+    conn = get_db()
+    try:
+        existing = conn.execute(
+            'SELECT 1 FROM app_user WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?)',
+            (email, email),
+        ).fetchone()
+        if existing:
+            return jsonify({'error': 'Ya existe una cuenta registrada con ese correo.'}), 400
+
+        try:
+            # rol='especialista' esta fijo a proposito: el auto-registro
+            # publico nunca debe poder crear administradores. Para eso
+            # sigue existiendo el panel de administración (POST /api/usuarios).
+            user = create_app_user(
+                conn,
+                nombre=nombre,
+                username=email,
+                email=email,
+                password=password,
+                rol='especialista',
+                activo=1,
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            return jsonify({'error': 'Ya existe una cuenta registrada con ese correo.'}), 400
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({'error': str(exc)}), 400
+
+        return jsonify(build_login_payload(conn, user))
+    finally:
+        conn.close()
+
+@app.route('/api/logout', methods=['POST'])
+@require_auth
+def logout():
+    auth_header = request.headers.get('Authorization', '')
+    token = auth_header[7:].strip() if auth_header.lower().startswith('bearer ') else ''
+    if token:
+        conn = get_db()
+        conn.execute('DELETE FROM app_session WHERE token = ?', (token,))
+        conn.commit()
+    return jsonify({'success': True})
 
 # ─── INSTITUCIONES ────────────────────────────────────────────────────────────
 
 @app.route('/api/instituciones', methods=['GET'])
+@require_auth
 def get_instituciones():
     conn = get_db()
     rows = conn.execute('''
@@ -2582,14 +3333,116 @@ def get_instituciones():
         LEFT JOIN institucion_resumen r ON i.codigo_modular = r.codigo_modular
         WHERE i.latitud  IS NOT NULL AND i.latitud  != 0
           AND i.longitud IS NOT NULL AND i.longitud != 0
+          AND COALESCE(i.estado_fila, 1) = 1
         ORDER BY COALESCE(r.priority_score,0) DESC
     ''').fetchall()
     conn.close()
     return jsonify(rows_to_list(rows))
 
+# CRUD administrativo del listado de instituciones educativas (dim_institucion).
+# Distinto del /api/instituciones de arriba, que es de solo lectura y esta
+# pensado para el mapa (filtra las que no tienen coordenadas). Este es el
+# mantenedor completo: alta, edicion y baja (estado_fila=0, nunca DELETE real)
+# para el rol administrador.
+DIM_INSTITUCION_EDITABLE_FIELDS = [
+    'codigo_institucion', 'codigo_local', 'nombre_iiee', 'nivel_modalidad',
+    'tipo_gestion', 'dependencia', 'direccion_iiee', 'departamento',
+    'provincia', 'distrito', 'centro_poblado', 'latitud', 'longitud',
+    'altitud', 'alumnos_censo', 'docentes_censo', 'secciones_censo',
+]
+
+@app.route('/api/admin/instituciones', methods=['GET', 'POST'])
+@require_admin
+def admin_instituciones():
+    conn = get_db()
+    try:
+        if request.method == 'GET':
+            incluir_inactivas = request.args.get('incluir_inactivas') == '1'
+            where = '' if incluir_inactivas else 'WHERE COALESCE(estado_fila, 1) = 1'
+            rows = conn.execute(f'''
+                SELECT * FROM dim_institucion {where}
+                ORDER BY COALESCE(estado_fila, 1) DESC, nombre_iiee
+            ''').fetchall()
+            return jsonify(rows_to_list(rows))
+
+        data = request.get_json() or {}
+        codigo = re.sub(r'\D+', '', str(data.get('codigo_modular') or '').strip())
+        if not codigo:
+            return jsonify({'error': 'El código modular es obligatorio (solo dígitos).'}), 400
+        if not str(data.get('nombre_iiee') or '').strip():
+            return jsonify({'error': 'El nombre de la IE es obligatorio.'}), 400
+
+        existing = conn.execute('SELECT 1 FROM dim_institucion WHERE codigo_modular = ?', (codigo,)).fetchone()
+        if existing:
+            return jsonify({'error': f'Ya existe una IE con código modular {codigo}.'}), 400
+
+        columns = ['codigo_modular'] + DIM_INSTITUCION_EDITABLE_FIELDS
+        values = [codigo] + [data.get(f) for f in DIM_INSTITUCION_EDITABLE_FIELDS]
+        placeholders = ', '.join('?' for _ in columns)
+        conn.execute(
+            f'INSERT INTO dim_institucion ({", ".join(columns)}, estado_fila) VALUES ({placeholders}, 1)',
+            values
+        )
+        conn.commit()
+        row = conn.execute('SELECT * FROM dim_institucion WHERE codigo_modular = ?', (codigo,)).fetchone()
+        return jsonify({'success': True, 'institucion': dict(row)})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'No se pudo guardar la institución (código duplicado o dato inválido).'}), 400
+    finally:
+        conn.close()
+
+@app.route('/api/admin/instituciones/<codigo_modular>', methods=['PUT', 'DELETE'])
+@require_admin
+def admin_institucion_detalle(codigo_modular):
+    conn = get_db()
+    try:
+        row = conn.execute('SELECT * FROM dim_institucion WHERE codigo_modular = ?', (codigo_modular,)).fetchone()
+        if not row:
+            return jsonify({'error': 'Institución no encontrada.'}), 404
+
+        if request.method == 'DELETE':
+            conn.execute(
+                "UPDATE dim_institucion SET estado_fila = 0, actualizado_en = CURRENT_TIMESTAMP WHERE codigo_modular = ?",
+                (codigo_modular,)
+            )
+            conn.commit()
+            return jsonify({'success': True})
+
+        data = request.get_json() or {}
+        if data.get('restaurar'):
+            conn.execute(
+                "UPDATE dim_institucion SET estado_fila = 1, actualizado_en = CURRENT_TIMESTAMP WHERE codigo_modular = ?",
+                (codigo_modular,)
+            )
+            conn.commit()
+            updated = conn.execute('SELECT * FROM dim_institucion WHERE codigo_modular = ?', (codigo_modular,)).fetchone()
+            return jsonify({'success': True, 'institucion': dict(updated)})
+
+        updates = []
+        params = []
+        for field in DIM_INSTITUCION_EDITABLE_FIELDS:
+            if field in data:
+                updates.append(f'{field} = ?')
+                params.append(data.get(field))
+        if not updates:
+            return jsonify({'success': True, 'institucion': dict(row)})
+        updates.append('actualizado_en = CURRENT_TIMESTAMP')
+        params.append(codigo_modular)
+        conn.execute(f'UPDATE dim_institucion SET {", ".join(updates)} WHERE codigo_modular = ?', params)
+        conn.commit()
+        updated = conn.execute('SELECT * FROM dim_institucion WHERE codigo_modular = ?', (codigo_modular,)).fetchone()
+        return jsonify({'success': True, 'institucion': dict(updated)})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'No se pudo actualizar la institución.'}), 400
+    finally:
+        conn.close()
+
 # ─── ALERTAS ──────────────────────────────────────────────────────────────────
 
 @app.route('/api/alertas', methods=['GET'])
+@require_auth
 def get_alertas():
     cm   = request.args.get('codigo_modular')
     limit = min(max(safe_int(request.args.get('limit'), 60), 1), 1000)
@@ -2618,8 +3471,8 @@ def get_alertas():
 # ─── DASHBOARD ────────────────────────────────────────────────────────────────
 
 @app.route('/api/dashboard', methods=['GET'])
+@require_auth
 def get_dashboard():
-    ensure_db_schema()
     conn = get_db()
 
     total_ies        = conn.execute('SELECT COUNT(*) FROM dim_institucion').fetchone()[0]
@@ -3285,14 +4138,222 @@ def process_images_with_gemini(files_payload):
         print(f"Error Gemini Vision JSON: {e}, Raw: {raw}")
         return None
 
+# ─── INFORMES DE CAMPO: extraccion y categorizacion (portado de
+#     subproyectos/informes_campo_v3 para que la app sea autocontenida) ───────
+
+CAMPO_SYSTEM_PROMPT = """Eres un analista de datos educativos para UGEL IBIR Imaza.
+Tu tarea es convertir un informe de campo heterogeneo en datos estructurados por visita a institucion educativa.
+Reglas:
+1. No inventes hechos. Usa solo evidencia explicita del texto.
+2. Si no hay codigo modular claro, usa cadena vacia "".
+3. Si el documento menciona varias IE y no queda claro a cual corresponde un hallazgo, deja codigo_modular="".
+4. Diferencia problemas reales de planes, listados, talleres, informes de comision o informes de gestion.
+5. Para documentos administrativos sin visita directa a IE, devuelve hallazgos=[].
+6. No calcules gravedad, urgencia ni confianza. Solo marca variables concretas con evidencia textual.
+7. Cada hallazgo debe tener codigo_modular, variable_detectada, tema, descripcion y evidencia_textual literal (cita exacta del texto).
+8. Si no hay evidencia textual, no crees el hallazgo.
+9. Devuelve exclusivamente JSON valido que cumpla el esquema proporcionado.
+"""
+
+CAMPO_JSON_SCHEMA = {
+    'documento': {
+        'tipo_documento': 'uno de: informe_visita, informe_monitoreo, biae, informe_biae, acta, informe_gestion, informe_comision, listado, plan, otro',
+        'resumen_ejecutivo': 'string, maximo 1200 caracteres',
+    },
+    'instituciones': [
+        {'codigo_modular': '7 digitos o ""', 'nombre_ie': 'string', 'distrito': 'string', 'centro_poblado': 'string'},
+    ],
+    'hallazgos': [
+        {
+            'codigo_modular': '7 digitos o ""',
+            'variable_detectada': ' | '.join(CAMPO_CONCRETE_VARIABLES + ['otro']),
+            'tema': 'string corto',
+            'descripcion': 'string, maximo 1000 caracteres',
+            'evidencia_textual': 'cita literal del informe, maximo 700 caracteres',
+        },
+    ],
+}
+
+def campo_criteria_block():
+    lines = []
+    for var in CAMPO_CONCRETE_VARIABLES:
+        meta = CAMPO_VARIABLE_META.get(var, {})
+        lines.append(f"- {var}: {meta.get('criterio', '')}")
+    return '\n'.join(lines)
+
+def build_campo_llm_prompt(text, filename=''):
+    return (
+        f"Archivo: {filename}\n\n"
+        "Extrae informacion estructurada de este informe de campo para construir hallazgos por visita a IE.\n"
+        "No asignes puntajes. No estimes gravedad, urgencia ni confianza.\n"
+        "Marca solo problemas explicitamente observados y siempre copia la frase textual de evidencia.\n"
+        "Si no hay evidencia textual, no crees el hallazgo.\n"
+        "Si el hallazgo no se puede asociar a una IE especifica, deja codigo_modular vacio.\n\n"
+        "Criterio textual minimo de cada variable:\n"
+        f"{campo_criteria_block()}\n\n"
+        "Esquema JSON requerido (usa exactamente estas claves):\n"
+        f"{json.dumps(CAMPO_JSON_SCHEMA, ensure_ascii=False, indent=2)}\n\n"
+        "Texto del informe:\n"
+        f"{truncate_for_llm(text, 18000)}"
+    )
+
+def truncate_for_llm(text, max_chars):
+    text = text or ''
+    if len(text) <= max_chars:
+        return text
+    head = text[: int(max_chars * 0.65)]
+    tail = text[-int(max_chars * 0.35):]
+    return head + '\n\n[... TEXTO RECORTADO ...]\n\n' + tail
+
+def parse_json_loose(text):
+    clean = (text or '').strip()
+    if clean.startswith('```'):
+        clean = re.sub(r'^```(?:json)?', '', clean, flags=re.IGNORECASE).strip()
+        clean = re.sub(r'```$', '', clean).strip()
+    try:
+        payload = json.loads(clean)
+        return payload if isinstance(payload, dict) else {}
+    except json.JSONDecodeError:
+        start = clean.find('{')
+        end = clean.rfind('}')
+        if start >= 0 and end > start:
+            payload = json.loads(clean[start:end + 1])
+            return payload if isinstance(payload, dict) else {}
+        raise
+
+def call_campo_gemini(prompt):
+    if not get_gemini_key():
+        return {'status': 'missing_env', 'provider': 'gemini', 'payload': {}, 'error': ''}
+    try:
+        model = genai.GenerativeModel(os.getenv('GEMINI_MODEL', 'gemini-1.5-flash'))
+        response = model.generate_content(
+            CAMPO_SYSTEM_PROMPT + '\n\n' + prompt,
+            generation_config={'response_mime_type': 'application/json', 'temperature': 0},
+        )
+        payload = parse_json_loose(response.text)
+        return {'status': 'ok', 'provider': 'gemini', 'payload': payload, 'error': ''}
+    except Exception as exc:
+        return {'status': 'failed', 'provider': 'gemini', 'payload': {}, 'error': f'{type(exc).__name__}: {exc}'}
+
+def call_campo_openai(prompt):
+    api_key = get_openai_key()
+    if not api_key:
+        return {'status': 'missing_env', 'provider': 'openai', 'payload': {}, 'error': ''}
+    model = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
+    request_payload = {
+        'model': model,
+        'input': [
+            {'role': 'system', 'content': CAMPO_SYSTEM_PROMPT},
+            {'role': 'user', 'content': prompt + '\n\nResponde solo JSON valido, sin markdown.'},
+        ],
+        'text': {'format': {'type': 'json_object'}},
+    }
+    try:
+        req = urllib.request.Request(
+            'https://api.openai.com/v1/responses',
+            data=json.dumps(request_payload).encode('utf-8'),
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+            },
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            body = json.loads(resp.read().decode('utf-8'))
+        text_parts = []
+        for output in body.get('output', []) or []:
+            for content in output.get('content', []) or []:
+                if isinstance(content, dict) and isinstance(content.get('text'), str):
+                    text_parts.append(content['text'])
+        text = '\n'.join(text_parts).strip() or body.get('output_text', '')
+        payload = parse_json_loose(text)
+        return {'status': 'ok', 'provider': 'openai', 'payload': payload, 'error': ''}
+    except Exception as exc:
+        return {'status': 'failed', 'provider': 'openai', 'payload': {}, 'error': f'{type(exc).__name__}: {exc}'}
+
+def extract_informe_campo_hallazgos(text, filename=''):
+    """Gemini primero; si falla o no da JSON valido, cae automaticamente a
+    OpenAI (si hay OPENAI_API_KEY configurada). Devuelve (payload, proveedor_usado, error)."""
+    prompt = build_campo_llm_prompt(text, filename)
+
+    result = call_campo_gemini(prompt)
+    if result['status'] == 'ok' and result['payload']:
+        return result['payload'], 'gemini', ''
+
+    fallback = call_campo_openai(prompt)
+    if fallback['status'] == 'ok' and fallback['payload']:
+        return fallback['payload'], 'openai', ''
+
+    error = fallback['error'] or result['error'] or 'sin_proveedor_disponible'
+    return {}, 'ninguno', error
+
+def consolidate_campo_hallazgos(payload, official_codes_resolver=None):
+    """Agrupa hallazgos por codigo_modular en filas visita-IE, con los pares
+    <variable>/span_<variable> materializados, igual que la tabla oficial del
+    subproyecto. `official_codes_resolver(codigo)` puede normalizar/validar
+    contra dim_institucion; si no resuelve, el hallazgo queda para revision."""
+    hallazgos = payload.get('hallazgos') or []
+    instituciones = {inst.get('codigo_modular', ''): inst for inst in (payload.get('instituciones') or [])}
+
+    by_code = {}
+    sin_codigo = []
+    for h in hallazgos:
+        if not isinstance(h, dict):
+            continue
+        variable = h.get('variable_detectada')
+        evidencia = (h.get('evidencia_textual') or '').strip()
+        if variable not in CAMPO_CONCRETE_VARIABLES or not evidencia:
+            continue  # sin evidencia literal, o variable "otro" -> no se materializa como bandera
+        codigo = re.sub(r'\D', '', str(h.get('codigo_modular') or ''))
+        if official_codes_resolver:
+            codigo = official_codes_resolver(codigo) or ''
+        if not codigo:
+            sin_codigo.append(h)
+            continue
+        by_code.setdefault(codigo, []).append(h)
+
+    visitas = []
+    for codigo, items in by_code.items():
+        row = {'codigo_modular': codigo, 'hallazgos': items}
+        observadas = []
+        for var in CAMPO_CONCRETE_VARIABLES:
+            match = next((it for it in items if it.get('variable_detectada') == var), None)
+            if match:
+                row[var] = 1
+                row[f'span_{var}'] = (match.get('evidencia_textual') or '').strip()
+                observadas.append(var)
+            else:
+                row[var] = None
+                row[f'span_{var}'] = None
+        row['n_variables_observadas'] = len(observadas)
+        row['variables_observadas'] = '|'.join(observadas)
+        inst = instituciones.get(codigo, {})
+        row['nombre_ie_detectado'] = inst.get('nombre_ie', '')
+        visitas.append(row)
+
+    return visitas, sin_codigo
+
 # ─── OCR Y SINCRONIZACIÓN ─────────────────────────────────────────────────────
 
+ALLOWED_OCR_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic'}
+MAX_OCR_FILES = 10
+
 @app.route('/api/ocr/upload_advanced', methods=['POST'])
+@require_auth
 def ocr_upload_advanced():
     uploaded_files = request.files.getlist('files') or request.files.getlist('file')
     uploaded_files = [file for file in uploaded_files if file and file.filename]
     if not uploaded_files:
         return jsonify({'error': 'No file uploaded'}), 400
+    if len(uploaded_files) > MAX_OCR_FILES:
+        return jsonify({'error': f'Sube como máximo {MAX_OCR_FILES} archivos a la vez.'}), 400
+    for file in uploaded_files:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ALLOWED_OCR_EXTENSIONS:
+            return jsonify({
+                'error': f'Tipo de archivo no permitido: "{file.filename}". '
+                         f'Formatos válidos: PDF, JPG, PNG, WEBP, HEIC.'
+            }), 400
 
     extracted_parts = []
     methods = []
@@ -3344,18 +4405,192 @@ def ocr_upload_advanced():
         if extracted_data.get('nombre_ie', '') == '':
             extracted_data['nombre_ie'] = dict(ie)['nombre_iiee']
 
+    # Se devuelve cada archivo original en base64 para que, si el especialista
+    # confirma la ficha, el frontend lo reenvie y quede guardado en
+    # archivo_subido/ficha_archivo -- hoy el archivo se descartaba apenas se
+    # le extraia el texto.
+    files_meta = [
+        {
+            'filename': item['filename'],
+            'mimetype': item['mimetype'],
+            'hash_sha1': hashlib.sha1(item['bytes']).hexdigest(),
+            'file_b64': base64.b64encode(item['bytes']).decode('ascii'),
+        }
+        for item in files_payload if item.get('bytes')
+    ]
+
     return jsonify({
         'success': True,
         'method': method,
         'parser': parser,
         'file_count': len(uploaded_files),
         'files': filenames,
+        'files_meta': files_meta,
         'extracted': extracted_data
     })
 
+def resolve_codigo_modular_strict(conn, value):
+    """A diferencia de canonical_codigo_modular, NO devuelve un codigo que no
+    exista en dim_institucion -- si no se puede resolver, el hallazgo debe
+    quedar para revision (regla dura del subproyecto de informes de campo)."""
+    code = re.sub(r'\D+', '', str(value or '').strip())
+    if not code:
+        return ''
+    for candidate in (code, code.zfill(7), f'0{code}'):
+        exists = conn.execute(
+            'SELECT 1 FROM dim_institucion WHERE codigo_modular = ? LIMIT 1',
+            (candidate,),
+        ).fetchone()
+        if exists:
+            return candidate
+    return ''
+
+@app.route('/api/ocr/informe_campo/upload', methods=['POST'])
+@require_auth
+def ocr_informe_campo_upload():
+    uploaded = request.files.get('file') or (request.files.getlist('files') or [None])[0]
+    if not uploaded or not uploaded.filename:
+        return jsonify({'error': 'No se subio ningun archivo.'}), 400
+    ext = Path(uploaded.filename).suffix.lower()
+    if ext not in ALLOWED_OCR_EXTENSIONS:
+        return jsonify({'error': f'Tipo de archivo no permitido: "{uploaded.filename}".'}), 400
+
+    text, method, filename, file_bytes, mimetype = extract_text_from_upload(uploaded)
+    if len(text) < 50:
+        return jsonify({'error': 'No se detecto texto suficiente en el documento.'}), 400
+
+    payload, provider, error = extract_informe_campo_hallazgos(text, filename)
+    if not payload:
+        return jsonify({'error': f'No se pudo categorizar el informe (proveedor: {provider}). {error}'}), 502
+
+    conn = get_db()
+    visitas, sin_codigo = consolidate_campo_hallazgos(
+        payload, official_codes_resolver=lambda c: resolve_codigo_modular_strict(conn, c)
+    )
+
+    return jsonify({
+        'success': True,
+        'provider': provider,
+        'method': method,
+        'file_name': filename,
+        'documento': payload.get('documento') or {},
+        'instituciones': payload.get('instituciones') or [],
+        'visitas': visitas,
+        'hallazgos_sin_codigo': sin_codigo,
+        'hash_sha1': hashlib.sha1(file_bytes).hexdigest(),
+        'file_b64': base64.b64encode(file_bytes).decode('ascii'),
+        'mimetype': mimetype,
+        'texto_extraido': text,
+        'variables_meta': CAMPO_VARIABLE_META,
+    })
+
+@app.route('/api/informes_campo', methods=['GET', 'POST'])
+@require_auth
+def informes_campo():
+    conn = get_db()
+    try:
+        if request.method == 'POST':
+            data = request.get_json() or {}
+            visitas = data.get('visitas') or []
+            if not visitas:
+                return jsonify({'error': 'No hay visitas para guardar.'}), 400
+
+            user_id = g.current_user['user_id'] if g.current_user else None
+            file_b64 = data.get('file_b64')
+            archivo_id = None
+            if file_b64:
+                try:
+                    contenido = base64.b64decode(file_b64)
+                except Exception:
+                    contenido = b''
+                cur = conn.execute('''
+                    INSERT INTO archivo_subido (tipo, nombre_archivo, mimetype, tamano_bytes, contenido, hash_sha1, subido_por)
+                    VALUES ('informe_campo', ?, ?, ?, ?, ?, ?)
+                ''', (
+                    data.get('file_name', ''),
+                    data.get('mimetype', ''),
+                    len(contenido),
+                    contenido,
+                    data.get('hash_sha1', ''),
+                    user_id,
+                ))
+                archivo_id = cur.lastrowid
+
+            doc_meta = data.get('documento') or {}
+            cur = conn.execute('''
+                INSERT INTO informe_campo_documento (
+                    archivo_subido_id, nombre_archivo, hash_sha1, tipo_documento,
+                    especialista_detectado, metodo_extraccion, longitud_texto_documento,
+                    texto_extraido, fuente, subido_por
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'app_upload', ?)
+            ''', (
+                archivo_id,
+                data.get('file_name', ''),
+                data.get('hash_sha1', ''),
+                doc_meta.get('tipo_documento', ''),
+                data.get('especialista_detectado', g.current_user['nombre'] if g.current_user else ''),
+                data.get('method', ''),
+                len(data.get('texto_extraido', '') or ''),
+                data.get('texto_extraido', ''),
+                user_id,
+            ))
+            documento_id = cur.lastrowid
+
+            guardadas = []
+            for visita in visitas:
+                codigo = resolve_codigo_modular_strict(conn, visita.get('codigo_modular'))
+                if not codigo:
+                    continue
+                visita_id = hashlib.sha1(
+                    f"{documento_id}|{codigo}|{visita.get('fecha_visita', '')}".encode('utf-8')
+                ).hexdigest()[:16]
+                columns = ['visita_campo_id', 'documento_id', 'codigo_modular', 'nombre_ie_detectado',
+                           'fecha_visita', 'especialista_detectado', 'n_variables_observadas',
+                           'variables_observadas', 'requiere_revision', 'fuente']
+                values = [
+                    visita_id, documento_id, codigo, visita.get('nombre_ie_detectado', ''),
+                    visita.get('fecha_visita', ''), data.get('especialista_detectado', ''),
+                    safe_int(visita.get('n_variables_observadas'), 0),
+                    visita.get('variables_observadas', ''), 0, 'app_upload',
+                ]
+                for var in CAMPO_CONCRETE_VARIABLES:
+                    columns.append(var)
+                    values.append(visita.get(var))
+                    columns.append(f'span_{var}')
+                    values.append(visita.get(f'span_{var}'))
+                placeholders = ', '.join('?' for _ in columns)
+                conn.execute(
+                    f'INSERT OR REPLACE INTO informe_campo_visita ({", ".join(columns)}) VALUES ({placeholders})',
+                    values,
+                )
+                for h in visita.get('hallazgos') or []:
+                    conn.execute('''
+                        INSERT INTO informe_campo_hallazgo (
+                            visita_campo_id, documento_id, codigo_modular_hallazgo,
+                            variable_detectada, tema, descripcion, evidencia_textual
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        visita_id, documento_id, h.get('codigo_modular', ''),
+                        h.get('variable_detectada', ''), h.get('tema', ''),
+                        h.get('descripcion', ''), h.get('evidencia_textual', ''),
+                    ))
+                guardadas.append(visita_id)
+
+            rebuild_simon_operational_summary(conn)
+            conn.commit()
+            return jsonify({'success': True, 'visitas_guardadas': len(guardadas), 'visita_ids': guardadas})
+
+        rows = conn.execute('''
+            SELECT * FROM informe_campo_visita WHERE estado_fila = 1
+            ORDER BY creado_en DESC LIMIT 200
+        ''').fetchall()
+        return jsonify(rows_to_list(rows))
+    finally:
+        conn.close()
+
 @app.route('/api/fichas', methods=['GET', 'POST'])
+@require_auth
 def fichas():
-    ensure_db_schema()
     conn = get_db()
     try:
         if request.method == 'POST':
@@ -3375,13 +4610,29 @@ def fichas():
     finally:
         conn.close()
 
+@app.route('/api/fichas/<int:ficha_id>/archivos', methods=['GET'])
+@require_auth
+def ficha_archivos(ficha_id):
+    conn = get_db()
+    try:
+        rows = conn.execute('''
+            SELECT a.id, a.nombre_archivo, a.mimetype, a.tamano_bytes, a.hash_sha1, a.creado_en, fa.orden
+            FROM ficha_archivo fa
+            JOIN archivo_subido a ON a.id = fa.archivo_subido_id
+            WHERE fa.ficha_id = ? AND fa.estado_fila = 1 AND a.estado_fila = 1
+            ORDER BY fa.orden
+        ''', (ficha_id,)).fetchall()
+        return jsonify(rows_to_list(rows))
+    finally:
+        conn.close()
+
 @app.route('/api/sync', methods=['POST'])
+@require_auth
 def sync_data():
     data = request.get_json() or []
     if not isinstance(data, list):
         data = [data]
 
-    ensure_db_schema()
     conn = get_db()
     inserted = 0
     try:
@@ -3393,7 +4644,7 @@ def sync_data():
     except Exception as e:
         conn.rollback()
         print(f"Error al sincronizar: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'No se pudo sincronizar la información. Intenta nuevamente.'}), 500
     finally:
         conn.close()
 
@@ -3407,7 +4658,7 @@ def sync_data():
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    ensure_db_schema()
+    # ensure_db_schema() ya se ejecuto al importar el modulo (ver mas arriba).
     port = int(os.getenv('PORT', '8000'))
     debug = os.getenv('FLASK_DEBUG', '0') == '1'
     print('=' * 50)

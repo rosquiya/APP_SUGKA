@@ -49,7 +49,8 @@ input,select,textarea{font-family:inherit}
 [data-theme="dark"] .map-heading-title,
 [data-theme="dark"] .stat-mini .num,
 [data-theme="dark"] .leg-count,
-[data-theme="dark"] .ied-code{color:var(--text)}
+[data-theme="dark"] .ied-code,
+[data-theme="dark"] .panel-title{color:var(--text)}
 
 /*──────────────────────────────────────────────────────────────────────────────
   SCREENS & LOGIN
@@ -146,13 +147,21 @@ input,select,textarea{font-family:inherit}
   color:#b91c1c;font-size:12px;display:none;
 }
 .login-footer{margin-top:24px;text-align:center;font-size:11px;color:var(--text-dim)}
+#screen-login .is-hidden{display:none}
+.login-switch{margin-top:16px;text-align:center;font-size:12px;color:var(--text-dim)}
+.login-switch a{color:var(--primary,#2563eb);font-weight:600;text-decoration:none;cursor:pointer}
+.login-switch a:hover{text-decoration:underline}
 
 /*──────────────────────────────────────────────────────────────────────────────
   MAIN APP & SIDEBAR
 ──────────────────────────────────────────────────────────────────────────────*/
 #screen-app{flex-direction:row}
 #sidebar{
-  width:72px;background:var(--brand-navy);border-right:1px solid rgba(255,255,255,.08);
+  /* Fondo fijo (no usa --brand-navy): en tema claro esa variable es un azul
+     más claro que hacía casi invisible el logo (líneas azul marino) sobre
+     el propio sidebar. Con un fondo fijo y bien oscuro, el logo se ve igual
+     de bien en claro y en oscuro. */
+  width:72px;background:#06111d;border-right:1px solid rgba(255,255,255,.08);
   display:flex;flex-direction:column;align-items:center;
   padding:18px 0;gap:5px;z-index:100;flex-shrink:0;
   transition:width var(--transition);
@@ -408,6 +417,37 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .instrument-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 @media(max-width:720px){.question-grid,.instrument-fields{grid-template-columns:1fr}}
 
+/* OCR: pregunta que la IA no pudo leer con confianza */
+.question-card.needs-review{border-color:var(--warning);background:#fffbeb}
+[data-theme="dark"] .question-card.needs-review{background:rgba(251,191,36,.08)}
+.ocr-review-badge{display:inline-flex;align-items:center;margin-left:auto;flex-shrink:0;background:#fef3c7;color:#92400e;border-radius:999px;padding:3px 9px;font-size:10px;font-weight:800;white-space:nowrap}
+[data-theme="dark"] .ocr-review-badge{background:rgba(251,191,36,.16);color:#fde68a}
+
+/* Wizard de preguntas dinámicas */
+.dyn-wizard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin:18px 0}
+.dyn-wizard-head{padding:16px 18px;border-bottom:1px solid var(--border);background:var(--surface2)}
+.dyn-wizard-title{font-size:14px;font-weight:900;color:var(--text)}
+.dyn-wizard-sub{font-size:11px;color:var(--text-muted);margin-top:4px}
+.dyn-wizard-progress{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.dyn-wizard-dots{display:flex;gap:6px;flex-wrap:wrap}
+.dyn-dot{width:26px;height:26px;border-radius:50%;border:1px solid var(--border2);background:var(--surface2);color:var(--text-muted);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all var(--transition)}
+.dyn-dot:hover{border-color:var(--brand-blue)}
+.dyn-dot.active{background:var(--brand-blue);border-color:var(--brand-blue);color:#fff}
+.dyn-dot.answered:not(.active){background:var(--brand-sky);border-color:var(--brand-sky);color:var(--brand-blue)}
+.dyn-wizard-steplabel{font-size:12px;font-weight:800;color:var(--brand-blue)}
+.dyn-wizard-steps{padding:16px 18px}
+.dyn-wizard-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-top:1px solid var(--border)}
+.dyn-wizard-count{font-size:11px;color:var(--text-muted);font-weight:700}
+.dyn-wizard-skip{font-size:11px;color:var(--text-muted);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0}
+
+/* Selector de fuente de datos para KPIs/alertas del dashboard */
+.dash-source-filter{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.dash-source-filter-label{font-size:11px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}
+.dash-source-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.dash-source-tab{border:1px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:999px;padding:7px 14px;font-size:11px;font-weight:800;transition:all var(--transition)}
+.dash-source-tab:hover{border-color:var(--brand-blue);color:var(--brand-blue)}
+.dash-source-tab.active{background:var(--brand-blue);border-color:var(--brand-blue);color:#fff}
+
 /*──────────────────────────────────────────────────────────────────────────────
   OCR VIEW
 ──────────────────────────────────────────────────────────────────────────────*/
@@ -434,6 +474,31 @@ body.is-admin .view.admin-only.active{display:flex!important}
 }
 .conf-high{background:#dcfce7;color:#166534}
 .conf-med{background:#fff7ed;color:#9a3412}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  INFORMES DE CAMPO VIEW
+──────────────────────────────────────────────────────────────────────────────*/
+.campo-empty{font-size:12px;color:var(--text-muted);text-align:center;padding:30px 10px}
+.campo-doc-summary{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--text-muted);line-height:1.5}
+.campo-doc-summary b{color:var(--text)}
+.campo-visita-card{border:1px solid var(--border);background:var(--surface);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:14px}
+.campo-visita-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface2)}
+.campo-visita-ie{font-size:13px;font-weight:900;color:var(--text)}
+.campo-visita-ie .sub{font-size:11px;font-weight:600;color:var(--text-muted);margin-top:2px}
+.campo-hallazgo-list{padding:12px 16px}
+.campo-hallazgo-card{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:8px;padding:11px 12px;margin-bottom:9px;background:var(--surface2)}
+.campo-hallazgo-card:last-child{margin-bottom:0}
+.campo-hallazgo-card.excluded{opacity:.45}
+.campo-hallazgo-card input[type=checkbox]{margin-top:3px;flex-shrink:0;width:16px;height:16px;accent-color:var(--brand-blue)}
+.campo-hallazgo-body{flex:1;min-width:0}
+.campo-hallazgo-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.campo-hallazgo-label{font-size:12px;font-weight:800;color:var(--text)}
+.campo-evidencia{font-size:12px;color:var(--text-muted);line-height:1.5;font-style:italic;border-left:2px solid var(--border2);padding-left:8px;margin-bottom:5px}
+.campo-importancia{font-size:11px;color:var(--text-muted);line-height:1.45}
+.campo-importancia b{color:var(--brand-blue);font-weight:800}
+.campo-sincodigo-card{border:1px dashed var(--warning);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:11px;color:var(--text-muted);background:var(--surface)}
+.campo-warning-banner{display:flex;gap:8px;align-items:center;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:11px;font-weight:700;margin-bottom:14px}
+[data-theme="dark"] .campo-warning-banner{background:rgba(251,191,36,.12);color:#fde68a;border-color:rgba(251,191,36,.30)}
 
 /*──────────────────────────────────────────────────────────────────────────────
   ADMIN CONFIG
@@ -468,6 +533,18 @@ body.is-admin .view.admin-only.active{display:flex!important}
 }
 .mini-btn:hover{border-color:var(--brand-blue);color:var(--brand-blue)}
 .mini-btn.warn:hover{border-color:var(--warning);color:var(--warning)}
+.mini-btn.danger:hover{border-color:var(--danger);color:var(--danger)}
+.status-chip.deleted{background:#fee2e2;color:#991b1b;border-color:#fecaca}
+[data-theme="dark"] .status-chip.deleted{background:rgba(248,113,113,.12);color:#fecaca;border-color:rgba(248,113,113,.28)}
+.config-tabs{display:flex;gap:8px;margin-bottom:18px}
+.config-tab{border:1px solid var(--border);background:var(--surface);color:var(--text-muted);border-radius:999px;padding:9px 18px;font-size:12px;font-weight:800;transition:all var(--transition)}
+.config-tab:hover{border-color:var(--brand-blue);color:var(--brand-blue)}
+.config-tab.active{background:var(--brand-blue);border-color:var(--brand-blue);color:#fff}
+.config-tab-panel{display:none}
+.config-tab-panel.active{display:block}
+.config-filter-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.config-filter-row label{font-size:11px;color:var(--text-muted);font-weight:700;display:flex;align-items:center;gap:6px}
+.config-filter-row input[type=checkbox]{width:15px;height:15px;accent-color:var(--brand-blue)}
 .config-selected{font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:12px}
 .config-selected strong{color:var(--text)}
 .question-admin-grid{display:grid;grid-template-columns:380px minmax(0,1fr);gap:18px;align-items:start}
@@ -670,22 +747,49 @@ body.is-admin .view.admin-only.active{display:flex!important}
       <div class="login-logo-icon"><img src="logo/logo-transparent.png" class="app-logo-img" alt="SUGKA LAB"/></div>
       <div class="login-logo-text"><span class="brand">SUGKA LAB</span><span class="sub">UGEL IBIR-IMAZA</span></div>
     </div>
-    <div class="login-heading">Bienvenido a SUGKA LAB</div>
-    <div class="login-subheading">Ingresa con tu usuario y contraseña institucional</div>
+    <div id="login-fields">
+      <div class="login-heading">Bienvenido a SUGKA LAB</div>
+      <div class="login-subheading">Ingresa con tu usuario y contraseña institucional</div>
 
-    <div class="form-group">
-      <label>Correo o usuario</label>
-      <input id="inp-username" type="text" class="form-input" placeholder="rosario.quispe@utec.edu.pe" autocomplete="username"/>
-    </div>
-    <div class="form-group">
-      <label>Contraseña</label>
-      <div class="password-wrapper">
-        <input id="inp-password" type="password" class="form-input" placeholder="••••••••" autocomplete="current-password"/>
-        <button class="password-toggle" type="button" data-toggle-password="inp-password">Ver</button>
+      <div class="form-group">
+        <label>Correo o usuario</label>
+        <input id="inp-username" type="text" class="form-input" placeholder="rosario.quispe@utec.edu.pe" autocomplete="username"/>
       </div>
-      <div class="login-help">¿Olvidaste tu contraseña? <strong>Contacte con el administrador.</strong></div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <div class="password-wrapper">
+          <input id="inp-password" type="password" class="form-input" placeholder="••••••••" autocomplete="current-password"/>
+          <button class="password-toggle" type="button" data-toggle-password="inp-password">Ver</button>
+        </div>
+        <div class="login-help">¿Olvidaste tu contraseña? <strong>Contacte con el administrador.</strong></div>
+      </div>
+      <button class="btn-primary" id="btn-login" disabled>Ingresar al sistema</button>
+      <div class="login-switch">¿No tienes cuenta? <a id="link-show-register">Regístrate</a></div>
     </div>
-    <button class="btn-primary" id="btn-login" disabled>Ingresar al sistema</button>
+
+    <div id="register-fields" class="is-hidden">
+      <div class="login-heading">Crear cuenta</div>
+      <div class="login-subheading">Te registras como especialista. Un administrador puede darte otro rol después si corresponde.</div>
+
+      <div class="form-group">
+        <label>Nombre completo</label>
+        <input id="reg-nombre" type="text" class="form-input" placeholder="Nombre y apellido" autocomplete="name"/>
+      </div>
+      <div class="form-group">
+        <label>Correo</label>
+        <input id="reg-email" type="email" class="form-input" placeholder="tucorreo@ejemplo.com" autocomplete="email"/>
+      </div>
+      <div class="form-group">
+        <label>Contraseña</label>
+        <div class="password-wrapper">
+          <input id="reg-password" type="password" class="form-input" placeholder="Mínimo 6 caracteres" autocomplete="new-password"/>
+          <button class="password-toggle" type="button" data-toggle-password="reg-password">Ver</button>
+        </div>
+      </div>
+      <button class="btn-primary" id="btn-register" disabled>Crear cuenta</button>
+      <div class="login-switch">¿Ya tienes cuenta? <a id="link-show-login">Inicia sesión</a></div>
+    </div>
+
     <div class="login-error" id="login-error"></div>
   </div>
 </div>
@@ -710,6 +814,9 @@ body.is-admin .view.admin-only.active{display:flex!important}
     </div>
     <div class="nav-item" data-view="ocr" id="nav-ocr" data-tooltip="OCR ficha" title="OCR ficha">
       <span class="nav-icon">AI</span><span class="nav-label">OCR Ficha</span>
+    </div>
+    <div class="nav-item" data-view="campo" id="nav-campo" data-tooltip="Informes de campo" title="Informes de campo">
+      <span class="nav-icon">IC</span><span class="nav-label">Informes de Campo</span>
     </div>
     <div class="nav-item" data-view="dashboard" id="nav-dashboard" data-tooltip="Gestión" title="Gestión">
       <span class="nav-icon">KPI</span><span class="nav-label">Gestión</span>
@@ -954,6 +1061,39 @@ body.is-admin .view.admin-only.active{display:flex!important}
         </div>
       </div>
 
+      <!-- INFORMES DE CAMPO -->
+      <div id="view-campo" class="view scroll-view">
+        <div class="grid-container">
+          <div class="ocr-layout">
+            <div class="panel" style="margin-bottom:0">
+              <div class="panel-title">Subir informe de campo</div>
+              <div class="drop-zone" id="campo-drop-zone">
+                <div style="font-size:12px;font-weight:900;letter-spacing:.08em;color:var(--brand-blue);background:var(--brand-sky);padding:9px 12px;border-radius:8px">OCR + IA</div>
+                <div style="font-size:12px;color:var(--text-muted)">PDF o imagen de un informe de salida/monitoreo. Un archivo a la vez.</div>
+                <button class="btn-primary" style="padding:8px;font-size:12px" onclick="document.getElementById('campo-file-input').click()">Examinar</button>
+              </div>
+              <input type="file" id="campo-file-input" style="display:none" accept=".pdf,image/*"/>
+
+              <div class="ocr-progress" id="campo-progress">
+                <div class="progress-label" id="campo-status-text">Procesando con IA...</div>
+                <div class="progress-bar-wrap"><div class="progress-bar"></div></div>
+              </div>
+
+              <div class="panel-label" style="margin-top:18px">Especialista responsable</div>
+              <div class="field-item"><input class="form-input" id="campo-especialista"/></div>
+            </div>
+
+            <div class="panel" style="margin-bottom:0">
+              <div class="panel-title">Hallazgos detectados <span id="campo-conf" class="confidence-chip" style="display:none"></span></div>
+              <div id="campo-review">
+                <div class="campo-empty">Sube un informe de campo para detectar hallazgos por institución educativa.</div>
+              </div>
+              <button class="btn-primary" id="btn-save-campo" disabled>Guardar hallazgos</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- DASHBOARD -->
       <div id="view-dashboard" class="view scroll-view">
         <div class="dash-shell">
@@ -975,6 +1115,15 @@ body.is-admin .view.admin-only.active{display:flex!important}
 
           <div class="dash-board">
             <div class="dash-overview" id="dash-overview">
+              <div class="dash-source-filter" id="dash-source-filter">
+                <span class="dash-source-filter-label">Fuente de datos para KPIs y alertas:</span>
+                <div class="dash-source-tabs">
+                  <button type="button" class="dash-source-tab active" data-source="todas">Todas</button>
+                  <button type="button" class="dash-source-tab" data-source="simon">SIMON</button>
+                  <button type="button" class="dash-source-tab" data-source="dinamica">Preguntas dinámicas</button>
+                  <button type="button" class="dash-source-tab" data-source="campo">Informes de campo</button>
+                </div>
+              </div>
               <div class="dash-kpi-grid" id="dash-kpis">
                 <div class="spinner" style="margin:auto"></div>
               </div>
@@ -1061,11 +1210,17 @@ body.is-admin .view.admin-only.active{display:flex!important}
           <div class="config-hero">
             <div>
               <div class="config-title">Configuración</div>
-              <div class="config-sub">Gestión de usuarios para acceso administrativo y especialistas del sistema SUGKA LAB.</div>
+              <div class="config-sub">Gestión de usuarios e instituciones educativas para el sistema SUGKA LAB.</div>
             </div>
             <div class="config-badge">Perfil administrador</div>
           </div>
 
+          <div class="config-tabs">
+            <button type="button" class="config-tab active" data-config-tab="usuarios">Usuarios</button>
+            <button type="button" class="config-tab" data-config-tab="instituciones">Instituciones educativas</button>
+          </div>
+
+          <div id="config-panel-usuarios" class="config-tab-panel active">
           <div class="config-grid">
             <div class="config-stack">
               <form class="panel" id="cfg-user-form">
@@ -1129,6 +1284,93 @@ body.is-admin .view.admin-only.active{display:flex!important}
                   <tr><td colspan="5">Cargando usuarios...</td></tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+          </div>
+
+          <div id="config-panel-instituciones" class="config-tab-panel">
+            <div class="config-grid">
+              <form class="panel" id="cfg-ie-form">
+                <div class="panel-title" id="cfg-ie-form-title">Nueva institución educativa</div>
+                <div class="fields-grid" style="gap:12px;margin-bottom:12px">
+                  <div class="field-item">
+                    <label class="form-group label">Código modular</label>
+                    <input class="form-input" id="cfg-ie-codigo" required/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Código local</label>
+                    <input class="form-input" id="cfg-ie-codigo-local"/>
+                  </div>
+                  <div class="field-item full">
+                    <label class="form-group label">Nombre de la IE</label>
+                    <input class="form-input" id="cfg-ie-nombre" required/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Nivel / Modalidad</label>
+                    <input class="form-input" id="cfg-ie-nivel"/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Tipo de gestión</label>
+                    <input class="form-input" id="cfg-ie-gestion"/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Departamento</label>
+                    <input class="form-input" id="cfg-ie-departamento" value="Amazonas"/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Provincia</label>
+                    <input class="form-input" id="cfg-ie-provincia"/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Distrito</label>
+                    <input class="form-input" id="cfg-ie-distrito"/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Centro poblado</label>
+                    <input class="form-input" id="cfg-ie-centropoblado"/>
+                  </div>
+                  <div class="field-item full">
+                    <label class="form-group label">Dirección</label>
+                    <input class="form-input" id="cfg-ie-direccion"/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Latitud</label>
+                    <input class="form-input" id="cfg-ie-lat" type="number" step="any"/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Longitud</label>
+                    <input class="form-input" id="cfg-ie-lon" type="number" step="any"/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Alumnos (censo)</label>
+                    <input class="form-input" id="cfg-ie-alumnos" type="number"/>
+                  </div>
+                  <div class="field-item">
+                    <label class="form-group label">Docentes (censo)</label>
+                    <input class="form-input" id="cfg-ie-docentes" type="number"/>
+                  </div>
+                </div>
+                <div class="question-form-actions">
+                  <button class="btn-primary" type="submit" id="cfg-ie-submit">Crear institución</button>
+                  <button class="mini-btn" type="button" id="cfg-ie-cancel" style="display:none">Cancelar edición</button>
+                </div>
+              </form>
+
+              <div class="panel">
+                <div class="panel-title">Instituciones registradas</div>
+                <div class="config-filter-row">
+                  <label><input type="checkbox" id="cfg-ie-show-deleted"/> Mostrar eliminadas</label>
+                  <input class="form-input" id="cfg-ie-search" placeholder="Buscar por nombre, código o distrito..." style="max-width:280px"/>
+                </div>
+                <table class="user-table">
+                  <thead>
+                    <tr><th>Código</th><th>Nombre</th><th>Distrito</th><th>Estado</th><th>Acciones</th></tr>
+                  </thead>
+                  <tbody id="cfg-ie-body">
+                    <tr><td colspan="5">Cargando instituciones...</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -1211,16 +1453,26 @@ body.is-admin .view.admin-only.active{display:flex!important}
 <script>
 'use strict';
 const API = (() => {
+  // Por defecto, la API vive en el mismo origen que este archivo (Flask
+  // sirve frontend y backend juntos, en local o en producción). Solo se usa
+  // otro origen si se define explícitamente vía window.SUGKA_API_BASE o
+  // localStorage('sugka_api_base') -- útil si algún día el frontend se
+  // aloja por separado del backend.
   const configured = (window.SUGKA_API_BASE || localStorage.getItem('sugka_api_base') || '').trim();
-  if (configured) return configured.replace(/\/$/, '');
-  const localHosts = ['localhost', '127.0.0.1'];
-  return localHosts.includes(window.location.hostname) ? 'http://localhost:8000/api' : `${window.location.origin}/api`;
+  return configured ? configured.replace(/\/$/, '') : `${window.location.origin}/api`;
 })();
 
 /* Service Worker & Offline Cache */
 let offlineFichas = JSON.parse(localStorage.getItem('offline_fichas') || '[]');
 let isOnline = navigator.onLine;
 let lastOcrFicha = null;
+const CAMPO_CONCRETE_VARIABLES_JS = [
+  'presenta_violencia', 'ausencia_docente', 'falta_materiales', 'infraestructura_deficiente',
+  'riesgo_salud_seguridad', 'inasistencia_estudiantes', 'eib_no_practicado',
+  'gestion_directiva_debil', 'retroalimentacion_debil', 'acceso_dificil',
+  'alimentacion_qaliwarma_problema',
+];
+let campoState = { visitas: [], sinCodigo: [], meta: {}, doc: {}, fileMeta: {} };
 let currentTheme = localStorage.getItem('sugka_theme') || 'light';
 
 if ('serviceWorker' in navigator) {
@@ -1257,9 +1509,10 @@ async function syncFichas() {
   if (offlineFichas.length === 0 || !isOnline) return;
   try {
     const r = await fetch(API+'/sync', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: {'Content-Type': 'application/json', ...authHeaders()},
       body: JSON.stringify(offlineFichas)
     });
+    if(r.status === 401) { forceLogout('Tu sesión expiró. Vuelve a iniciar sesión.'); throw new Error('Sesión expirada.'); }
     if(!r.ok) throw new Error('Error al sincronizar');
     offlineFichas = [];
     localStorage.removeItem('offline_fichas');
@@ -1272,9 +1525,49 @@ async function syncFichas() {
 document.getElementById('btn-sync').addEventListener('click', syncFichas);
 
 /* Utils */
+function authHeaders() {
+  try {
+    const raw = sessionStorage.getItem('sugka_session');
+    if (!raw) return {};
+    const session = JSON.parse(raw);
+    return session && session.token ? {'Authorization': 'Bearer ' + session.token} : {};
+  } catch(e) { return {}; }
+}
+
+function forceLogout(message) {
+  sessionStorage.removeItem('sugka_session');
+  currentUser = null;
+  selectedIECode = null;
+  document.body.classList.remove('is-admin');
+  const detail = document.getElementById('ie-detail');
+  if (detail) detail.classList.remove('open');
+  const appScreen = document.getElementById('screen-app');
+  if (appScreen) appScreen.classList.remove('active');
+  const loginScreen = document.getElementById('screen-login');
+  if (loginScreen) loginScreen.classList.add('active');
+  if (message) showToast(message, 'error');
+}
+
 async function apiFetch(path, opts={}) {
-  const r = await fetch(API + path, {headers:{'Content-Type':'application/json'},...opts});
-  if (!r.ok) { const e = await r.json(); throw new Error(e.error||'Error'); }
+  const hdrs = authHeaders();
+  const r = await fetch(API + path, {
+    ...opts,
+    headers: {'Content-Type': 'application/json', ...hdrs, ...(opts.headers||{})},
+  });
+  // Un 401 solo significa "tu sesión expiró" si esta petición llevaba un
+  // token de sesión adjunto. Endpoints públicos como /login también
+  // responden 401 cuando el usuario/contraseña es incorrecto, y en ese
+  // caso queremos mostrar el mensaje real del servidor, no forzar un
+  // logout de una sesión que ni siquiera existe todavía.
+  if (r.status === 401 && hdrs.Authorization) {
+    forceLogout('Tu sesión expiró. Vuelve a iniciar sesión.');
+    throw new Error('Sesión expirada.');
+  }
+  if (!r.ok) {
+    let message = 'Error';
+    try { const e = await r.json(); message = e.error || message; } catch(_) { /* respuesta no-JSON */ }
+    throw new Error(message);
+  }
   return r.json();
 }
 function showToast(msg, type='success') {
@@ -1405,13 +1698,115 @@ function renderInstrument(scope, instrumento) {
   `;
 }
 
+/* Las preguntas dinámicas (fuera de las 8 fijas SIMON A-01..B-05) se
+ * presentan como un wizard paso a paso -- un paso por sección -- en vez de
+ * un listado plano larguísimo, porque hoy son ~25 preguntas de un solo
+ * instrumento y así se sienten mucho más manejables y profesionales. */
+let wizardState = {};
+
+function dynamicWizardSteps(instrumento) {
+  return (instrumento.secciones || []).map(seccion => ({
+    seccion,
+    preguntas: seccion.preguntas || [],
+  }));
+}
+
+function renderDynamicWizard(scope, instrumento) {
+  const steps = dynamicWizardSteps(instrumento);
+  const finalFieldsHtml = renderInstrumentFinalFields(scope, instrumento);
+  if(finalFieldsHtml) {
+    steps.push({ seccion: { nombre: 'Campos finales' }, preguntas: [], finalFieldsHtml });
+  }
+  if(steps.length === 0) return '';
+
+  wizardState[scope] = wizardState[scope] || 0;
+  if(wizardState[scope] >= steps.length) wizardState[scope] = 0;
+
+  const dots = steps.map((s, i) => `<span class="dyn-dot" data-wizard-goto="${i}" data-scope="${scope}" title="${esc(s.seccion.nombre)}">${i+1}</span>`).join('');
+  const stepsHtml = steps.map((step, i) => `
+    <div class="wizard-step" data-scope="${scope}" data-step="${i}" style="display:${i===0 ? 'block' : 'none'}">
+      <div class="instrument-section-title">${esc(step.seccion.nombre)}</div>
+      ${step.finalFieldsHtml || step.preguntas.map(p => renderInstrumentQuestion(scope, instrumento, step.seccion, p)).join('')}
+    </div>
+  `).join('');
+
+  return `
+    <div class="dyn-wizard" data-wizard="${esc(instrumento.codigo)}">
+      <div class="dyn-wizard-head">
+        <div class="dyn-wizard-title">${esc(instrumento.formulario)}</div>
+        <div class="dyn-wizard-sub">Preguntas dinámicas — opcional. Puedes confirmar la ficha sin completarlas; solo las preguntas SIMON de arriba son obligatorias.</div>
+      </div>
+      <div class="dyn-wizard-progress">
+        <div class="dyn-wizard-dots">${dots}</div>
+        <div class="dyn-wizard-steplabel" data-wizard-label data-scope="${scope}"></div>
+      </div>
+      <div class="dyn-wizard-steps" data-wizard-steps="${scope}" data-total="${steps.length}">${stepsHtml}</div>
+      <div class="dyn-wizard-nav">
+        <button type="button" class="mini-btn" data-wizard-prev data-scope="${scope}">← Anterior</button>
+        <span class="dyn-wizard-count" data-wizard-count data-scope="${scope}"></span>
+        <button type="button" class="mini-btn" data-wizard-next data-scope="${scope}">Siguiente →</button>
+      </div>
+    </div>
+  `;
+}
+
+function updateWizardUI(scope) {
+  const stepsBox = document.querySelector(`[data-wizard-steps="${scope}"]`);
+  if(!stepsBox) return;
+  const total = Number(stepsBox.dataset.total || 0);
+  const idx = wizardState[scope] || 0;
+
+  stepsBox.querySelectorAll('.wizard-step').forEach(el => {
+    el.style.display = Number(el.dataset.step) === idx ? 'block' : 'none';
+  });
+  document.querySelectorAll(`.dyn-dot[data-scope="${scope}"]`).forEach(dot => {
+    const dotIdx = Number(dot.dataset.wizardGoto);
+    dot.classList.toggle('active', dotIdx === idx);
+    const stepEl = stepsBox.querySelector(`.wizard-step[data-step="${dotIdx}"]`);
+    const answered = stepEl && stepEl.querySelectorAll('[data-inst-level]').length > 0 &&
+      [...stepEl.querySelectorAll('[data-inst-level]')].every(sel => sel.value);
+    dot.classList.toggle('answered', !!answered);
+  });
+  const label = document.querySelector(`[data-wizard-label][data-scope="${scope}"]`);
+  const activeStepTitle = stepsBox.querySelector(`.wizard-step[data-step="${idx}"] .instrument-section-title`);
+  if(label) label.textContent = `Paso ${idx+1} de ${total}${activeStepTitle ? ': ' + activeStepTitle.textContent : ''}`;
+  const count = document.querySelector(`[data-wizard-count][data-scope="${scope}"]`);
+  if(count) count.textContent = `${idx+1}/${total}`;
+  const prevBtn = document.querySelector(`[data-wizard-prev][data-scope="${scope}"]`);
+  const nextBtn = document.querySelector(`[data-wizard-next][data-scope="${scope}"]`);
+  if(prevBtn) prevBtn.disabled = idx === 0;
+  if(nextBtn) nextBtn.textContent = idx >= total - 1 ? 'Fin ✓' : 'Siguiente →';
+  if(nextBtn) nextBtn.disabled = idx >= total - 1;
+}
+
+function wizardGoTo(scope, idx) {
+  wizardState[scope] = idx;
+  updateWizardUI(scope);
+}
+
+document.addEventListener('click', (e) => {
+  const next = e.target.closest('[data-wizard-next]');
+  const prev = e.target.closest('[data-wizard-prev]');
+  const dot = e.target.closest('[data-wizard-goto]');
+  if(next) { const scope = next.dataset.scope; wizardGoTo(scope, (wizardState[scope]||0) + 1); }
+  else if(prev) { const scope = prev.dataset.scope; wizardGoTo(scope, Math.max(0, (wizardState[scope]||0) - 1)); }
+  else if(dot) { wizardGoTo(dot.dataset.scope, Number(dot.dataset.wizardGoto)); }
+});
+
 function renderInstrumentForms() {
   ['manual','ocr'].forEach(scope => {
     const container = document.getElementById(`${scope}-instruments`);
     if(!container) return;
-    container.innerHTML = instrumentDefinitions.length
-      ? instrumentDefinitions.map(inst => renderInstrument(scope, inst)).join('')
-      : '<div class="dash-empty">No hay instrumentos configurados.</div>';
+    if(!instrumentDefinitions.length) {
+      container.innerHTML = '<div class="dash-empty">No hay instrumentos configurados.</div>';
+      return;
+    }
+    const fixed = instrumentDefinitions.filter(i => i.tipo === 'fija');
+    const dynamic = instrumentDefinitions.filter(i => i.tipo !== 'fija');
+    const fixedHtml = fixed.map(inst => renderInstrument(scope, inst)).join('');
+    const dynamicHtml = dynamic.map(inst => renderDynamicWizard(scope, inst)).join('');
+    container.innerHTML = fixedHtml + dynamicHtml;
+    dynamic.forEach(() => updateWizardUI(scope));
   });
 }
 
@@ -1420,6 +1815,51 @@ async function ensureInstrumentFormsReady(scope) {
   if(!instrumentDefinitions.length || (container && !container.querySelector('[data-inst-level]'))) {
     await loadInstrumentos();
   }
+}
+
+/* Validación: las preguntas SIMON (instrumento tipo 'fija') son
+ * obligatorias para confirmar/guardar una ficha; las dinámicas son
+ * opcionales pero se advierte si quedan incompletas. */
+function fixedInstrumentsMissing(scope) {
+  const missing = [];
+  instrumentDefinitions.filter(i => i.tipo === 'fija').forEach(instrumento => {
+    document.querySelectorAll(`[data-inst-level][data-scope="${scope}"][data-instrument="${cssIdent(instrumento.codigo)}"]`).forEach(el => {
+      if(!el.value) missing.push(el.dataset.question);
+    });
+  });
+  return missing;
+}
+
+function dynamicInstrumentsProgress(scope) {
+  let total = 0, answered = 0;
+  instrumentDefinitions.filter(i => i.tipo !== 'fija').forEach(instrumento => {
+    document.querySelectorAll(`[data-inst-level][data-scope="${scope}"][data-instrument="${cssIdent(instrumento.codigo)}"]`).forEach(el => {
+      total++;
+      if(el.value) answered++;
+    });
+  });
+  return { total, answered };
+}
+
+function confirmSaveWithValidation(scope) {
+  const missing = fixedInstrumentsMissing(scope);
+  if(missing.length > 0) {
+    missing.forEach(qid => {
+      const card = document.querySelector(`#${scope}-instruments [data-question-card="${cssIdent(qid)}"]`);
+      if(card) card.classList.add('needs-review');
+    });
+    showToast(`Completa las preguntas SIMON obligatorias: ${missing.join(', ')}`, 'error');
+    return false;
+  }
+  const dyn = dynamicInstrumentsProgress(scope);
+  if(dyn.total > 0 && dyn.answered < dyn.total) {
+    const pendientes = dyn.total - dyn.answered;
+    return window.confirm(
+      `Vas a guardar sin completar ${pendientes} de ${dyn.total} preguntas dinámicas. ` +
+      `Las preguntas SIMON obligatorias sí están completas. ¿Deseas continuar de todas formas?`
+    );
+  }
+  return true;
 }
 
 function collectInstrumentResponses(scope) {
@@ -1479,13 +1919,45 @@ const OCR_FIELD_IDS = [
   'fo-b4-obs','fo-b5-obs','fo-obs','fo-comp'
 ];
 
+let lastOcrFiles = [];
+
 function clearOcrFields() {
   OCR_FIELD_IDS.forEach(id => setField(id, ''));
   clearInstrumentResponses('ocr');
+  document.querySelectorAll('#ocr-instruments .question-card.needs-review').forEach(card => {
+    card.classList.remove('needs-review');
+    const badge = card.querySelector('.ocr-review-badge');
+    if(badge) badge.remove();
+  });
   const cb = document.getElementById('ocr-conf');
   cb.style.display = 'none';
   cb.textContent = '';
   lastOcrFicha = null;
+  lastOcrFiles = [];
+}
+
+/* Marca en rojo/amarillo la pregunta SIMON que la IA no pudo leer con
+ * confianza (nivel vacío, 0, o fuera de rango 1-4), para que el
+ * especialista sepa que debe completarla manualmente en vez de asumir
+ * que "no observado" es un dato real. */
+function markOcrConfidence(questionId, level) {
+  const card = document.querySelector(`#ocr-instruments [data-question-card="${cssIdent(questionId)}"]`);
+  if(!card) return;
+  const n = Number(level);
+  const missing = !level || !(n >= 1 && n <= 4);
+  card.classList.toggle('needs-review', missing);
+  let badge = card.querySelector('.ocr-review-badge');
+  if(missing) {
+    if(!badge) {
+      badge = document.createElement('span');
+      badge.className = 'ocr-review-badge';
+      badge.textContent = 'IA no detectó el nivel — completar manualmente';
+      const top = card.querySelector('.question-top');
+      if(top) top.appendChild(badge);
+    }
+  } else if(badge) {
+    badge.remove();
+  }
 }
 
 function populateOcrFields(ex) {
@@ -1526,6 +1998,11 @@ function populateOcrFields(ex) {
   setInstrumentQuestion('ocr', 'B-05', ex.b5, ex.b5_observacion);
   setInstrumentFinal('ocr', 'observaciones_recomendaciones', ex.observaciones_recomendaciones || ex.observaciones || '');
   setInstrumentFinal('ocr', 'compromiso_monitoreado_1', ex.compromisos_monitoreado || ex.compromisos || '');
+
+  ['A-01','A-02','A-03','B-01','B-02','B-03','B-04','B-05'].forEach(qid => {
+    const key = qid.toLowerCase().replace('-0', '');
+    markOcrConfidence(qid, ex[key]);
+  });
 }
 
 function buildOcrFichaFromFields() {
@@ -1560,7 +2037,8 @@ function buildOcrFichaFromFields() {
     monitor_dni: getField('fo-monitor-dni'),
     iged: getField('fo-iged'),
     monitor_email: getField('fo-monitor-email'),
-    instrumentos: collectInstrumentResponses('ocr')
+    instrumentos: collectInstrumentResponses('ocr'),
+    archivos: lastOcrFiles
   };
 }
 
@@ -1608,16 +2086,48 @@ async function initLogin() {
   document.getElementById('inp-username').value = '';
   document.getElementById('inp-password').value = '';
   document.getElementById('btn-login').disabled = true;
+  document.getElementById('reg-nombre').value = '';
+  document.getElementById('reg-email').value = '';
+  document.getElementById('reg-password').value = '';
+  document.getElementById('btn-register').disabled = true;
+  showLoginForm();
 }
+
+function showLoginForm() {
+  document.getElementById('login-fields').classList.remove('is-hidden');
+  document.getElementById('register-fields').classList.add('is-hidden');
+  document.getElementById('login-error').style.display = 'none';
+}
+
+function showRegisterForm() {
+  document.getElementById('login-fields').classList.add('is-hidden');
+  document.getElementById('register-fields').classList.remove('is-hidden');
+  document.getElementById('login-error').style.display = 'none';
+}
+
+document.getElementById('link-show-register').addEventListener('click', e => { e.preventDefault(); showRegisterForm(); });
+document.getElementById('link-show-login').addEventListener('click', e => { e.preventDefault(); showLoginForm(); });
 
 function updateLoginButton() {
   document.getElementById('btn-login').disabled = !getField('inp-username') || !getField('inp-password');
+}
+
+function updateRegisterButton() {
+  document.getElementById('btn-register').disabled =
+    !getField('reg-nombre') || !getField('reg-email') || !getField('reg-password');
 }
 
 ['inp-username','inp-password'].forEach(id => {
   document.getElementById(id).addEventListener('input', updateLoginButton);
   document.getElementById(id).addEventListener('keydown', e => {
     if(e.key === 'Enter' && !document.getElementById('btn-login').disabled) document.getElementById('btn-login').click();
+  });
+});
+
+['reg-nombre','reg-email','reg-password'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateRegisterButton);
+  document.getElementById(id).addEventListener('keydown', e => {
+    if(e.key === 'Enter' && !document.getElementById('btn-register').disabled) document.getElementById('btn-register').click();
   });
 });
 
@@ -1638,6 +2148,21 @@ document.getElementById('btn-login').addEventListener('click', async () => {
   try {
     const d = await apiFetch('/login', {method:'POST', body: JSON.stringify({username, password})});
     sessionStorage.setItem('sugka_session', JSON.stringify(d));
+    enterApp(d.user || d.especialista);
+  } catch(e) {
+    document.getElementById('login-error').textContent = e.message;
+    document.getElementById('login-error').style.display = 'block';
+  }
+});
+
+document.getElementById('btn-register').addEventListener('click', async () => {
+  const nombre = getField('reg-nombre');
+  const email = getField('reg-email');
+  const password = getField('reg-password');
+  try {
+    const d = await apiFetch('/registro', {method:'POST', body: JSON.stringify({nombre, email, password})});
+    sessionStorage.setItem('sugka_session', JSON.stringify(d));
+    showToast('Cuenta creada correctamente.', 'success');
     enterApp(d.user || d.especialista);
   } catch(e) {
     document.getElementById('login-error').textContent = e.message;
@@ -1724,6 +2249,7 @@ function renderConfigUsers() {
           <div class="config-actions">
             <button class="mini-btn" type="button" data-user-password="${esc(user.user_id)}">Clave</button>
             <button class="mini-btn warn" type="button" data-user-toggle="${esc(user.user_id)}">${toggleText}</button>
+            <button class="mini-btn danger" type="button" data-user-delete="${esc(user.user_id)}">Eliminar</button>
           </div>
         </td>
       </tr>
@@ -1736,6 +2262,23 @@ function renderConfigUsers() {
   document.querySelectorAll('[data-user-toggle]').forEach(btn => {
     btn.addEventListener('click', () => toggleUserActive(btn.dataset.userToggle));
   });
+  document.querySelectorAll('[data-user-delete]').forEach(btn => {
+    btn.addEventListener('click', () => deleteUser(btn.dataset.userDelete));
+  });
+}
+
+async function deleteUser(userId) {
+  const user = configUsers.find(u => u.user_id === userId);
+  if(!user) return;
+  const ok = window.confirm(`¿Eliminar al usuario "${user.nombre}"? Podrás reactivarlo luego desde "Activar", su historial no se pierde.`);
+  if(!ok) return;
+  try {
+    await apiFetch(`/usuarios/${encodeURIComponent(userId)}`, {method: 'DELETE'});
+    showToast('Usuario eliminado.', 'success');
+    await loadConfigData();
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
 }
 
 function selectPasswordUser(userId) {
@@ -1767,6 +2310,10 @@ async function toggleUserActive(userId) {
 document.getElementById('cfg-user-form').addEventListener('submit', async e => {
   e.preventDefault();
   if(!isAdminUser()) return;
+  // OJO: hay que guardar el form ANTES del await -- el navegador limpia
+  // e.currentTarget en cuanto termina el despacho sincrono del evento, asi
+  // que leerlo despues de un await ya devuelve null.
+  const form = e.currentTarget;
   try {
     await apiFetch('/usuarios', {
       method:'POST',
@@ -1779,7 +2326,7 @@ document.getElementById('cfg-user-form').addEventListener('submit', async e => {
         password: getField('cfg-password')
       })
     });
-    e.currentTarget.reset();
+    form.reset();
     ['cfg-username','cfg-email'].forEach(id => {
       delete document.getElementById(id).dataset.touched;
       delete document.getElementById(id).dataset.autogen;
@@ -1815,6 +2362,170 @@ document.getElementById('cfg-password-form').addEventListener('submit', async e 
     showToast(err.message, 'error');
   }
 });
+
+/* Configuración: tabs Usuarios / Instituciones educativas */
+document.querySelectorAll('[data-config-tab]').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('[data-config-tab]').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.config-tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(`config-panel-${tab.dataset.configTab}`).classList.add('active');
+    if(tab.dataset.configTab === 'instituciones' && configInstituciones.length === 0) loadAdminInstituciones();
+  });
+});
+
+/* CRUD administrativo de instituciones educativas (dim_institucion) */
+let configInstituciones = [];
+let cfgIeEditingCodigo = null;
+
+async function loadAdminInstituciones() {
+  const body = document.getElementById('cfg-ie-body');
+  try {
+    const incluirInactivas = document.getElementById('cfg-ie-show-deleted').checked;
+    configInstituciones = await apiFetch(`/admin/instituciones${incluirInactivas ? '?incluir_inactivas=1' : ''}`);
+    renderAdminInstituciones();
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="5">${esc(e.message)}</td></tr>`;
+  }
+}
+
+function renderAdminInstituciones() {
+  const body = document.getElementById('cfg-ie-body');
+  const q = (document.getElementById('cfg-ie-search').value || '').trim().toLowerCase();
+  const rows = configInstituciones.filter(ie => {
+    if(!q) return true;
+    return [ie.codigo_modular, ie.nombre_iiee, ie.distrito].some(v => (v || '').toLowerCase().includes(q));
+  });
+  if(!rows.length) {
+    body.innerHTML = '<tr><td colspan="5">No hay instituciones que coincidan.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(ie => {
+    const deleted = Number(ie.estado_fila) === 0;
+    const statusClass = deleted ? 'deleted' : 'on';
+    const statusText = deleted ? 'Eliminada' : 'Activa';
+    return `
+      <tr>
+        <td>${esc(ie.codigo_modular)}</td>
+        <td><strong>${esc(ie.nombre_iiee || '')}</strong><div class="dash-item-meta">${esc(ie.nivel_modalidad || '')}</div></td>
+        <td>${esc(ie.distrito || '')}</td>
+        <td><span class="status-chip ${statusClass}">${statusText}</span></td>
+        <td>
+          <div class="config-actions">
+            ${deleted
+              ? `<button class="mini-btn" type="button" data-ie-restore="${esc(ie.codigo_modular)}">Restaurar</button>`
+              : `<button class="mini-btn" type="button" data-ie-edit="${esc(ie.codigo_modular)}">Editar</button>
+                 <button class="mini-btn danger" type="button" data-ie-delete="${esc(ie.codigo_modular)}">Eliminar</button>`}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  document.querySelectorAll('[data-ie-edit]').forEach(btn => btn.addEventListener('click', () => editInstitucion(btn.dataset.ieEdit)));
+  document.querySelectorAll('[data-ie-delete]').forEach(btn => btn.addEventListener('click', () => deleteInstitucion(btn.dataset.ieDelete)));
+  document.querySelectorAll('[data-ie-restore]').forEach(btn => btn.addEventListener('click', () => restoreInstitucion(btn.dataset.ieRestore)));
+}
+
+document.getElementById('cfg-ie-show-deleted').addEventListener('change', loadAdminInstituciones);
+document.getElementById('cfg-ie-search').addEventListener('input', renderAdminInstituciones);
+
+function editInstitucion(codigo) {
+  const ie = configInstituciones.find(x => x.codigo_modular === codigo);
+  if(!ie) return;
+  cfgIeEditingCodigo = codigo;
+  setField('cfg-ie-codigo', ie.codigo_modular);
+  document.getElementById('cfg-ie-codigo').disabled = true;
+  setField('cfg-ie-codigo-local', ie.codigo_local || '');
+  setField('cfg-ie-nombre', ie.nombre_iiee || '');
+  setField('cfg-ie-nivel', ie.nivel_modalidad || '');
+  setField('cfg-ie-gestion', ie.tipo_gestion || '');
+  setField('cfg-ie-departamento', ie.departamento || '');
+  setField('cfg-ie-provincia', ie.provincia || '');
+  setField('cfg-ie-distrito', ie.distrito || '');
+  setField('cfg-ie-centropoblado', ie.centro_poblado || '');
+  setField('cfg-ie-direccion', ie.direccion_iiee || '');
+  setField('cfg-ie-lat', ie.latitud ?? '');
+  setField('cfg-ie-lon', ie.longitud ?? '');
+  setField('cfg-ie-alumnos', ie.alumnos_censo ?? '');
+  setField('cfg-ie-docentes', ie.docentes_censo ?? '');
+  document.getElementById('cfg-ie-form-title').textContent = `Editar: ${ie.nombre_iiee || ie.codigo_modular}`;
+  document.getElementById('cfg-ie-submit').textContent = 'Guardar cambios';
+  document.getElementById('cfg-ie-cancel').style.display = 'inline-flex';
+  document.getElementById('cfg-ie-form').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function resetIeForm() {
+  cfgIeEditingCodigo = null;
+  document.getElementById('cfg-ie-form').reset();
+  document.getElementById('cfg-ie-codigo').disabled = false;
+  document.getElementById('cfg-ie-departamento').value = 'Amazonas';
+  document.getElementById('cfg-ie-form-title').textContent = 'Nueva institución educativa';
+  document.getElementById('cfg-ie-submit').textContent = 'Crear institución';
+  document.getElementById('cfg-ie-cancel').style.display = 'none';
+}
+document.getElementById('cfg-ie-cancel').addEventListener('click', resetIeForm);
+
+function ieFormPayload() {
+  return {
+    codigo_modular: getField('cfg-ie-codigo'),
+    codigo_local: getField('cfg-ie-codigo-local'),
+    nombre_iiee: getField('cfg-ie-nombre'),
+    nivel_modalidad: getField('cfg-ie-nivel'),
+    tipo_gestion: getField('cfg-ie-gestion'),
+    departamento: getField('cfg-ie-departamento'),
+    provincia: getField('cfg-ie-provincia'),
+    distrito: getField('cfg-ie-distrito'),
+    centro_poblado: getField('cfg-ie-centropoblado'),
+    direccion_iiee: getField('cfg-ie-direccion'),
+    latitud: getField('cfg-ie-lat') ? Number(getField('cfg-ie-lat')) : null,
+    longitud: getField('cfg-ie-lon') ? Number(getField('cfg-ie-lon')) : null,
+    alumnos_censo: getField('cfg-ie-alumnos') ? Number(getField('cfg-ie-alumnos')) : null,
+    docentes_censo: getField('cfg-ie-docentes') ? Number(getField('cfg-ie-docentes')) : null,
+  };
+}
+
+document.getElementById('cfg-ie-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  try {
+    const payload = ieFormPayload();
+    if(cfgIeEditingCodigo) {
+      delete payload.codigo_modular;
+      await apiFetch(`/admin/instituciones/${encodeURIComponent(cfgIeEditingCodigo)}`, {method: 'PUT', body: JSON.stringify(payload)});
+      showToast('Institución actualizada.', 'success');
+    } else {
+      await apiFetch('/admin/instituciones', {method: 'POST', body: JSON.stringify(payload)});
+      showToast('Institución creada.', 'success');
+    }
+    resetIeForm();
+    await loadAdminInstituciones();
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+});
+
+async function deleteInstitucion(codigo) {
+  const ie = configInstituciones.find(x => x.codigo_modular === codigo);
+  const ok = window.confirm(`¿Eliminar la IE "${ie ? ie.nombre_iiee : codigo}"? Dejará de aparecer en el mapa y reportes; puedes restaurarla luego.`);
+  if(!ok) return;
+  try {
+    await apiFetch(`/admin/instituciones/${encodeURIComponent(codigo)}`, {method: 'DELETE'});
+    showToast('Institución eliminada.', 'success');
+    await loadAdminInstituciones();
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function restoreInstitucion(codigo) {
+  try {
+    await apiFetch(`/admin/instituciones/${encodeURIComponent(codigo)}`, {method: 'PUT', body: JSON.stringify({restaurar: true})});
+    showToast('Institución restaurada.', 'success');
+    await loadAdminInstituciones();
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
 
 /* Preguntas dinamicas */
 const QUESTION_LEVEL_FIELDS = [
@@ -1993,6 +2704,7 @@ const VIEW_TITLES = {
   mapa: ['IE de Imaza','Mapa de instituciones'],
   form: ['Ficha de monitoreo','Registro offline'],
   ocr: ['OCR de ficha','Azure Document Intelligence'],
+  campo: ['Informes de campo','OCR + IA · Gemini / OpenAI'],
   dashboard: ['Gestión educativa','Indicadores y alertas'],
   config: ['Configuración','Usuarios y accesos'],
   preguntas: ['Preguntas dinámicas','Instrumento UGEL']
@@ -2026,6 +2738,7 @@ function switchView(id) {
   if(id==='mapa' && map) setTimeout(()=>map.invalidateSize(), 10);
   if(id==='config') loadConfigData();
   if(id==='preguntas') loadDynamicQuestions();
+  if(id==='campo') prepareCampoView();
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(el => el.addEventListener('click', () => switchView(el.dataset.view)));
 document.getElementById('sidebar-toggle').addEventListener('click', () => {
@@ -2042,6 +2755,7 @@ document.getElementById('btn-empty-pdf').addEventListener('click', () => {
   link.remove();
 });
 document.getElementById('btn-logout').addEventListener('click', () => {
+  apiFetch('/logout', {method:'POST'}).catch(() => {}); // invalida el token en el servidor (best-effort)
   sessionStorage.removeItem('sugka_session');
   currentUser = null;
   selectedIECode = null;
@@ -2092,7 +2806,12 @@ async function initMap() {
     populateDistricts();
     populateLevels();
     applyMapFilters();
-  } catch(e) { console.error('Error cargando IEs:', e); }
+  } catch(e) {
+    console.error('Error cargando IEs:', e);
+    if (e.message !== 'Sesión expirada.') {
+      showToast('No se pudieron cargar las instituciones. Intenta recargar la página.', 'error');
+    }
+  }
 }
 
 function updateMapTiles() {
@@ -2230,8 +2949,8 @@ function renderIEList() {
     div.innerHTML = `
       <div class="ie-dot" style="background:${c.hex}"></div>
       <div style="min-width:0;flex:1">
-        <div class="ie-name">${ie.codigo_modular} - ${ie.nombre_iiee}</div>
-        <div class="ie-meta">${ie.nivel_modalidad} · ${ie.distrito||'Sin distrito'}</div>
+        <div class="ie-name">${esc(ie.codigo_modular)} - ${esc(ie.nombre_iiee)}</div>
+        <div class="ie-meta">${esc(ie.nivel_modalidad)} · ${esc(ie.distrito||'Sin distrito')}</div>
       </div>
     `;
     div.onclick = () => {
@@ -2272,9 +2991,9 @@ async function showIEDetail(ie) {
       ac.innerHTML = '<div style="font-size:11px;color:var(--text-muted);text-align:center;padding:10px 0">No hay alertas activas</div>';
     } else {
       ac.innerHTML = alertas.map(a => `
-        <div class="ied-alert-card ${a.severidad}">
-          <div class="ied-ac-title">${a.cat_nombre || a.alerta_codigo}</div>
-          <div class="ied-ac-sub">${a.mensaje||''}</div>
+        <div class="ied-alert-card ${esc(a.severidad)}">
+          <div class="ied-ac-title">${esc(a.cat_nombre || a.alerta_codigo)}</div>
+          <div class="ied-ac-sub">${esc(a.mensaje||'')}</div>
         </div>
       `).join('');
     }
@@ -2292,6 +3011,7 @@ window.closeIEDetail = function() {
 /* Formularios Manual */
 document.getElementById('manual-form').addEventListener('submit', (e) => {
   e.preventDefault();
+  if(!confirmSaveWithValidation('manual')) return;
   const ficha = {
     source: 'manual',
     codigo_modular: document.getElementById('fm-codigo').value,
@@ -2324,13 +3044,18 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
   files.forEach(file => fd.append('files', file));
 
   try {
-    // LLamada OCR avanzado Azure + Gemini
-    const r = await fetch(API+'/ocr/upload_advanced', {method: 'POST', body: fd});
-    if(!r.ok) { const err = await r.json(); throw new Error(err.error); }
+    // LLamada OCR avanzado Azure + Gemini.
+    // OJO: no se pone 'Content-Type' a mano -- el navegador debe fijar el
+    // boundary del multipart el solo. Sí hace falta el token de sesión,
+    // porque este endpoint requiere estar autenticado.
+    const r = await fetch(API+'/ocr/upload_advanced', {method: 'POST', headers: {...authHeaders()}, body: fd});
+    if(r.status === 401) { forceLogout('Tu sesión expiró. Vuelve a iniciar sesión.'); throw new Error('Sesión expirada.'); }
+    if(!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || 'Error al procesar el documento.'); }
     const data = await r.json();
 
     const ex = data.extracted;
     populateOcrFields(ex);
+    lastOcrFiles = data.files_meta || [];
 
     const cb = document.getElementById('ocr-conf');
     cb.style.display = 'inline-flex';
@@ -2348,6 +3073,7 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
 });
 
 document.getElementById('btn-save-ocr').addEventListener('click', async () => {
+  if(!confirmSaveWithValidation('ocr')) return;
   const ficha = buildOcrFichaFromFields();
   saveFichaOffline(ficha);
   document.getElementById('btn-save-ocr').disabled = true;
@@ -2355,10 +3081,208 @@ document.getElementById('btn-save-ocr').addEventListener('click', async () => {
   clearOcrFields();
 });
 
+/* Informes de campo (OCR + IA -> hallazgos estructurados) */
+const CAMPO_SEV_CLASS = {alta: 'danger', media: 'warning', baja: 'info'};
+const CAMPO_SEV_LABEL = {alta: 'Alta', media: 'Media', baja: 'Baja'};
+
+function prepareCampoView() {
+  const el = document.getElementById('campo-especialista');
+  if(el && !el.value && currentUser) el.value = currentUser.nombre;
+}
+
+function clearCampoView() {
+  campoState = { visitas: [], sinCodigo: [], meta: {}, doc: {}, fileMeta: {} };
+  document.getElementById('campo-review').innerHTML = '<div class="campo-empty">Sube un informe de campo para detectar hallazgos por institución educativa.</div>';
+  const cb = document.getElementById('campo-conf');
+  cb.style.display = 'none';
+  cb.textContent = '';
+  document.getElementById('btn-save-campo').disabled = true;
+}
+
+function campoHallazgoCard(visitaIdx, hIdx, h) {
+  const meta = campoState.meta[h.variable_detectada] || {};
+  const sevCls = CAMPO_SEV_CLASS[meta.severidad] || 'info';
+  const sevLabel = CAMPO_SEV_LABEL[meta.severidad] || 'Info';
+  const checked = h._incluir !== false;
+  return `
+    <div class="campo-hallazgo-card ${checked ? '' : 'excluded'}" data-visita="${visitaIdx}" data-hallazgo="${hIdx}">
+      <input type="checkbox" data-campo-toggle ${checked ? 'checked' : ''}/>
+      <div class="campo-hallazgo-body">
+        <div class="campo-hallazgo-top">
+          <span class="campo-hallazgo-label">${esc(meta.label || h.variable_detectada)}</span>
+          <span class="dash-status ${sevCls}">${sevLabel}</span>
+        </div>
+        <div class="campo-evidencia">"${esc(h.evidencia_textual || '')}"</div>
+        <div class="campo-importancia"><b>Por qué importa:</b> ${esc(meta.importancia || '')}</div>
+      </div>
+    </div>`;
+}
+
+function renderCampoReview() {
+  const box = document.getElementById('campo-review');
+  const parts = [];
+
+  const doc = campoState.doc || {};
+  if(doc.tipo_documento || doc.resumen_ejecutivo) {
+    parts.push(`<div class="campo-doc-summary">${doc.tipo_documento ? `<b>Tipo:</b> ${esc(doc.tipo_documento)}<br/>` : ''}${doc.resumen_ejecutivo ? esc(doc.resumen_ejecutivo) : ''}</div>`);
+  }
+
+  if(campoState.visitas.length === 0) {
+    parts.push('<div class="campo-empty">No se detectaron hallazgos asociables a una IE con código modular reconocido.</div>');
+  }
+
+  campoState.visitas.forEach((v, vIdx) => {
+    const included = (v.hallazgos || []).filter(h => h._incluir !== false).length;
+    parts.push(`
+      <div class="campo-visita-card">
+        <div class="campo-visita-head">
+          <div class="campo-visita-ie">
+            ${esc(v.codigo_modular)} ${v.nombre_ie_detectado ? '· ' + esc(v.nombre_ie_detectado) : ''}
+            <div class="sub">${included} hallazgo(s) seleccionado(s) para guardar</div>
+          </div>
+          <input type="date" class="form-input" style="width:150px" data-campo-fecha data-visita="${vIdx}" value="${esc(v.fecha_visita || '')}" title="Fecha de la visita (opcional)"/>
+        </div>
+        <div class="campo-hallazgo-list">
+          ${(v.hallazgos || []).map((h, hIdx) => campoHallazgoCard(vIdx, hIdx, h)).join('')}
+        </div>
+      </div>`);
+  });
+
+  if(campoState.sinCodigo.length > 0) {
+    parts.push(`<div class="campo-warning-banner">⚠ ${campoState.sinCodigo.length} hallazgo(s) no se pudieron asociar a un código modular oficial y requieren revisión manual (no se guardarán).</div>`);
+    campoState.sinCodigo.forEach(h => {
+      const meta = campoState.meta[h.variable_detectada] || {};
+      parts.push(`<div class="campo-sincodigo-card"><b>${esc(meta.label || h.variable_detectada)}</b>: "${esc(h.evidencia_textual || '')}"</div>`);
+    });
+  }
+
+  box.innerHTML = parts.join('');
+}
+
+document.getElementById('campo-review').addEventListener('change', (e) => {
+  const cb = e.target.closest('[data-campo-toggle]');
+  if(cb) {
+    const card = e.target.closest('.campo-hallazgo-card');
+    const vIdx = Number(card.dataset.visita), hIdx = Number(card.dataset.hallazgo);
+    campoState.visitas[vIdx].hallazgos[hIdx]._incluir = cb.checked;
+    renderCampoReview();
+    return;
+  }
+  const fechaInput = e.target.closest('[data-campo-fecha]');
+  if(fechaInput) {
+    campoState.visitas[Number(fechaInput.dataset.visita)].fecha_visita = fechaInput.value;
+  }
+});
+
+document.getElementById('campo-file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if(!file) return;
+
+  const prog = document.getElementById('campo-progress');
+  const status = document.getElementById('campo-status-text');
+  status.textContent = 'Extrayendo texto y categorizando hallazgos con IA...';
+  prog.classList.add('visible');
+  document.getElementById('btn-save-campo').disabled = true;
+  clearCampoView();
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const r = await fetch(API+'/ocr/informe_campo/upload', {method: 'POST', headers: {...authHeaders()}, body: fd});
+    if(r.status === 401) { forceLogout('Tu sesión expiró. Vuelve a iniciar sesión.'); throw new Error('Sesión expirada.'); }
+    if(!r.ok) { const err = await r.json().catch(() => ({})); throw new Error(err.error || 'Error al procesar el informe.'); }
+    const data = await r.json();
+
+    campoState.meta = data.variables_meta || {};
+    campoState.doc = data.documento || {};
+    campoState.sinCodigo = data.hallazgos_sin_codigo || [];
+    campoState.visitas = (data.visitas || []).map(v => ({
+      ...v,
+      fecha_visita: '',
+      hallazgos: (v.hallazgos || []).map(h => ({...h, _incluir: true})),
+    }));
+    campoState.fileMeta = {
+      file_b64: data.file_b64, file_name: data.file_name, mimetype: data.mimetype,
+      hash_sha1: data.hash_sha1, method: data.method, texto_extraido: data.texto_extraido,
+    };
+
+    renderCampoReview();
+
+    const cb = document.getElementById('campo-conf');
+    cb.style.display = 'inline-flex';
+    const totalHallazgos = campoState.visitas.reduce((s, v) => s + (v.hallazgos || []).length, 0);
+    cb.textContent = `Vía: ${(data.provider || 'IA').toUpperCase()} | ${campoState.visitas.length} IE(s) | ${totalHallazgos} hallazgo(s)`;
+    cb.className = 'confidence-chip conf-high';
+
+    document.getElementById('btn-save-campo').disabled = campoState.visitas.length === 0;
+    showToast('Informe categorizado. Revisa los hallazgos antes de guardar.', 'success');
+  } catch(err) {
+    showToast('Error: ' + err.message, 'error');
+  } finally {
+    prog.classList.remove('visible');
+    e.target.value = '';
+  }
+});
+
+document.getElementById('btn-save-campo').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-save-campo');
+  btn.disabled = true;
+  try {
+    const visitasPayload = campoState.visitas.map(v => {
+      const incluidos = (v.hallazgos || []).filter(h => h._incluir !== false);
+      const row = {
+        codigo_modular: v.codigo_modular,
+        nombre_ie_detectado: v.nombre_ie_detectado || '',
+        fecha_visita: v.fecha_visita || '',
+        hallazgos: incluidos.map(h => ({
+          codigo_modular: h.codigo_modular || v.codigo_modular,
+          variable_detectada: h.variable_detectada,
+          tema: h.tema || '',
+          descripcion: h.descripcion || '',
+          evidencia_textual: h.evidencia_textual || '',
+        })),
+      };
+      const vars = [];
+      CAMPO_CONCRETE_VARIABLES_JS.forEach(varName => {
+        const match = incluidos.find(h => h.variable_detectada === varName);
+        row[varName] = match ? 1 : null;
+        row[`span_${varName}`] = match ? (match.evidencia_textual || '') : null;
+        if(match) vars.push(varName);
+      });
+      row.n_variables_observadas = vars.length;
+      row.variables_observadas = vars.join('|');
+      return row;
+    }).filter(v => v.hallazgos.length > 0);
+
+    if(visitasPayload.length === 0) {
+      showToast('No hay hallazgos seleccionados para guardar.', 'warning');
+      btn.disabled = false;
+      return;
+    }
+
+    const payload = {
+      ...campoState.fileMeta,
+      documento: campoState.doc,
+      especialista_detectado: getField('campo-especialista') || (currentUser ? currentUser.nombre : ''),
+      visitas: visitasPayload,
+    };
+
+    const resp = await apiFetch('/informes_campo', {method: 'POST', body: JSON.stringify(payload)});
+    showToast(`${resp.visitas_guardadas} visita(s) guardada(s) con sus hallazgos.`, 'success');
+    clearCampoView();
+    document.getElementById('campo-especialista').value = currentUser ? currentUser.nombre : '';
+  } catch(err) {
+    showToast('Error al guardar: ' + err.message, 'error');
+    btn.disabled = false;
+  }
+});
+
 /* Dashboard */
 const dashboardState = {
   data: null,
   alertas: [],
+  sourceFilter: 'todas',
   selectedCodigo: null,
   activeView: 'panel',
   activeSheet: 'docentes',
@@ -2366,6 +3290,25 @@ const dashboardState = {
   alertPage: 1,
   pageSize: 10
 };
+
+/* Filtra las alertas (y por lo tanto los KPIs derivados de ellas) por
+ * fuente: SIMON, preguntas dinámicas, informes de campo, o todas a la vez --
+ * las 4 opciones que se pidieron explícitamente. */
+function filteredDashboardAlertas() {
+  const all = dashboardState.alertas || [];
+  if(dashboardState.sourceFilter === 'todas') return all;
+  return all.filter(a => a.fuente === dashboardState.sourceFilter);
+}
+
+document.querySelectorAll('.dash-source-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dash-source-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    dashboardState.sourceFilter = btn.dataset.source;
+    dashboardState.alertPage = 1;
+    renderDashboard();
+  });
+});
 
 const DASH_SHEETS = {
   docentes: {
@@ -2580,8 +3523,10 @@ function renderDashboard() {
   const ieapPromedio = average(instituciones.map(ie => ((ie.kpis || {}).ieap)));
   const rtbgPromedio = average(instituciones.map(ie => ((ie.kpis || {}).rtbg)));
 
-  const alertasDetalle = dashboardState.alertas || [];
-  const alertasPendientes = Math.max(alertasDetalle.length, d.alertas_pendientes || 0, criticalCount);
+  const alertasDetalle = filteredDashboardAlertas();
+  const alertasPendientes = dashboardState.sourceFilter === 'todas'
+    ? Math.max(alertasDetalle.length, d.alertas_pendientes || 0, criticalCount)
+    : alertasDetalle.length;
   document.getElementById('dash-alert-count').textContent = alertasPendientes;
   document.getElementById('dash-critical-count').textContent = `(${alertasPendientes})`;
   document.getElementById('dash-institution-count').textContent = `${instituciones.length}/${d.total_ies || instituciones.length || 0}`;
@@ -2694,7 +3639,7 @@ function renderDashboardCharts(d, instituciones) {
     dashMiniBar('Sin prioridad alta', infraStable, totalInfra, 'var(--dash-green)', 'Sin alerta crítica censal')
   ].join('');
 
-  const alertas = dashboardState.alertas || [];
+  const alertas = filteredDashboardAlertas();
   const sourceCounts = sumBy(alertas, 'fuente');
   const sourceRows = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]);
   const sourceMax = Math.max(1, ...sourceRows.map(row => row[1]));
@@ -2712,8 +3657,10 @@ function renderDashboardCharts(d, instituciones) {
 function renderDashboardLists(instituciones) {
   const selected = String(dashboardState.selectedCodigo || '');
   const pageSize = dashboardState.pageSize || 10;
-  const alertasDetalle = dashboardState.alertas || [];
-  const alertas = alertasDetalle.length ? alertasDetalle : instituciones.filter(ie => ['Critico','Alto'].includes(ie.risk_level));
+  const alertasDetalle = filteredDashboardAlertas();
+  const alertas = alertasDetalle.length
+    ? alertasDetalle
+    : (dashboardState.sourceFilter === 'todas' ? instituciones.filter(ie => ['Critico','Alto'].includes(ie.risk_level)) : []);
   const alertPage = dashPaged(alertas, dashboardState.alertPage, pageSize);
   dashboardState.alertPage = alertPage.page;
   document.getElementById('dash-alert-list').innerHTML = alertPage.items.map(alerta => {
@@ -2840,6 +3787,26 @@ function renderDashboardSheet(focus) {
   else renderTeacherSheet(focus);
 }
 
+function simonRiskBadge(label) {
+  if (!label) return '<span class="dash-status info">Sin dato</span>';
+  const map = {Alto: 'danger', Medio: 'warning', Bajo: 'ok'};
+  const cls = map[label] || 'info';
+  const title = 'Regla documentada SIMON: Alto = al menos un indicador en Nivel I, promedio general < 2.25, o 75% o mas de items en nivel bajo. Medio = promedio general < 2.75 o 3 o mas items bajos. Bajo = resto.';
+  return `<span class="dash-status ${cls}" title="${esc(title)}">${esc(label)}</span>`;
+}
+
+function renderDynamicAnswers(docente) {
+  const respuestas = docente.respuestas_dinamicas || [];
+  if (!respuestas.length) return '';
+  const items = respuestas.map(r => {
+    const valor = r.nivel !== null && r.nivel !== undefined && r.nivel !== ''
+      ? `Nivel ${esc(r.nivel)}`
+      : esc(r.respuesta_texto || 'Sin respuesta');
+    return `<li><strong>${esc(r.pregunta_codigo)}:</strong> ${valor}${r.observacion ? ' — ' + esc(r.observacion) : ''}</li>`;
+  }).join('');
+  return `<div class="dash-item-meta dash-dynamic-answers"><strong>Preguntas dinamicas registradas:</strong><ul>${items}</ul></div>`;
+}
+
 function renderTeacherSheet(focus) {
   const sheet = focus.docentes || {resumen: {}, items: []};
   const resumen = sheet.resumen || {};
@@ -2858,8 +3825,10 @@ function renderTeacherSheet(focus) {
         <td>
           <strong>${esc(docente.nombre)}</strong>
           <div class="dash-item-meta">${esc(docente.grado)} · ${esc(docente.area)}${docente.fecha ? ' · ' + esc(docente.fecha) : ''}</div>
+          ${renderDynamicAnswers(docente)}
         </td>
         <td>${dashStatusBadge(v1.semaforo)}<div class="dash-item-meta">${v1Meta}</div></td>
+        <td>${simonRiskBadge(docente.riesgo_intervencion_simon)}</td>
         <td>${v2Cell}</td>
         <td>${deltaCell}</td>
       </tr>
@@ -2885,7 +3854,7 @@ function renderTeacherSheet(focus) {
       </div>
     </div>
     <table class="dash-table">
-      <thead><tr><th>Docente</th><th>Visita 1</th><th>Visita 2</th><th>Mejora</th></tr></thead>
+      <thead><tr><th>Docente</th><th>Visita 1</th><th>Riesgo SIMON</th><th>Visita 2</th><th>Mejora</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;

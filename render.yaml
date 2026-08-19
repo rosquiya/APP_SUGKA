@@ -2,9 +2,36 @@ services:
   - type: web
     name: app-sugka
     env: python
-    plan: free
+    # Starter (de pago, ~$7/mes) en vez de free: el plan free no admite disco
+    # persistente y el filesystem del contenedor es efimero, asi que la BD
+    # SQLite se perderia por completo en cada redeploy o reinicio.
+    plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn scripts.api_server:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    # Disco persistente donde vive la BD SQLite real (fichas, informes de
+    # campo, usuarios). En el primer deploy arranca vacio y api_server.py
+    # copia ahi la BD semilla del repo automaticamente; en los siguientes
+    # deploys ya existe el archivo y se reusa tal cual quedo.
+    disk:
+      name: sugka-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.13
+      - key: SEED_ADMIN_PASSWORD
+        generateValue: true
+      - key: SEED_ESPECIALISTA_PASSWORD
+        generateValue: true
+      # Dominio(s) real(es) del frontend, separados por coma. Con esta app
+      # sirviendo frontend+backend desde el mismo servicio, el valor por
+      # defecto (mismo origen) ya es seguro; solo hace falta tocarlo si el
+      # frontend se aloja aparte. Ejemplo: https://app-sugka.onrender.com
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      # Horas de validez de una sesion antes de pedir login de nuevo.
+      - key: SESSION_TTL_HOURS
+        value: "12"
+      # Ruta de la BD SQLite dentro del disco persistente montado arriba.
+      - key: SUGKA_DB_PATH
+        value: /var/data/sugka_demo.db
