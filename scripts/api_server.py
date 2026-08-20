@@ -85,6 +85,11 @@ def get_gemini_key():
         genai.configure(api_key=key)
     return key
 
+# gemini-1.5-flash fue retirado por Google (los modelos serie 1.5 dejaron de
+# responder generateContent en 2025) -- usar un modelo vigente, configurable
+# via GEMINI_MODEL por si Google retira este tambien mas adelante.
+GEMINI_DEFAULT_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+
 def get_openai_key():
     load_local_env()
     return os.getenv("OPENAI_API_KEY", "")
@@ -331,7 +336,7 @@ def unique_account_identity(conn, username, email, exclude_user_id=None):
         username = f'{base_username}.{suffix}'
         email = f'{base_email_user}.{suffix}@{email_domain}'
 
-def create_app_user(conn, nombre, username, password, rol='especialista', especialista_id=None, activo=1, email=None):
+def create_app_user(conn, nombre, username, password, rol='especialista', especialista_id=None, activo=1, email=None, cargo=None):
     if not nombre or not username or not password:
         raise ValueError('Nombre, usuario y contraseña son obligatorios.')
     username, email = unique_account_identity(
@@ -344,9 +349,9 @@ def create_app_user(conn, nombre, username, password, rol='especialista', especi
     conn.execute('''
         INSERT INTO app_user (
             user_id, nombre, username, email, password_salt, password_hash,
-            rol, especialista_id, activo, creado_en, actualizado_en
+            rol, especialista_id, cargo, activo, creado_en, actualizado_en
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     ''', (
         user_id,
         str(nombre).strip(),
@@ -356,6 +361,7 @@ def create_app_user(conn, nombre, username, password, rol='especialista', especi
         digest,
         normalize_role(rol),
         especialista_id or None,
+        str(cargo).strip() if cargo else None,
         1 if activo else 0,
     ))
     return conn.execute('SELECT * FROM app_user WHERE user_id = ?', (user_id,)).fetchone()
@@ -748,7 +754,19 @@ FICHA_MONITOREO_COLUMNS = {
     # Estandar de auditoria: nunca se borra fisico, se marca estado_fila=0.
     'estado_fila': 'INTEGER DEFAULT 1',
     'actualizado_en': 'DATETIME',
+    'creado_por': 'TEXT',
+    'modificado_por': 'TEXT',
 }
+
+# Campos que el panel de "Registros" puede editar directamente: todo salvo
+# metadata de origen/extraccion y las columnas de auditoria que solo maneja
+# el servidor (estado_fila/creado_por/modificado_por/actualizado_en).
+FICHA_NON_EDITABLE_FIELDS = {
+    'estado_fila', 'actualizado_en', 'creado_por', 'modificado_por',
+    'source', 'file_name', 'extraction_method', 'confidence',
+    'raw_text', 'extracted_json',
+}
+FICHA_EDITABLE_FIELDS = [f for f in FICHA_MONITOREO_COLUMNS if f not in FICHA_NON_EDITABLE_FIELDS]
 
 def ensure_db_schema():
     conn = get_db()
@@ -816,6 +834,7 @@ def ensure_db_schema():
         'password_hash': 'TEXT',
         'rol': "TEXT NOT NULL DEFAULT 'especialista'",
         'especialista_id': 'TEXT',
+        'cargo': 'TEXT',
         'activo': 'INTEGER NOT NULL DEFAULT 1',
         'creado_en': 'DATETIME DEFAULT CURRENT_TIMESTAMP',
         'actualizado_en': 'DATETIME DEFAULT CURRENT_TIMESTAMP',
@@ -1032,6 +1051,12 @@ def ensure_db_schema():
     ''')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_campo_visita_codigo ON informe_campo_visita(codigo_modular)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_campo_visita_documento ON informe_campo_visita(documento_id)')
+
+    campo_visita_existing = {
+        row['name'] for row in conn.execute('PRAGMA table_info(informe_campo_visita)').fetchall()
+    }
+    if 'modificado_por' not in campo_visita_existing:
+        conn.execute('ALTER TABLE informe_campo_visita ADD COLUMN modificado_por TEXT')
 
     conn.execute('''
         CREATE TABLE IF NOT EXISTS informe_campo_hallazgo (
@@ -1435,6 +1460,8 @@ def save_ficha_archivos(conn, ficha_id, archivos):
 def save_ficha_to_db(conn, data):
     data = data if isinstance(data, dict) else {}
     ficha = normalize_ficha(data, source=first_text(data, 'source') or 'manual')
+    if getattr(g, 'current_user', None):
+        ficha['creado_por'] = g.current_user['user_id']
     columns = list(FICHA_MONITOREO_COLUMNS.keys())
     placeholders = ', '.join('?' for _ in columns)
     cur = conn.execute(
@@ -1445,6 +1472,68 @@ def save_ficha_to_db(conn, data):
     save_instrument_responses(conn, cur.lastrowid, data)
     save_ficha_archivos(conn, cur.lastrowid, data.get('archivos'))
     return ficha
+
+# Los 8 indicadores pedagogicos del instrumento SIMON, agrupados en sus dos
+# dimensiones (AR01 preparacion / AR02 ensenanza). No son variables inventadas
+# por el proyecto: son las preguntas del instrumento de monitoreo aplicado por
+# los especialistas, aqui en su version resumida para la ficha tecnica del dashboard.
+SIMON_INDICATOR_DEFINITIONS = [
+    {'codigo_reporte': 'AR01.1', 'codigo_instrumento': 'A-01', 'campo': 'a1',
+     'dimension': 'Preparacion para el aprendizaje',
+     'pregunta': 'La planificacion curricular evidencia conocimiento de estandares y alineacion con el contexto?'},
+    {'codigo_reporte': 'AR01.2', 'codigo_instrumento': 'A-02', 'campo': 'a2',
+     'dimension': 'Preparacion para el aprendizaje',
+     'pregunta': 'Las situaciones de aprendizaje son desafiantes, factibles y coherentes con los propositos?'},
+    {'codigo_reporte': 'AR01.3', 'codigo_instrumento': 'A-03', 'campo': 'a3',
+     'dimension': 'Preparacion para el aprendizaje',
+     'pregunta': 'Existe coherencia entre los criterios de evaluacion y los propositos de aprendizaje?'},
+    {'codigo_reporte': 'AR02.1', 'codigo_instrumento': 'B-01', 'campo': 'b1',
+     'dimension': 'Ensenanza para el aprendizaje',
+     'pregunta': 'El docente promueve el interes de los estudiantes y el sentido de lo aprendido?'},
+    {'codigo_reporte': 'AR02.2', 'codigo_instrumento': 'B-02', 'campo': 'b2',
+     'dimension': 'Ensenanza para el aprendizaje',
+     'pregunta': 'Las actividades estimulan la formulacion creativa, comprension de principios o relaciones conceptuales?'},
+    {'codigo_reporte': 'AR02.3', 'codigo_instrumento': 'B-03', 'campo': 'b3',
+     'dimension': 'Ensenanza para el aprendizaje',
+     'pregunta': 'El docente monitorea avances/dificultades y brinda retroalimentacion formativa?'},
+    {'codigo_reporte': 'AR02.4', 'codigo_instrumento': 'B-04', 'campo': 'b4',
+     'dimension': 'Ensenanza para el aprendizaje',
+     'pregunta': 'El docente se comunica con respeto, calidez, y atiende necesidades afectivas/fisicas?'},
+    {'codigo_reporte': 'AR02.5', 'codigo_instrumento': 'B-05', 'campo': 'b5',
+     'dimension': 'Ensenanza para el aprendizaje',
+     'pregunta': 'El docente establece normas de convivencia claras y las hace cumplir formativamente?'},
+]
+
+# Regla documentada de riesgo_intervencion (ver simon_documented_risk arriba),
+# repetida aqui en forma de tabla para mostrarla como ficha tecnica en el dashboard.
+SIMON_RISK_RULE = [
+    {'nivel': 'Alto',
+     'condicion': 'Al menos un indicador en Nivel I, o promedio_general_desempeno < 2.25, o porcentaje_items_bajos >= 75%',
+     'justificacion': 'Cualquiera de estas condiciones indica una visita con desempeno critico o mayoritariamente bajo.'},
+    {'nivel': 'Medio',
+     'condicion': 'No cumple Alto, y (promedio_general_desempeno < 2.75 o cantidad_items_bajos >= 3)',
+     'justificacion': 'Desempeno no critico, pero con senales que ameritan seguimiento.'},
+    {'nivel': 'Bajo',
+     'condicion': 'No cumple condiciones de Alto ni Medio',
+     'justificacion': 'Desempeno relativo mejor respecto a los umbrales definidos.'},
+]
+
+# Ejemplo ilustrativo (ficha real C-345) que muestra por que el umbral porcentual
+# puede activar "Alto" incluso sin ningun indicador en Nivel I ni promedio critico.
+SIMON_RISK_EXAMPLE = {
+    'ficha': 'C-345',
+    'items': [
+        {'codigo_reporte': 'AR01.1', 'nivel': 2}, {'codigo_reporte': 'AR01.2', 'nivel': 2}, {'codigo_reporte': 'AR01.3', 'nivel': 2},
+        {'codigo_reporte': 'AR02.1', 'nivel': 2}, {'codigo_reporte': 'AR02.2', 'nivel': 2}, {'codigo_reporte': 'AR02.3', 'nivel': 2},
+        {'codigo_reporte': 'AR02.4', 'nivel': 3}, {'codigo_reporte': 'AR02.5', 'nivel': 3},
+    ],
+    'calculo': 'promedio_general_desempeno = (2x6 + 3x2) / 8 = 2.25 | nivel_minimo_obtenido = 2 (no hay Nivel I) | cantidad_items_bajos (Nivel I o II) = 6 -> porcentaje_items_bajos = 75%',
+    'resultado': 'Alto',
+    'explicacion': (
+        'No hay Nivel I y el promedio no es estrictamente menor a 2.25 (es igual), pero porcentaje_items_bajos >= 75% '
+        'si se cumple exactamente: esta ficha se clasifica como Alto aunque ningun indicador individual llego al nivel mas bajo.'
+    ),
+}
 
 RISK_MODEL = {
     'name': 'Modelo de Riesgo Educativo SUGKA v0.1',
@@ -1739,6 +1828,14 @@ def simon_level_state(level):
 
 def simon_level_percent(level):
     return clamp_score(safe_float(level, 0.0) / 4 * 100)
+
+def simon_nivel_romano(promedio):
+    """'Nivel I'..'Nivel IV' mas cercano a un promedio 1-4, para el pill del KPI."""
+    promedio = safe_float(promedio, 0.0)
+    if promedio <= 0:
+        return None
+    numero = max(1, min(4, round(promedio)))
+    return f'Nivel {["I", "II", "III", "IV"][numero - 1]}'
 
 def get_simon_question_labels(conn):
     rows = conn.execute('''
@@ -2739,6 +2836,16 @@ def require_auth(fn):
         return fn(*args, **kwargs)
     return wrapper
 
+def can_edit_row(user, owner_user_id):
+    """Un administrador puede editar cualquier fila; un especialista solo las suyas.
+
+    Filas sin dueno (creado_por/subido_por NULL, tipicamente registros
+    historicos importados) solo las puede editar un administrador.
+    """
+    if normalize_role(user['rol']) == 'administrador':
+        return True
+    return bool(owner_user_id) and owner_user_id == user['user_id']
+
 def require_admin(fn):
     """Exige una sesion valida con rol administrador."""
     @wraps(fn)
@@ -2818,7 +2925,7 @@ def usuarios():
     try:
         if request.method == 'GET':
             rows = conn.execute('''
-                SELECT u.*, e.rol_inferido AS especialidad
+                SELECT u.*, COALESCE(u.cargo, e.rol_inferido) AS especialidad
                 FROM app_user u
                 LEFT JOIN dim_especialista e ON u.especialista_id = e.especialista_id
                 ORDER BY
@@ -2844,7 +2951,7 @@ def usuarios():
                 email=data.get('email') or data.get('correo') or '',
                 password=password,
                 rol=data.get('rol', 'especialista'),
-                especialista_id=data.get('especialista_id') or None,
+                cargo=data.get('cargo') or None,
                 activo=data.get('activo', 1),
             )
             conn.commit()
@@ -2870,7 +2977,7 @@ def actualizar_usuario(user_id):
 
         updates = []
         params = []
-        for key in ('nombre', 'username', 'email', 'especialista_id'):
+        for key in ('nombre', 'username', 'email', 'cargo'):
             if key in data:
                 updates.append(f'{key} = ?')
                 value = data.get(key)
@@ -3170,6 +3277,7 @@ def build_login_payload(conn, user):
     public = public_user(user)
     public['rol_inferido'] = public['rol_label']
     public['rol'] = normalize_role(user['rol'])
+    public['especialidad'] = public.get('cargo') or ''
 
     if user['especialista_id']:
         esp = conn.execute(
@@ -3178,7 +3286,8 @@ def build_login_payload(conn, user):
         ).fetchone()
         if esp:
             public['especialista'] = dict(esp)
-            public['especialidad'] = esp['rol_inferido']
+            if not public['especialidad']:
+                public['especialidad'] = esp['rol_inferido']
             public['total_fichas_simon'] = esp['total_fichas_simon']
             public['total_documentos_campo'] = esp['total_documentos_campo']
 
@@ -3588,6 +3697,86 @@ def get_dashboard():
 
     excel_dashboard = build_real_simon_dashboard(conn, scored)
 
+    simon_risk_rows = conn.execute('''
+        SELECT riesgo_intervencion_simon AS nivel, COUNT(*) AS total
+        FROM institucion_resumen
+        WHERE riesgo_intervencion_simon IS NOT NULL AND riesgo_intervencion_simon != ''
+        GROUP BY riesgo_intervencion_simon
+    ''').fetchall()
+    simon_risk_total_ie = sum(safe_int(row['total'], 0) for row in simon_risk_rows)
+    simon_risk_distribution = sorted(
+        [
+            {
+                'nivel': row['nivel'],
+                'ies': safe_int(row['total'], 0),
+                'porcentaje': round(safe_int(row['total'], 0) / simon_risk_total_ie * 100, 1) if simon_risk_total_ie else 0,
+            }
+            for row in simon_risk_rows
+        ],
+        key=lambda item: SIMON_RISK_ORDER.get(item['nivel'], -1),
+        reverse=True,
+    )
+    # Distribucion real de niveles de respuesta (I-IV) y de riesgo_intervencion
+    # POR FICHA (no por IE) -- ambas se calculan en vivo desde fichas_monitoreo,
+    # sin depender del rebuild de institucion_resumen (ver distribucion_ie arriba).
+    nivel_counts = {1: 0, 2: 0, 3: 0, 4: 0}
+    ficha_risk_counts = {'Alto': 0, 'Medio': 0, 'Bajo': 0}
+    for ficha_row in conn.execute('SELECT * FROM fichas_monitoreo').fetchall():
+        valores = simon_values_from_row(dict(ficha_row))
+        for valor in valores:
+            if valor in nivel_counts:
+                nivel_counts[valor] += 1
+        ficha_riesgo = simon_documented_risk(valores)
+        if ficha_riesgo:
+            ficha_risk_counts[ficha_riesgo['riesgo_intervencion']] += 1
+
+    nivel_total = sum(nivel_counts.values())
+    distribucion_nivel = [
+        {
+            'nivel': f'Nivel {romano}',
+            'valor': valor,
+            'cantidad': nivel_counts[valor],
+            'porcentaje': round(nivel_counts[valor] / nivel_total * 100, 1) if nivel_total else 0,
+        }
+        for valor, romano in ((1, 'I'), (2, 'II'), (3, 'III'), (4, 'IV'))
+    ]
+
+    ficha_risk_total = sum(ficha_risk_counts.values())
+    distribucion_ficha = [
+        {
+            'nivel': nivel,
+            'fichas': ficha_risk_counts[nivel],
+            'porcentaje': round(ficha_risk_counts[nivel] / ficha_risk_total * 100, 1) if ficha_risk_total else 0,
+        }
+        for nivel in ('Alto', 'Medio', 'Bajo')
+    ]
+
+    # Promedio por dimension (AR01 preparacion / AR02 ensenanza), agregado a
+    # partir de los promedios por indicador ya calculados en `resultados`.
+    promedio_por_codigo = {item['area']: item['promedio'] for item in resultados}
+    dimension_valores = {}
+    for indicador in SIMON_INDICATOR_DEFINITIONS:
+        valor = promedio_por_codigo.get(indicador['codigo_instrumento'])
+        if valor is None:
+            continue
+        dimension_valores.setdefault(indicador['dimension'], []).append(valor)
+    distribucion_dimension = [
+        {'dimension': dimension, 'promedio': round(sum(valores) / len(valores), 2), 'indicadores': len(valores)}
+        for dimension, valores in dimension_valores.items()
+    ]
+
+    simon_metodologia = {
+        'indicadores': SIMON_INDICATOR_DEFINITIONS,
+        'regla_riesgo': SIMON_RISK_RULE,
+        'ejemplo': SIMON_RISK_EXAMPLE,
+        'distribucion_ie': simon_risk_distribution,
+        'distribucion_total_ie': simon_risk_total_ie,
+        'distribucion_ficha': distribucion_ficha,
+        'distribucion_total_ficha': ficha_risk_total,
+        'distribucion_nivel': distribucion_nivel,
+        'distribucion_dimension': distribucion_dimension,
+    }
+
     conn.close()
     return jsonify({
         'total_ies':        total_ies,
@@ -3603,6 +3792,7 @@ def get_dashboard():
         'top_riesgo': top_riesgo,
         'risk_model': RISK_MODEL,
         'alert_rules': ALERT_RULES,
+        'simon_metodologia': simon_metodologia,
         'infra_definitions': INFRA_DEFINITIONS,
         'infraestructura_censo': infra_summary,
         'excel_dashboard': excel_dashboard,
@@ -3616,6 +3806,7 @@ def get_dashboard():
             'simon': {
                 'docentes_refuerzo': docentes_refuerzo_total,
                 'promedio_nivel': round(promedio_observado, 2),
+                'nivel_actual': simon_nivel_romano(promedio_observado),
                 'item_critico_codigo': item_critico.get('area', ''),
                 'item_critico_brecha': item_critico.get('bajo_nivel', 0),
                 'item_critico_total': item_critico.get('total', 0),
@@ -4032,7 +4223,7 @@ def process_with_gemini(text):
     """ + text
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel(GEMINI_DEFAULT_MODEL)
         response = model.generate_content(prompt)
     except Exception as e:
         print(f"Error Gemini request: {e}")
@@ -4125,7 +4316,7 @@ def process_images_with_gemini(files_payload):
     """
 
     try:
-        model = genai.GenerativeModel(os.getenv('GEMINI_MODEL', 'gemini-1.5-flash'))
+        model = genai.GenerativeModel(GEMINI_DEFAULT_MODEL)
         response = model.generate_content([prompt, *image_parts])
     except Exception as e:
         print(f"Error Gemini Vision request: {e}")
@@ -4225,7 +4416,7 @@ def call_campo_gemini(prompt):
     if not get_gemini_key():
         return {'status': 'missing_env', 'provider': 'gemini', 'payload': {}, 'error': ''}
     try:
-        model = genai.GenerativeModel(os.getenv('GEMINI_MODEL', 'gemini-1.5-flash'))
+        model = genai.GenerativeModel(GEMINI_DEFAULT_MODEL)
         response = model.generate_content(
             CAMPO_SYSTEM_PROMPT + '\n\n' + prompt,
             generation_config={'response_mime_type': 'application/json', 'temperature': 0},
@@ -4580,11 +4771,164 @@ def informes_campo():
             conn.commit()
             return jsonify({'success': True, 'visitas_guardadas': len(guardadas), 'visita_ids': guardadas})
 
-        rows = conn.execute('''
-            SELECT * FROM informe_campo_visita WHERE estado_fila = 1
-            ORDER BY creado_en DESC LIMIT 200
-        ''').fetchall()
+        incluir_eliminadas = request.args.get('incluir_eliminadas') == '1'
+        q = (request.args.get('q') or '').strip()
+        limit = safe_int(request.args.get('limit'), 200)
+        offset = safe_int(request.args.get('offset'), 0)
+
+        where = [] if incluir_eliminadas else ['COALESCE(v.estado_fila, 1) = 1']
+        params = []
+        if q:
+            where.append('(v.nombre_ie_detectado LIKE ? OR v.codigo_modular LIKE ? OR v.especialista_detectado LIKE ?)')
+            like = f'%{q}%'
+            params.extend([like, like, like])
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ''
+
+        rows = conn.execute(f'''
+            SELECT v.*, d.subido_por AS creado_por, cu.nombre AS creado_por_nombre,
+                   mu.nombre AS modificado_por_nombre
+            FROM informe_campo_visita v
+            LEFT JOIN informe_campo_documento d ON d.id = v.documento_id
+            LEFT JOIN app_user cu ON cu.user_id = d.subido_por
+            LEFT JOIN app_user mu ON mu.user_id = v.modificado_por
+            {where_sql}
+            ORDER BY v.creado_en DESC
+            LIMIT ? OFFSET ?
+        ''', [*params, limit, offset]).fetchall()
         return jsonify(rows_to_list(rows))
+    finally:
+        conn.close()
+
+@app.route('/api/informes_campo/<visita_campo_id>', methods=['GET', 'PUT', 'DELETE'])
+@require_auth
+def informe_campo_detalle(visita_campo_id):
+    conn = get_db()
+    try:
+        row = conn.execute('''
+            SELECT v.*, d.subido_por AS creado_por, d.texto_extraido, d.tipo_documento,
+                   d.nombre_archivo AS documento_nombre_archivo,
+                   cu.nombre AS creado_por_nombre, mu.nombre AS modificado_por_nombre
+            FROM informe_campo_visita v
+            LEFT JOIN informe_campo_documento d ON d.id = v.documento_id
+            LEFT JOIN app_user cu ON cu.user_id = d.subido_por
+            LEFT JOIN app_user mu ON mu.user_id = v.modificado_por
+            WHERE v.visita_campo_id = ?
+        ''', (visita_campo_id,)).fetchone()
+        if not row:
+            return jsonify({'error': 'Informe de campo no encontrado.'}), 404
+        visita = dict(row)
+
+        if request.method == 'GET':
+            hallazgos = conn.execute('''
+                SELECT * FROM informe_campo_hallazgo
+                WHERE visita_campo_id = ? AND estado_fila = 1
+                ORDER BY id
+            ''', (visita_campo_id,)).fetchall()
+            return jsonify({
+                'visita': visita,
+                'hallazgos': rows_to_list(hallazgos),
+                'variables_meta': CAMPO_VARIABLE_META,
+                'puede_editar': can_edit_row(g.current_user, visita.get('creado_por')),
+            })
+
+        if not can_edit_row(g.current_user, visita.get('creado_por')):
+            return jsonify({'error': 'Solo puedes editar tus propios registros.'}), 403
+
+        if request.method == 'DELETE':
+            conn.execute(
+                'UPDATE informe_campo_visita SET estado_fila = 0, modificado_por = ?, '
+                'actualizado_en = CURRENT_TIMESTAMP WHERE visita_campo_id = ?',
+                (g.current_user['user_id'], visita_campo_id),
+            )
+            rebuild_simon_operational_summary(conn)
+            conn.commit()
+            return jsonify({'success': True})
+
+        data = request.get_json() or {}
+
+        if data.get('restaurar'):
+            conn.execute(
+                'UPDATE informe_campo_visita SET estado_fila = 1, modificado_por = ?, '
+                'actualizado_en = CURRENT_TIMESTAMP WHERE visita_campo_id = ?',
+                (g.current_user['user_id'], visita_campo_id),
+            )
+            conn.commit()
+            updated = conn.execute(
+                'SELECT * FROM informe_campo_visita WHERE visita_campo_id = ?', (visita_campo_id,)
+            ).fetchone()
+            return jsonify({'success': True, 'visita': dict(updated)})
+
+        updates = []
+        params = []
+
+        if 'codigo_modular' in data:
+            codigo = resolve_codigo_modular_strict(conn, data.get('codigo_modular'))
+            if not codigo:
+                return jsonify({'error': 'Código modular no reconocido.'}), 400
+            updates.append('codigo_modular = ?')
+            params.append(codigo)
+
+        for field in ('nombre_ie_detectado', 'fecha_visita', 'especialista_detectado', 'motivo_revision'):
+            if field in data:
+                updates.append(f'{field} = ?')
+                params.append(data.get(field))
+
+        if 'requiere_revision' in data:
+            updates.append('requiere_revision = ?')
+            params.append(1 if data.get('requiere_revision') else 0)
+
+        variables_tocadas = [v for v in CAMPO_CONCRETE_VARIABLES if v in data]
+        for var in variables_tocadas:
+            updates.append(f'{var} = ?')
+            params.append(1 if data.get(var) else None)
+            span_key = f'span_{var}'
+            if span_key in data:
+                updates.append(f'{span_key} = ?')
+                params.append(data.get(span_key))
+
+        if variables_tocadas:
+            merged_flags = {
+                var: (data.get(var) if var in data else visita.get(var))
+                for var in CAMPO_CONCRETE_VARIABLES
+            }
+            observadas = [var for var in CAMPO_CONCRETE_VARIABLES if merged_flags.get(var)]
+            updates.append('n_variables_observadas = ?')
+            params.append(len(observadas))
+            updates.append('variables_observadas = ?')
+            params.append(', '.join(observadas))
+
+        if updates:
+            updates.append('modificado_por = ?')
+            params.append(g.current_user['user_id'])
+            updates.append('actualizado_en = CURRENT_TIMESTAMP')
+            params.append(visita_campo_id)
+            conn.execute(
+                f'UPDATE informe_campo_visita SET {", ".join(updates)} WHERE visita_campo_id = ?',
+                params,
+            )
+
+        if 'hallazgos' in data:
+            conn.execute('DELETE FROM informe_campo_hallazgo WHERE visita_campo_id = ?', (visita_campo_id,))
+            for h in data.get('hallazgos') or []:
+                if not isinstance(h, dict):
+                    continue
+                conn.execute('''
+                    INSERT INTO informe_campo_hallazgo (
+                        visita_campo_id, documento_id, codigo_modular_hallazgo,
+                        variable_detectada, tema, descripcion, evidencia_textual
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    visita_campo_id, visita.get('documento_id'), h.get('codigo_modular', ''),
+                    h.get('variable_detectada', ''), h.get('tema', ''),
+                    h.get('descripcion', ''), h.get('evidencia_textual', ''),
+                ))
+
+        rebuild_simon_operational_summary(conn)
+        conn.commit()
+        updated = conn.execute(
+            'SELECT * FROM informe_campo_visita WHERE visita_campo_id = ?', (visita_campo_id,)
+        ).fetchone()
+        return jsonify({'success': True, 'visita': dict(updated)})
     finally:
         conn.close()
 
@@ -4600,13 +4944,141 @@ def fichas():
             conn.commit()
             return jsonify({'success': True, 'ficha': ficha})
 
-        rows = conn.execute('''
-            SELECT *
-            FROM fichas_monitoreo
-            ORDER BY fecha_sincronizacion DESC, id DESC
-            LIMIT 100
-        ''').fetchall()
+        incluir_eliminadas = request.args.get('incluir_eliminadas') == '1'
+        q = (request.args.get('q') or '').strip()
+        limit = safe_int(request.args.get('limit'), 100)
+        offset = safe_int(request.args.get('offset'), 0)
+
+        where = [] if incluir_eliminadas else ['COALESCE(f.estado_fila, 1) = 1']
+        params = []
+        if q:
+            where.append('(f.nombre_ie LIKE ? OR f.codigo_modular LIKE ? OR f.docente LIKE ?)')
+            like = f'%{q}%'
+            params.extend([like, like, like])
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ''
+
+        rows = conn.execute(f'''
+            SELECT f.*, cu.nombre AS creado_por_nombre, mu.nombre AS modificado_por_nombre
+            FROM fichas_monitoreo f
+            LEFT JOIN app_user cu ON cu.user_id = f.creado_por
+            LEFT JOIN app_user mu ON mu.user_id = f.modificado_por
+            {where_sql}
+            ORDER BY f.fecha_sincronizacion DESC, f.id DESC
+            LIMIT ? OFFSET ?
+        ''', [*params, limit, offset]).fetchall()
         return jsonify(rows_to_list(rows))
+    finally:
+        conn.close()
+
+@app.route('/api/fichas/<int:ficha_id>', methods=['GET', 'PUT', 'DELETE'])
+@require_auth
+def ficha_detalle(ficha_id):
+    conn = get_db()
+    try:
+        row = conn.execute('''
+            SELECT f.*, cu.nombre AS creado_por_nombre, mu.nombre AS modificado_por_nombre
+            FROM fichas_monitoreo f
+            LEFT JOIN app_user cu ON cu.user_id = f.creado_por
+            LEFT JOIN app_user mu ON mu.user_id = f.modificado_por
+            WHERE f.id = ?
+        ''', (ficha_id,)).fetchone()
+        if not row:
+            return jsonify({'error': 'Ficha no encontrada.'}), 404
+        ficha = dict(row)
+
+        if request.method == 'GET':
+            respuestas = get_dynamic_responses_for_fichas(conn, [ficha_id]).get(ficha_id, [])
+            archivos = conn.execute('''
+                SELECT a.id, a.nombre_archivo, a.mimetype, a.tamano_bytes, a.hash_sha1, a.creado_en, fa.orden
+                FROM ficha_archivo fa
+                JOIN archivo_subido a ON a.id = fa.archivo_subido_id
+                WHERE fa.ficha_id = ? AND fa.estado_fila = 1 AND a.estado_fila = 1
+                ORDER BY fa.orden
+            ''', (ficha_id,)).fetchall()
+            return jsonify({
+                'ficha': ficha,
+                'respuestas_dinamicas': respuestas,
+                'archivos': rows_to_list(archivos),
+                'puede_editar': can_edit_row(g.current_user, ficha.get('creado_por')),
+            })
+
+        if not can_edit_row(g.current_user, ficha.get('creado_por')):
+            return jsonify({'error': 'Solo puedes editar tus propios registros.'}), 403
+
+        if request.method == 'DELETE':
+            conn.execute(
+                'UPDATE fichas_monitoreo SET estado_fila = 0, modificado_por = ?, '
+                'actualizado_en = CURRENT_TIMESTAMP WHERE id = ?',
+                (g.current_user['user_id'], ficha_id),
+            )
+            rebuild_simon_operational_summary(conn)
+            conn.commit()
+            return jsonify({'success': True})
+
+        data = request.get_json() or {}
+
+        if data.get('restaurar'):
+            conn.execute(
+                'UPDATE fichas_monitoreo SET estado_fila = 1, modificado_por = ?, '
+                'actualizado_en = CURRENT_TIMESTAMP WHERE id = ?',
+                (g.current_user['user_id'], ficha_id),
+            )
+            conn.commit()
+            updated = conn.execute('SELECT * FROM fichas_monitoreo WHERE id = ?', (ficha_id,)).fetchone()
+            return jsonify({'success': True, 'ficha': dict(updated)})
+
+        updates = []
+        params = []
+        merged = dict(ficha)
+        for field in FICHA_EDITABLE_FIELDS:
+            if field in data:
+                updates.append(f'{field} = ?')
+                params.append(data.get(field))
+                merged[field] = data.get(field)
+
+        if any(field in data for field in SIMON_LEVEL_FIELDS):
+            updates.append('promedio = ?')
+            params.append(calculate_promedio(merged))
+
+        if updates:
+            updates.append('modificado_por = ?')
+            params.append(g.current_user['user_id'])
+            updates.append('actualizado_en = CURRENT_TIMESTAMP')
+            params.append(ficha_id)
+            conn.execute(f'UPDATE fichas_monitoreo SET {", ".join(updates)} WHERE id = ?', params)
+
+        if 'respuestas_dinamicas' in data:
+            conn.execute(
+                "DELETE FROM ficha_respuesta_instrumento WHERE ficha_id = ? AND instrumento_tipo = 'dinamica'",
+                (ficha_id,),
+            )
+            for r in data.get('respuestas_dinamicas') or []:
+                if not isinstance(r, dict):
+                    continue
+                pregunta_codigo = first_text(r, 'pregunta_codigo')
+                if not pregunta_codigo:
+                    continue
+                conn.execute('''
+                    INSERT INTO ficha_respuesta_instrumento (
+                        ficha_id, instrumento_codigo, instrumento_tipo, seccion_clave,
+                        pregunta_codigo, nivel, respuesta_texto, observacion, metadata_json
+                    ) VALUES (?, ?, 'dinamica', ?, ?, ?, ?, ?, ?)
+                ''', (
+                    ficha_id,
+                    first_text(r, 'instrumento_codigo') or 'dinamico',
+                    first_text(r, 'seccion_clave'),
+                    pregunta_codigo,
+                    normalize_level(r.get('nivel')),
+                    first_text(r, 'respuesta_texto', 'respuesta'),
+                    first_text(r, 'observacion'),
+                    json_dumps(r),
+                ))
+
+        rebuild_simon_operational_summary(conn)
+        conn.commit()
+        updated = conn.execute('SELECT * FROM fichas_monitoreo WHERE id = ?', (ficha_id,)).fetchone()
+        respuestas = get_dynamic_responses_for_fichas(conn, [ficha_id]).get(ficha_id, [])
+        return jsonify({'success': True, 'ficha': dict(updated), 'respuestas_dinamicas': respuestas})
     finally:
         conn.close()
 

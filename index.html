@@ -617,8 +617,53 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .dash-hbar-label{font-weight:800;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dash-hbar-value{font-weight:800;color:var(--dash-muted);white-space:nowrap}
 .dash-hbar-track{height:9px;background:var(--dash-surface3);border-radius:999px;overflow:hidden}
-.dash-hbar-fill{height:100%;border-radius:999px;background:var(--dash-blue)}
+.dash-hbar-fill{display:block;height:100%;border-radius:999px;background:var(--dash-blue)}
 .dash-hbar-note{font-size:11px;color:var(--dash-muted);line-height:1.35}
+
+/* KPI hero + meter (promedio SIMON contra la meta Nivel III) */
+.dash-kpi-hero-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.dash-kpi-hero-target{font-size:10px;color:var(--dash-dim);white-space:nowrap}
+.dash-kpi-hero-value{font-size:30px;line-height:1;font-weight:800;color:var(--dash-text);margin:8px 0 10px}
+.dash-kpi-hero-value span{font-size:14px;font-weight:700;color:var(--dash-dim)}
+.dash-meter-track{height:7px;border-radius:999px;background:var(--dash-surface3);overflow:hidden;position:relative}
+.dash-meter-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--dash-amber),var(--dash-blue))}
+.dash-meter-target{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--dash-text)}
+.dash-kpi-hero-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px;font-size:11px;color:var(--dash-muted)}
+.dash-nivel-pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.dash-nivel-pill::before{content:'';width:6px;height:6px;border-radius:99px;background:currentColor}
+.dash-nivel-pill.critico{background:var(--dash-red-wash,rgba(220,38,38,.12));color:var(--dash-red)}
+.dash-nivel-pill.alerta{background:var(--dash-amber-wash,rgba(217,119,6,.14));color:var(--dash-amber)}
+.dash-nivel-pill.logrado{background:var(--dash-green-wash,rgba(15,159,110,.14));color:var(--dash-green)}
+
+/* Indicadores SIMON con severidad + tooltip de la pregunta completa */
+.dash-ind-row{display:grid;grid-template-columns:56px 1fr 40px;align-items:center;gap:8px;position:relative}
+.dash-ind-row.has-tip{cursor:help}
+.dash-ind-code{font-size:11px;font-weight:800;color:var(--dash-muted)}
+.dash-ind-track{height:11px;border-radius:4px;background:var(--dash-surface3);overflow:hidden}
+.dash-ind-fill{height:100%;border-radius:4px}
+.dash-ind-val{font-size:11.5px;font-weight:800;color:var(--dash-text);text-align:right}
+.dash-ind-tip{position:absolute;left:0;right:0;top:100%;margin-top:5px;background:var(--brand-navy);color:#fff;font-size:11px;line-height:1.45;padding:9px 11px;border-radius:8px;opacity:0;pointer-events:none;transform:translateY(-4px);transition:opacity .12s ease,transform .12s ease;z-index:6;box-shadow:0 12px 24px -8px rgba(0,0,0,.35)}
+.dash-ind-row.has-tip:hover .dash-ind-tip{opacity:1;transform:translateY(0);pointer-events:auto}
+.dash-ind-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:10.5px;color:var(--dash-muted);margin-top:2px}
+.dash-ind-legend span{display:inline-flex;align-items:center;gap:5px}
+.dash-ind-legend i{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+/* Barra 100% apilada (riesgo_intervencion SIMON por ficha) */
+.dash-stack{display:flex;height:26px;border-radius:6px;overflow:hidden;border:1px solid var(--dash-border)}
+.dash-stack-seg{display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800}
+.dash-stack-seg + .dash-stack-seg{border-left:2px solid var(--dash-surface)}
+.dash-stack-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--dash-muted);margin-top:10px}
+.dash-stack-legend span{display:inline-flex;align-items:center;gap:6px}
+.dash-stack-legend i{width:8px;height:8px;border-radius:2px;display:inline-block}
+
+/* Comparacion de dimensiones AR01 / AR02 */
+.dash-dim-row{display:grid;grid-template-columns:1fr 40px;gap:8px;margin-bottom:2px}
+.dash-dim-label{font-size:11.5px;font-weight:800;color:var(--dash-text)}
+.dash-dim-sub{font-size:10px;color:var(--dash-muted);font-weight:600}
+.dash-dim-track{height:11px;border-radius:4px;background:var(--dash-surface3);overflow:hidden;margin-top:4px}
+.dash-dim-fill{height:100%;border-radius:4px}
+.dash-dim-val{font-size:11.5px;font-weight:800;color:var(--dash-text);text-align:right;align-self:center}
+
 .dash-grid-layout{display:grid;grid-template-columns:340px minmax(0,1fr) 320px;gap:16px;align-items:start}
 .dash-grid-layout.mode-panel{grid-template-columns:minmax(0,1fr) 320px}
 .dash-grid-layout.mode-panel .dash-left{display:none}
@@ -680,6 +725,12 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .dash-semaforo-color{width:8px;height:28px;border-radius:999px;margin-top:2px}
 .dash-rule{font-size:11px;color:var(--dash-muted);padding:10px 0;border-bottom:1px solid var(--dash-border);line-height:1.45}
 .dash-rule:last-child{border-bottom:none}
+.dash-simon-details{margin-top:8px}
+.dash-simon-details summary{cursor:pointer;font-size:11px;font-weight:800;color:var(--dash-blue);padding:6px 0;list-style:none}
+.dash-simon-details summary::-webkit-details-marker{display:none}
+.dash-simon-details summary::before{content:'▸ ';display:inline-block}
+.dash-simon-details[open] summary::before{content:'▾ '}
+.dash-simon-badge{display:inline-block;font-size:10px;font-weight:800;color:var(--dash-blue);background:rgba(37,99,235,.12);border-radius:999px;padding:2px 8px;margin-right:6px}
 .dash-sheet-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .dash-table{width:100%;border-collapse:separate;border-spacing:0 8px}
 .dash-table th{font-size:10px;text-transform:uppercase;color:var(--dash-dim);text-align:left;padding:0 8px;font-weight:800}
@@ -817,6 +868,9 @@ body.is-admin .view.admin-only.active{display:flex!important}
     </div>
     <div class="nav-item" data-view="campo" id="nav-campo" data-tooltip="Informes de campo" title="Informes de campo">
       <span class="nav-icon">IC</span><span class="nav-label">Informes de Campo</span>
+    </div>
+    <div class="nav-item" data-view="registros" id="nav-registros" data-tooltip="Registros" title="Registros">
+      <span class="nav-icon">REG</span><span class="nav-label">Registros</span>
     </div>
     <div class="nav-item" data-view="dashboard" id="nav-dashboard" data-tooltip="Gestión" title="Gestión">
       <span class="nav-icon">KPI</span><span class="nav-label">Gestión</span>
@@ -1094,6 +1148,151 @@ body.is-admin .view.admin-only.active{display:flex!important}
         </div>
       </div>
 
+      <!-- REGISTROS: edicion/eliminacion de fichas e informes de campo -->
+      <div id="view-registros" class="view scroll-view">
+        <div class="config-shell">
+          <div class="config-hero">
+            <div>
+              <div class="config-title">Registros</div>
+              <div class="config-sub">Edita o elimina fichas de monitoreo e informes de campo. Los especialistas solo pueden editar sus propios registros; los administradores ven y editan todos.</div>
+            </div>
+            <div class="config-badge" id="reg-role-badge">Perfil</div>
+          </div>
+
+          <div class="config-tabs">
+            <button type="button" class="config-tab active" data-registros-tab="fichas">Fichas de monitoreo</button>
+            <button type="button" class="config-tab" data-registros-tab="campo">Informes de campo</button>
+          </div>
+
+          <div id="registros-panel-fichas" class="config-tab-panel active">
+            <form class="panel" id="reg-ficha-form" style="display:none">
+              <div class="panel-title" id="reg-ficha-form-title">Editar ficha</div>
+              <div class="config-selected" id="reg-ficha-meta"></div>
+
+              <div class="panel-label">Identificación de la IE</div>
+              <div class="fields-grid">
+                <div class="field-item"><label class="form-group label">Código modular</label><input class="form-input" name="codigo_modular"/></div>
+                <div class="field-item full"><label class="form-group label">Nombre IE</label><input class="form-input" name="nombre_ie"/></div>
+                <div class="field-item"><label class="form-group label">Nivel / modalidad</label><input class="form-input" name="nivel_modalidad"/></div>
+                <div class="field-item"><label class="form-group label">Región</label><input class="form-input" name="region"/></div>
+                <div class="field-item"><label class="form-group label">UGEL</label><input class="form-input" name="ugel"/></div>
+                <div class="field-item"><label class="form-group label">N° visita</label><input class="form-input" name="n_visita"/></div>
+              </div>
+
+              <div class="panel-label">Director/a</div>
+              <div class="fields-grid">
+                <div class="field-item"><label class="form-group label">Nombre</label><input class="form-input" name="director"/></div>
+                <div class="field-item"><label class="form-group label">Celular</label><input class="form-input" name="director_cel"/></div>
+                <div class="field-item"><label class="form-group label">Correo</label><input class="form-input" name="director_email"/></div>
+                <div class="field-item"><label class="form-group label">Situación laboral</label><input class="form-input" name="director_situacion_laboral"/></div>
+              </div>
+
+              <div class="panel-label">Docente</div>
+              <div class="fields-grid">
+                <div class="field-item"><label class="form-group label">Nombre</label><input class="form-input" name="docente"/></div>
+                <div class="field-item"><label class="form-group label">DNI</label><input class="form-input" name="docente_dni"/></div>
+                <div class="field-item"><label class="form-group label">Celular</label><input class="form-input" name="docente_cel"/></div>
+                <div class="field-item"><label class="form-group label">Correo</label><input class="form-input" name="docente_email"/></div>
+                <div class="field-item"><label class="form-group label">Situación laboral</label><input class="form-input" name="docente_situacion_laboral"/></div>
+                <div class="field-item"><label class="form-group label">Grado</label><input class="form-input" name="grado"/></div>
+                <div class="field-item"><label class="form-group label">Sección</label><input class="form-input" name="seccion"/></div>
+                <div class="field-item"><label class="form-group label">N° estudiantes</label><input class="form-input" type="number" name="nro_estudiantes"/></div>
+                <div class="field-item"><label class="form-group label">Área</label><input class="form-input" name="area"/></div>
+                <div class="field-item"><label class="form-group label">Competencia</label><input class="form-input" name="competencia"/></div>
+                <div class="field-item full"><label class="form-group label">Título de la sesión</label><input class="form-input" name="titulo_sesion"/></div>
+              </div>
+
+              <div class="panel-label">Datos de la visita</div>
+              <div class="fields-grid">
+                <div class="field-item"><label class="form-group label">Monitor / especialista</label><input class="form-input" name="monitor"/></div>
+                <div class="field-item"><label class="form-group label">DNI monitor</label><input class="form-input" name="monitor_dni"/></div>
+                <div class="field-item"><label class="form-group label">Correo monitor</label><input class="form-input" name="monitor_email"/></div>
+                <div class="field-item"><label class="form-group label">IGED</label><input class="form-input" name="iged"/></div>
+                <div class="field-item"><label class="form-group label">Fecha de ejecución</label><input class="form-input" type="date" name="fecha_ejecucion"/></div>
+              </div>
+
+              <div class="panel-label">Indicadores SIMON (0 = sin observar, 1 a 4 = nivel)</div>
+              <div class="fields-grid" id="reg-ficha-indicadores"></div>
+
+              <div class="panel-label">Preguntas dinámicas</div>
+              <div id="reg-ficha-dinamicas"></div>
+              <button type="button" class="mini-btn" id="reg-ficha-add-dinamica">+ Agregar respuesta</button>
+
+              <div class="panel-label">Observaciones y compromisos</div>
+              <div class="fields-grid">
+                <div class="field-item full"><label class="form-group label">Observaciones / recomendaciones</label><textarea class="form-input" name="observaciones_recomendaciones" rows="3"></textarea></div>
+                <div class="field-item full"><label class="form-group label">Compromisos</label><textarea class="form-input" name="compromisos_monitoreado" rows="3"></textarea></div>
+              </div>
+
+              <div class="question-form-actions">
+                <button class="btn-primary" type="submit" id="reg-ficha-submit">Guardar cambios</button>
+                <button class="mini-btn" type="button" id="reg-ficha-cancel">Cerrar</button>
+              </div>
+            </form>
+
+            <div class="panel">
+              <div class="panel-title">Fichas registradas</div>
+              <div class="config-filter-row">
+                <label><input type="checkbox" id="reg-ficha-show-deleted"/> Mostrar eliminadas</label>
+                <input class="form-input" id="reg-ficha-search" placeholder="Buscar por IE, código o docente..." style="max-width:280px"/>
+              </div>
+              <table class="user-table">
+                <thead>
+                  <tr><th>Código</th><th>IE</th><th>Docente</th><th>Fecha</th><th>Origen</th><th>Promedio</th><th>Autor</th><th>Estado</th><th>Acciones</th></tr>
+                </thead>
+                <tbody id="reg-ficha-body"><tr><td colspan="9">Cargando fichas...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="registros-panel-campo" class="config-tab-panel">
+            <form class="panel" id="reg-campo-form" style="display:none">
+              <div class="panel-title" id="reg-campo-form-title">Editar informe de campo</div>
+              <div class="config-selected" id="reg-campo-meta"></div>
+
+              <div class="fields-grid">
+                <div class="field-item"><label class="form-group label">Código modular</label><input class="form-input" name="codigo_modular"/></div>
+                <div class="field-item full"><label class="form-group label">IE detectada</label><input class="form-input" name="nombre_ie_detectado"/></div>
+                <div class="field-item"><label class="form-group label">Fecha de visita</label><input class="form-input" type="date" name="fecha_visita"/></div>
+                <div class="field-item"><label class="form-group label">Especialista</label><input class="form-input" name="especialista_detectado"/></div>
+              </div>
+
+              <div class="panel-label">Variables concretas observadas</div>
+              <div id="reg-campo-variables"></div>
+
+              <div class="panel-label">Hallazgos</div>
+              <div id="reg-campo-hallazgos"></div>
+              <button type="button" class="mini-btn" id="reg-campo-add-hallazgo">+ Agregar hallazgo</button>
+
+              <div class="panel-label">Revisión</div>
+              <div class="fields-grid">
+                <div class="field-item"><label class="form-group label"><input type="checkbox" name="requiere_revision"/> Requiere revisión</label></div>
+                <div class="field-item full"><label class="form-group label">Motivo de revisión</label><input class="form-input" name="motivo_revision"/></div>
+              </div>
+
+              <div class="question-form-actions">
+                <button class="btn-primary" type="submit" id="reg-campo-submit">Guardar cambios</button>
+                <button class="mini-btn" type="button" id="reg-campo-cancel">Cerrar</button>
+              </div>
+            </form>
+
+            <div class="panel">
+              <div class="panel-title">Informes de campo registrados</div>
+              <div class="config-filter-row">
+                <label><input type="checkbox" id="reg-campo-show-deleted"/> Mostrar eliminados</label>
+                <input class="form-input" id="reg-campo-search" placeholder="Buscar por IE, código o especialista..." style="max-width:280px"/>
+              </div>
+              <table class="user-table">
+                <thead>
+                  <tr><th>Código</th><th>IE</th><th>Fecha visita</th><th>Especialista</th><th>Variables</th><th>Autor</th><th>Estado</th><th>Acciones</th></tr>
+                </thead>
+                <tbody id="reg-campo-body"><tr><td colspan="8">Cargando informes...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- DASHBOARD -->
       <div id="view-dashboard" class="view scroll-view">
         <div class="dash-shell">
@@ -1135,7 +1334,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
 
               <div class="dash-chart-grid" id="dash-charts">
                 <div class="dash-card dash-chart-card">
-                  <div class="dash-card-header">Riesgo por IE</div>
+                  <div class="dash-card-header" id="dash-risk-chart-title">Riesgo por IE</div>
                   <div class="dash-chart-body" id="dash-risk-chart"></div>
                 </div>
                 <div class="dash-card dash-chart-card">
@@ -1147,8 +1346,18 @@ body.is-admin .view.admin-only.active{display:flex!important}
                   <div class="dash-chart-body" id="dash-alert-source-chart"></div>
                 </div>
                 <div class="dash-card dash-chart-card">
-                  <div class="dash-card-header">Brechas SIMON</div>
+                  <div class="dash-card-header">Brechas SIMON · los 8 indicadores</div>
                   <div class="dash-chart-body" id="dash-simon-chart"></div>
+                </div>
+              </div>
+              <div class="dash-chart-grid" id="dash-charts-simon-extra" style="display:none">
+                <div class="dash-card dash-chart-card">
+                  <div class="dash-card-header">Distribución por nivel (I–IV)</div>
+                  <div class="dash-chart-body" id="dash-simon-nivel-chart"></div>
+                </div>
+                <div class="dash-card dash-chart-card">
+                  <div class="dash-card-header">AR01 vs AR02 · por dimensión</div>
+                  <div class="dash-chart-body" id="dash-simon-dimension-chart"></div>
                 </div>
               </div>
             </div>
@@ -1224,7 +1433,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
           <div class="config-grid">
             <div class="config-stack">
               <form class="panel" id="cfg-user-form">
-                <div class="panel-title">Nuevo usuario</div>
+                <div class="panel-title" id="cfg-user-form-title">Nuevo usuario</div>
                 <div class="form-group">
                   <label>Nombre completo</label>
                   <input class="form-input" id="cfg-name" required placeholder="Nombre y apellidos"/>
@@ -1245,19 +1454,26 @@ body.is-admin .view.admin-only.active{display:flex!important}
                   </select>
                 </div>
                 <div class="form-group">
-                  <label>Especialista vinculado</label>
-                  <select class="form-select" id="cfg-specialist">
-                    <option value="">Sin vínculo específico</option>
+                  <label>Cargo</label>
+                  <select class="form-select" id="cfg-cargo">
+                    <option value="">Sin especificar</option>
                   </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="cfg-cargo-otro-group" style="display:none">
+                  <label>Especificar cargo</label>
+                  <input class="form-input" id="cfg-cargo-otro" placeholder="Escribe el cargo"/>
+                </div>
+                <div class="form-group" id="cfg-password-group">
                   <label>Contraseña inicial</label>
                   <div class="password-wrapper">
-                    <input class="form-input" id="cfg-password" type="password" required minlength="4" autocomplete="new-password"/>
+                    <input class="form-input" id="cfg-password" type="password" minlength="4" autocomplete="new-password"/>
                     <button class="password-toggle" type="button" data-toggle-password="cfg-password">Ver</button>
                   </div>
                 </div>
-                <button class="btn-primary" type="submit">Crear usuario</button>
+                <div style="display:flex;gap:8px">
+                  <button class="btn-primary" id="cfg-user-submit" type="submit">Crear usuario</button>
+                  <button class="mini-btn" id="cfg-user-cancel" type="button" style="display:none">Cancelar</button>
+                </div>
               </form>
 
               <form class="panel" id="cfg-password-form">
@@ -1527,7 +1743,7 @@ document.getElementById('btn-sync').addEventListener('click', syncFichas);
 /* Utils */
 function authHeaders() {
   try {
-    const raw = sessionStorage.getItem('sugka_session');
+    const raw = localStorage.getItem('sugka_session');
     if (!raw) return {};
     const session = JSON.parse(raw);
     return session && session.token ? {'Authorization': 'Bearer ' + session.token} : {};
@@ -1535,7 +1751,7 @@ function authHeaders() {
 }
 
 function forceLogout(message) {
-  sessionStorage.removeItem('sugka_session');
+  localStorage.removeItem('sugka_session');
   currentUser = null;
   selectedIECode = null;
   document.body.classList.remove('is-admin');
@@ -2045,8 +2261,23 @@ function buildOcrFichaFromFields() {
 /* Auth */
 let currentUser = null;
 let configUsers = [];
-let configEspecialistas = [];
 let configPasswordUserId = null;
+let cfgUserEditingId = null;
+
+const CARGO_OPTIONS = [
+  'Especialista en Educación Inicial',
+  'Especialista en Educación Inicial EIB',
+  'Especialista en Educación Primaria',
+  'Especialista en Educación Primaria EIB',
+  'Especialista en Educación Matemática',
+  'Especialista en Educación Comunicación',
+  'Especialista en Educación Física',
+  'Especialista en Educación - EPT',
+  'Especialista en Educación C y T',
+  'Especialista de Innovación pedagógica',
+  'Especialista de Tutoría',
+  'Profesora Coordinadora de PRONOEI',
+];
 
 function userInitials(name='') {
   const parts = String(name || 'Usuario').trim().split(/\s+/).filter(Boolean);
@@ -2147,7 +2378,7 @@ document.getElementById('btn-login').addEventListener('click', async () => {
   const password = getField('inp-password');
   try {
     const d = await apiFetch('/login', {method:'POST', body: JSON.stringify({username, password})});
-    sessionStorage.setItem('sugka_session', JSON.stringify(d));
+    localStorage.setItem('sugka_session', JSON.stringify(d));
     enterApp(d.user || d.especialista);
   } catch(e) {
     document.getElementById('login-error').textContent = e.message;
@@ -2161,7 +2392,7 @@ document.getElementById('btn-register').addEventListener('click', async () => {
   const password = getField('reg-password');
   try {
     const d = await apiFetch('/registro', {method:'POST', body: JSON.stringify({nombre, email, password})});
-    sessionStorage.setItem('sugka_session', JSON.stringify(d));
+    localStorage.setItem('sugka_session', JSON.stringify(d));
     showToast('Cuenta creada correctamente.', 'success');
     enterApp(d.user || d.especialista);
   } catch(e) {
@@ -2198,28 +2429,30 @@ function enterApp(esp) {
 async function loadConfigData() {
   if(!isAdminUser()) return;
   try {
-    const [users, especialistas] = await Promise.all([
-      apiFetch('/usuarios'),
-      apiFetch('/especialistas')
-    ]);
-    configUsers = users;
-    configEspecialistas = especialistas;
-    renderSpecialistOptions();
+    configUsers = await apiFetch('/usuarios');
+    renderCargoOptions();
     renderConfigUsers();
   } catch(e) {
     showToast('No se pudo cargar configuración.', 'error');
   }
 }
 
-function renderSpecialistOptions() {
-  const sel = document.getElementById('cfg-specialist');
-  sel.innerHTML = '<option value="">Sin vínculo específico</option>';
-  configEspecialistas.forEach(esp => {
-    const opt = document.createElement('option');
-    opt.value = esp.especialista_id;
-    opt.textContent = `${esp.nombre} · ${esp.rol_inferido || 'Especialista'}`;
-    sel.appendChild(opt);
-  });
+function renderCargoOptions() {
+  const sel = document.getElementById('cfg-cargo');
+  sel.innerHTML = '<option value="">Sin especificar</option>'
+    + CARGO_OPTIONS.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')
+    + '<option value="__otro__">Otro (especificar)</option>';
+}
+
+document.getElementById('cfg-cargo').addEventListener('change', () => {
+  const otro = document.getElementById('cfg-cargo').value === '__otro__';
+  document.getElementById('cfg-cargo-otro-group').style.display = otro ? '' : 'none';
+  if(!otro) document.getElementById('cfg-cargo-otro').value = '';
+});
+
+function selectedCargoValue() {
+  const sel = document.getElementById('cfg-cargo').value;
+  return sel === '__otro__' ? getField('cfg-cargo-otro') : sel;
 }
 
 function renderConfigUsers() {
@@ -2247,6 +2480,7 @@ function renderConfigUsers() {
         <td><span class="status-chip ${statusClass}">${statusText}</span></td>
         <td>
           <div class="config-actions">
+            <button class="mini-btn" type="button" data-user-edit="${esc(user.user_id)}">Editar</button>
             <button class="mini-btn" type="button" data-user-password="${esc(user.user_id)}">Clave</button>
             <button class="mini-btn warn" type="button" data-user-toggle="${esc(user.user_id)}">${toggleText}</button>
             <button class="mini-btn danger" type="button" data-user-delete="${esc(user.user_id)}">Eliminar</button>
@@ -2256,6 +2490,9 @@ function renderConfigUsers() {
     `;
   }).join('');
 
+  document.querySelectorAll('[data-user-edit]').forEach(btn => {
+    btn.addEventListener('click', () => editUser(btn.dataset.userEdit));
+  });
   document.querySelectorAll('[data-user-password]').forEach(btn => {
     btn.addEventListener('click', () => selectPasswordUser(btn.dataset.userPassword));
   });
@@ -2307,6 +2544,53 @@ async function toggleUserActive(userId) {
   }
 }
 
+function editUser(userId) {
+  const user = configUsers.find(u => u.user_id === userId);
+  if(!user) return;
+  cfgUserEditingId = userId;
+  setField('cfg-name', user.nombre || '');
+  setField('cfg-username', user.username || '');
+  setField('cfg-email', user.email || '');
+  setField('cfg-role', user.rol || 'especialista');
+
+  const cargo = user.cargo || '';
+  const cargoSel = document.getElementById('cfg-cargo');
+  if(cargo && CARGO_OPTIONS.includes(cargo)) {
+    cargoSel.value = cargo;
+    document.getElementById('cfg-cargo-otro-group').style.display = 'none';
+  } else if(cargo) {
+    cargoSel.value = '__otro__';
+    document.getElementById('cfg-cargo-otro-group').style.display = '';
+    setField('cfg-cargo-otro', cargo);
+  } else {
+    cargoSel.value = '';
+    document.getElementById('cfg-cargo-otro-group').style.display = 'none';
+  }
+
+  document.getElementById('cfg-password-group').style.display = 'none';
+  document.getElementById('cfg-password').required = false;
+  document.getElementById('cfg-user-form-title').textContent = `Editar: ${user.nombre}`;
+  document.getElementById('cfg-user-submit').textContent = 'Guardar cambios';
+  document.getElementById('cfg-user-cancel').style.display = 'inline-flex';
+  document.getElementById('cfg-user-form').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function resetUserForm() {
+  cfgUserEditingId = null;
+  document.getElementById('cfg-user-form').reset();
+  ['cfg-username','cfg-email'].forEach(id => {
+    delete document.getElementById(id).dataset.touched;
+    delete document.getElementById(id).dataset.autogen;
+  });
+  document.getElementById('cfg-cargo-otro-group').style.display = 'none';
+  document.getElementById('cfg-password-group').style.display = '';
+  document.getElementById('cfg-password').required = true;
+  document.getElementById('cfg-user-form-title').textContent = 'Nuevo usuario';
+  document.getElementById('cfg-user-submit').textContent = 'Crear usuario';
+  document.getElementById('cfg-user-cancel').style.display = 'none';
+}
+document.getElementById('cfg-user-cancel').addEventListener('click', resetUserForm);
+
 document.getElementById('cfg-user-form').addEventListener('submit', async e => {
   e.preventDefault();
   if(!isAdminUser()) return;
@@ -2315,24 +2599,33 @@ document.getElementById('cfg-user-form').addEventListener('submit', async e => {
   // que leerlo despues de un await ya devuelve null.
   const form = e.currentTarget;
   try {
-    await apiFetch('/usuarios', {
-      method:'POST',
-      body: JSON.stringify({
-        nombre: getField('cfg-name'),
-        username: getField('cfg-username'),
-        email: getField('cfg-email'),
-        rol: getField('cfg-role'),
-        especialista_id: getField('cfg-specialist'),
-        password: getField('cfg-password')
-      })
-    });
-    form.reset();
-    ['cfg-username','cfg-email'].forEach(id => {
-      delete document.getElementById(id).dataset.touched;
-      delete document.getElementById(id).dataset.autogen;
-    });
-    document.getElementById('cfg-specialist').value = '';
-    showToast('Usuario creado correctamente.', 'success');
+    if(cfgUserEditingId) {
+      await apiFetch(`/usuarios/${encodeURIComponent(cfgUserEditingId)}`, {
+        method:'PUT',
+        body: JSON.stringify({
+          nombre: getField('cfg-name'),
+          username: getField('cfg-username'),
+          email: getField('cfg-email'),
+          rol: getField('cfg-role'),
+          cargo: selectedCargoValue()
+        })
+      });
+      showToast('Usuario actualizado.', 'success');
+    } else {
+      await apiFetch('/usuarios', {
+        method:'POST',
+        body: JSON.stringify({
+          nombre: getField('cfg-name'),
+          username: getField('cfg-username'),
+          email: getField('cfg-email'),
+          rol: getField('cfg-role'),
+          cargo: selectedCargoValue(),
+          password: getField('cfg-password')
+        })
+      });
+      showToast('Usuario creado correctamente.', 'success');
+    }
+    resetUserForm();
     await loadConfigData();
   } catch(err) {
     showToast(err.message, 'error');
@@ -2527,6 +2820,493 @@ async function restoreInstitucion(codigo) {
   }
 }
 
+/* ─── Registros: edicion/eliminacion de fichas e informes de campo ─────── */
+const FICHA_TEXT_FIELDS = [
+  'codigo_modular', 'nombre_ie', 'nivel_modalidad', 'region', 'ugel', 'n_visita',
+  'director', 'director_cel', 'director_email', 'director_situacion_laboral',
+  'docente', 'docente_dni', 'docente_cel', 'docente_email', 'docente_situacion_laboral',
+  'grado', 'seccion', 'nro_estudiantes', 'area', 'competencia', 'titulo_sesion',
+  'monitor', 'monitor_dni', 'monitor_email', 'iged', 'fecha_ejecucion',
+  'observaciones_recomendaciones', 'compromisos_monitoreado',
+];
+const SIMON_INDICATORS = [
+  ['a1', 'A1', 'Planificación curricular alineada a estándares y contexto'],
+  ['a2', 'A2', 'Situaciones de aprendizaje desafiantes y coherentes'],
+  ['a3', 'A3', 'Coherencia entre criterios de evaluación y propósitos de aprendizaje'],
+  ['b1', 'B1', 'Promueve el interés y el sentido de lo aprendido'],
+  ['b2', 'B2', 'Actividades que estimulan comprensión y creatividad'],
+  ['b3', 'B3', 'Monitorea avances/dificultades y retroalimenta formativamente'],
+  ['b4', 'B4', 'Comunicación con respeto, calidez y atención a necesidades'],
+  ['b5', 'B5', 'Normas de convivencia claras y formativas'],
+];
+document.getElementById('reg-ficha-indicadores').innerHTML = SIMON_INDICATORS.map(([field, code, label]) => `
+  <div class="field-item full">
+    <label class="form-group label">${code} · ${esc(label)}</label>
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <select class="form-select" name="${field}" style="max-width:130px">
+        <option value="0">Sin observar</option>
+        <option value="1">Nivel I</option>
+        <option value="2">Nivel II</option>
+        <option value="3">Nivel III</option>
+        <option value="4">Nivel IV</option>
+      </select>
+      <textarea class="form-input" name="${field}_observacion" rows="1" placeholder="Observación"></textarea>
+    </div>
+  </div>
+`).join('');
+
+function canEditRegistro(row) {
+  if(isAdminUser()) return true;
+  return !!row.creado_por && !!currentUser && row.creado_por === currentUser.user_id;
+}
+
+async function loadRegistrosData() {
+  const badge = document.getElementById('reg-role-badge');
+  badge.textContent = isAdminUser() ? 'Perfil administrador' : 'Perfil especialista';
+  await Promise.all([loadRegistrosFichas(), loadRegistrosCampo()]);
+}
+
+document.querySelectorAll('[data-registros-tab]').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('[data-registros-tab]').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('#view-registros .config-tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(`registros-panel-${tab.dataset.registrosTab}`).classList.add('active');
+  });
+});
+
+/* --- Fichas de monitoreo --- */
+let registrosFichas = [];
+let regFichaEditingId = null;
+
+async function loadRegistrosFichas() {
+  const body = document.getElementById('reg-ficha-body');
+  try {
+    const incluirEliminadas = document.getElementById('reg-ficha-show-deleted').checked;
+    registrosFichas = await apiFetch(`/fichas${incluirEliminadas ? '?incluir_eliminadas=1' : ''}`);
+    renderRegistrosFichas();
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="9">${esc(e.message)}</td></tr>`;
+  }
+}
+
+function renderRegistrosFichas() {
+  const body = document.getElementById('reg-ficha-body');
+  const q = getField('reg-ficha-search').toLowerCase();
+  const rows = registrosFichas.filter(f => {
+    if(!q) return true;
+    return [f.nombre_ie, f.codigo_modular, f.docente].some(v => (v || '').toLowerCase().includes(q));
+  });
+  if(!rows.length) {
+    body.innerHTML = '<tr><td colspan="9">No hay fichas que coincidan.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(f => {
+    const deleted = Number(f.estado_fila) === 0;
+    const puedeEditar = canEditRegistro(f);
+    const origen = (f.source && f.source !== 'manual') ? 'OCR' : 'Manual';
+    return `
+      <tr>
+        <td>${esc(f.codigo_modular || '')}</td>
+        <td><strong>${esc(f.nombre_ie || '')}</strong></td>
+        <td>${esc(f.docente || '')}</td>
+        <td>${esc(f.fecha_ejecucion || '')}</td>
+        <td>${origen}</td>
+        <td>${f.promedio ?? ''}</td>
+        <td>${esc(f.creado_por_nombre || 'Sin autor')}</td>
+        <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminada' : 'Activa'}</span></td>
+        <td>
+          <div class="config-actions">
+            <button class="mini-btn" type="button" data-ficha-view="${f.id}">Ver</button>
+            ${puedeEditar
+              ? (deleted
+                  ? `<button class="mini-btn" type="button" data-ficha-restore="${f.id}">Restaurar</button>`
+                  : `<button class="mini-btn" type="button" data-ficha-edit="${f.id}">Editar</button>
+                     <button class="mini-btn danger" type="button" data-ficha-delete="${f.id}">Eliminar</button>`)
+              : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  document.querySelectorAll('[data-ficha-view]').forEach(btn => btn.addEventListener('click', () => openFichaForm(btn.dataset.fichaView, false)));
+  document.querySelectorAll('[data-ficha-edit]').forEach(btn => btn.addEventListener('click', () => openFichaForm(btn.dataset.fichaEdit, true)));
+  document.querySelectorAll('[data-ficha-delete]').forEach(btn => btn.addEventListener('click', () => deleteFicha(btn.dataset.fichaDelete)));
+  document.querySelectorAll('[data-ficha-restore]').forEach(btn => btn.addEventListener('click', () => restoreFicha(btn.dataset.fichaRestore)));
+}
+
+document.getElementById('reg-ficha-show-deleted').addEventListener('change', loadRegistrosFichas);
+document.getElementById('reg-ficha-search').addEventListener('input', renderRegistrosFichas);
+
+function fichaDinamicaRowHtml(r, i, editable) {
+  const nivel = Number(r.nivel) || 0;
+  return `
+    <div class="fields-grid" data-dinamica-row="${i}" style="margin-bottom:8px">
+      <div class="field-item">
+        <label class="form-group label">Código de pregunta</label>
+        <input class="form-input" data-din-field="pregunta_codigo" value="${esc(r.pregunta_codigo || '')}" ${editable ? '' : 'disabled'}/>
+      </div>
+      <div class="field-item">
+        <label class="form-group label">Nivel</label>
+        <select class="form-select" data-din-field="nivel" ${editable ? '' : 'disabled'}>
+          ${[0,1,2,3,4].map(n => `<option value="${n}" ${nivel===n?'selected':''}>${n===0?'Sin observar':'Nivel '+n}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field-item full">
+        <label class="form-group label">Observación</label>
+        <input class="form-input" data-din-field="observacion" value="${esc(r.observacion || '')}" ${editable ? '' : 'disabled'}/>
+      </div>
+      ${editable ? `<button type="button" class="mini-btn danger" data-din-remove="${i}">Quitar</button>` : ''}
+    </div>
+  `;
+}
+
+function wireFichaDinamicaRemove() {
+  document.querySelectorAll('#reg-ficha-dinamicas [data-din-remove]').forEach(btn => {
+    btn.onclick = () => btn.closest('[data-dinamica-row]').remove();
+  });
+}
+
+function renderFichaDinamicas(respuestas, editable) {
+  const container = document.getElementById('reg-ficha-dinamicas');
+  document.getElementById('reg-ficha-add-dinamica').style.display = editable ? 'inline-flex' : 'none';
+  container.innerHTML = respuestas.length
+    ? respuestas.map((r, i) => fichaDinamicaRowHtml(r, i, editable)).join('')
+    : `<div class="config-selected">Sin respuestas de preguntas dinámicas.</div>`;
+  wireFichaDinamicaRemove();
+}
+
+document.getElementById('reg-ficha-add-dinamica').addEventListener('click', () => {
+  const container = document.getElementById('reg-ficha-dinamicas');
+  if(!container.querySelector('[data-dinamica-row]')) container.innerHTML = '';
+  const idx = container.querySelectorAll('[data-dinamica-row]').length;
+  container.insertAdjacentHTML('beforeend', fichaDinamicaRowHtml({}, idx, true));
+  wireFichaDinamicaRemove();
+});
+
+function collectFichaDinamicas() {
+  return Array.from(document.querySelectorAll('#reg-ficha-dinamicas [data-dinamica-row]')).map(row => ({
+    pregunta_codigo: row.querySelector('[data-din-field="pregunta_codigo"]').value.trim(),
+    nivel: Number(row.querySelector('[data-din-field="nivel"]').value) || 0,
+    observacion: row.querySelector('[data-din-field="observacion"]').value.trim(),
+  })).filter(r => r.pregunta_codigo);
+}
+
+async function openFichaForm(id, wantEdit) {
+  try {
+    const detalle = await apiFetch(`/fichas/${id}`);
+    regFichaEditingId = detalle.ficha.id;
+    const editable = wantEdit && detalle.puede_editar;
+    const form = document.getElementById('reg-ficha-form');
+    form.style.display = 'block';
+    FICHA_TEXT_FIELDS.forEach(name => {
+      const el = form.elements[name];
+      if(el) { el.value = detalle.ficha[name] ?? ''; el.disabled = !editable; }
+    });
+    SIMON_INDICATORS.forEach(([field]) => {
+      form.elements[field].value = detalle.ficha[field] ?? 0;
+      form.elements[field].disabled = !editable;
+      form.elements[`${field}_observacion`].value = detalle.ficha[`${field}_observacion`] ?? '';
+      form.elements[`${field}_observacion`].disabled = !editable;
+    });
+    renderFichaDinamicas(detalle.respuestas_dinamicas || [], editable);
+    document.getElementById('reg-ficha-form-title').textContent =
+      `${editable ? 'Editar' : 'Ver'} ficha: ${detalle.ficha.nombre_ie || detalle.ficha.codigo_modular || ''}`;
+    const metaParts = [`Autor: ${detalle.ficha.creado_por_nombre || 'Sin autor (registro histórico)'}`];
+    if(detalle.ficha.modificado_por_nombre) {
+      metaParts.push(`Última edición: ${detalle.ficha.modificado_por_nombre} (${detalle.ficha.actualizado_en || ''})`);
+    }
+    document.getElementById('reg-ficha-meta').textContent = metaParts.join(' · ');
+    document.getElementById('reg-ficha-submit').style.display = editable ? 'inline-flex' : 'none';
+    form.scrollIntoView({behavior: 'smooth', block: 'start'});
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+function closeFichaForm() {
+  regFichaEditingId = null;
+  document.getElementById('reg-ficha-form').style.display = 'none';
+  document.getElementById('reg-ficha-form').reset();
+}
+document.getElementById('reg-ficha-cancel').addEventListener('click', closeFichaForm);
+
+document.getElementById('reg-ficha-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  if(!regFichaEditingId) return;
+  const form = e.target;
+  const payload = {};
+  FICHA_TEXT_FIELDS.forEach(name => { payload[name] = form.elements[name].value.trim(); });
+  payload.nro_estudiantes = payload.nro_estudiantes ? Number(payload.nro_estudiantes) : null;
+  SIMON_INDICATORS.forEach(([field]) => {
+    payload[field] = Number(form.elements[field].value) || 0;
+    payload[`${field}_observacion`] = form.elements[`${field}_observacion`].value.trim();
+  });
+  payload.respuestas_dinamicas = collectFichaDinamicas();
+  try {
+    await apiFetch(`/fichas/${regFichaEditingId}`, {method: 'PUT', body: JSON.stringify(payload)});
+    showToast('Ficha actualizada.', 'success');
+    closeFichaForm();
+    await loadRegistrosFichas();
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+});
+
+async function deleteFicha(id) {
+  const f = registrosFichas.find(x => String(x.id) === String(id));
+  const ok = window.confirm(`¿Eliminar la ficha de "${f ? (f.nombre_ie || f.codigo_modular) : id}"? Podrás restaurarla luego.`);
+  if(!ok) return;
+  try {
+    await apiFetch(`/fichas/${id}`, {method: 'DELETE'});
+    showToast('Ficha eliminada.', 'success');
+    if(String(regFichaEditingId) === String(id)) closeFichaForm();
+    await loadRegistrosFichas();
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function restoreFicha(id) {
+  try {
+    await apiFetch(`/fichas/${id}`, {method: 'PUT', body: JSON.stringify({restaurar: true})});
+    showToast('Ficha restaurada.', 'success');
+    await loadRegistrosFichas();
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+/* --- Informes de campo --- */
+let registrosCampo = [];
+let regCampoEditingId = null;
+let regCampoVariablesMeta = {};
+
+async function loadRegistrosCampo() {
+  const body = document.getElementById('reg-campo-body');
+  try {
+    const incluirEliminados = document.getElementById('reg-campo-show-deleted').checked;
+    registrosCampo = await apiFetch(`/informes_campo${incluirEliminados ? '?incluir_eliminadas=1' : ''}`);
+    renderRegistrosCampo();
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="8">${esc(e.message)}</td></tr>`;
+  }
+}
+
+function renderRegistrosCampo() {
+  const body = document.getElementById('reg-campo-body');
+  const q = getField('reg-campo-search').toLowerCase();
+  const rows = registrosCampo.filter(v => {
+    if(!q) return true;
+    return [v.nombre_ie_detectado, v.codigo_modular, v.especialista_detectado].some(x => (x || '').toLowerCase().includes(q));
+  });
+  if(!rows.length) {
+    body.innerHTML = '<tr><td colspan="8">No hay informes que coincidan.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(v => {
+    const deleted = Number(v.estado_fila) === 0;
+    const puedeEditar = canEditRegistro(v);
+    return `
+      <tr>
+        <td>${esc(v.codigo_modular || '')}</td>
+        <td><strong>${esc(v.nombre_ie_detectado || '')}</strong></td>
+        <td>${esc(v.fecha_visita || '')}</td>
+        <td>${esc(v.especialista_detectado || '')}</td>
+        <td>${v.n_variables_observadas ?? 0}</td>
+        <td>${esc(v.creado_por_nombre || 'Sin autor')}</td>
+        <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminado' : 'Activo'}</span></td>
+        <td>
+          <div class="config-actions">
+            <button class="mini-btn" type="button" data-campo-view="${esc(v.visita_campo_id)}">Ver</button>
+            ${puedeEditar
+              ? (deleted
+                  ? `<button class="mini-btn" type="button" data-campo-restore="${esc(v.visita_campo_id)}">Restaurar</button>`
+                  : `<button class="mini-btn" type="button" data-campo-edit="${esc(v.visita_campo_id)}">Editar</button>
+                     <button class="mini-btn danger" type="button" data-campo-delete="${esc(v.visita_campo_id)}">Eliminar</button>`)
+              : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  document.querySelectorAll('[data-campo-view]').forEach(btn => btn.addEventListener('click', () => openCampoForm(btn.dataset.campoView, false)));
+  document.querySelectorAll('[data-campo-edit]').forEach(btn => btn.addEventListener('click', () => openCampoForm(btn.dataset.campoEdit, true)));
+  document.querySelectorAll('[data-campo-delete]').forEach(btn => btn.addEventListener('click', () => deleteCampo(btn.dataset.campoDelete)));
+  document.querySelectorAll('[data-campo-restore]').forEach(btn => btn.addEventListener('click', () => restoreCampo(btn.dataset.campoRestore)));
+}
+
+document.getElementById('reg-campo-show-deleted').addEventListener('change', loadRegistrosCampo);
+document.getElementById('reg-campo-search').addEventListener('input', renderRegistrosCampo);
+
+function renderCampoVariables(visita, meta, editable) {
+  const container = document.getElementById('reg-campo-variables');
+  const vars = Object.keys(meta || {});
+  if(!vars.length) {
+    container.innerHTML = '<div class="config-selected">No hay catálogo de variables disponible.</div>';
+    return;
+  }
+  container.innerHTML = vars.map(v => `
+    <div class="field-item full" style="margin-bottom:10px">
+      <label class="form-group label">
+        <input type="checkbox" data-campo-var="${v}" ${visita[v] ? 'checked' : ''} ${editable ? '' : 'disabled'}/>
+        ${esc((meta[v] && meta[v].label) || v)}
+      </label>
+      <textarea class="form-input" data-campo-span="${v}" rows="1" placeholder="Evidencia textual" ${editable ? '' : 'disabled'}>${esc(visita[`span_${v}`] || '')}</textarea>
+    </div>
+  `).join('');
+}
+
+function collectCampoVariables() {
+  const payload = {};
+  document.querySelectorAll('#reg-campo-variables [data-campo-var]').forEach(chk => {
+    const v = chk.dataset.campoVar;
+    payload[v] = chk.checked ? 1 : null;
+    const span = document.querySelector(`#reg-campo-variables [data-campo-span="${v}"]`);
+    payload[`span_${v}`] = span ? span.value.trim() : '';
+  });
+  return payload;
+}
+
+function campoHallazgoRowHtml(h, i, editable) {
+  return `
+    <div class="fields-grid" data-hallazgo-row="${i}" style="margin-bottom:8px">
+      <div class="field-item">
+        <label class="form-group label">Variable</label>
+        <input class="form-input" data-hal-field="variable_detectada" value="${esc(h.variable_detectada || '')}" ${editable ? '' : 'disabled'}/>
+      </div>
+      <div class="field-item">
+        <label class="form-group label">Tema</label>
+        <input class="form-input" data-hal-field="tema" value="${esc(h.tema || '')}" ${editable ? '' : 'disabled'}/>
+      </div>
+      <div class="field-item full">
+        <label class="form-group label">Descripción</label>
+        <input class="form-input" data-hal-field="descripcion" value="${esc(h.descripcion || '')}" ${editable ? '' : 'disabled'}/>
+      </div>
+      <div class="field-item full">
+        <label class="form-group label">Evidencia textual</label>
+        <input class="form-input" data-hal-field="evidencia_textual" value="${esc(h.evidencia_textual || '')}" ${editable ? '' : 'disabled'}/>
+      </div>
+      ${editable ? `<button type="button" class="mini-btn danger" data-hal-remove="${i}">Quitar</button>` : ''}
+    </div>
+  `;
+}
+
+function wireCampoHallazgoRemove() {
+  document.querySelectorAll('#reg-campo-hallazgos [data-hal-remove]').forEach(btn => {
+    btn.onclick = () => btn.closest('[data-hallazgo-row]').remove();
+  });
+}
+
+function renderCampoHallazgos(hallazgos, editable) {
+  const container = document.getElementById('reg-campo-hallazgos');
+  document.getElementById('reg-campo-add-hallazgo').style.display = editable ? 'inline-flex' : 'none';
+  container.innerHTML = hallazgos.length
+    ? hallazgos.map((h, i) => campoHallazgoRowHtml(h, i, editable)).join('')
+    : (editable ? '' : '<div class="config-selected">Sin hallazgos registrados.</div>');
+  wireCampoHallazgoRemove();
+}
+
+document.getElementById('reg-campo-add-hallazgo').addEventListener('click', () => {
+  const container = document.getElementById('reg-campo-hallazgos');
+  const idx = container.querySelectorAll('[data-hallazgo-row]').length;
+  container.insertAdjacentHTML('beforeend', campoHallazgoRowHtml({}, idx, true));
+  wireCampoHallazgoRemove();
+});
+
+function collectCampoHallazgos() {
+  return Array.from(document.querySelectorAll('#reg-campo-hallazgos [data-hallazgo-row]')).map(row => ({
+    variable_detectada: row.querySelector('[data-hal-field="variable_detectada"]').value.trim(),
+    tema: row.querySelector('[data-hal-field="tema"]').value.trim(),
+    descripcion: row.querySelector('[data-hal-field="descripcion"]').value.trim(),
+    evidencia_textual: row.querySelector('[data-hal-field="evidencia_textual"]').value.trim(),
+  })).filter(h => h.variable_detectada || h.descripcion || h.evidencia_textual);
+}
+
+async function openCampoForm(id, wantEdit) {
+  try {
+    const detalle = await apiFetch(`/informes_campo/${encodeURIComponent(id)}`);
+    regCampoEditingId = detalle.visita.visita_campo_id;
+    regCampoVariablesMeta = detalle.variables_meta || {};
+    const editable = wantEdit && detalle.puede_editar;
+    const form = document.getElementById('reg-campo-form');
+    form.style.display = 'block';
+    ['codigo_modular', 'nombre_ie_detectado', 'fecha_visita', 'especialista_detectado', 'motivo_revision'].forEach(name => {
+      const el = form.elements[name];
+      if(el) { el.value = detalle.visita[name] ?? ''; el.disabled = !editable; }
+    });
+    form.elements['requiere_revision'].checked = !!detalle.visita.requiere_revision;
+    form.elements['requiere_revision'].disabled = !editable;
+    renderCampoVariables(detalle.visita, regCampoVariablesMeta, editable);
+    renderCampoHallazgos(detalle.hallazgos || [], editable);
+    document.getElementById('reg-campo-form-title').textContent =
+      `${editable ? 'Editar' : 'Ver'} informe: ${detalle.visita.nombre_ie_detectado || detalle.visita.codigo_modular || ''}`;
+    const metaParts = [`Autor: ${detalle.visita.creado_por_nombre || 'Sin autor (registro histórico)'}`];
+    if(detalle.visita.modificado_por_nombre) {
+      metaParts.push(`Última edición: ${detalle.visita.modificado_por_nombre} (${detalle.visita.actualizado_en || ''})`);
+    }
+    document.getElementById('reg-campo-meta').textContent = metaParts.join(' · ');
+    document.getElementById('reg-campo-submit').style.display = editable ? 'inline-flex' : 'none';
+    form.scrollIntoView({behavior: 'smooth', block: 'start'});
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+function closeCampoForm() {
+  regCampoEditingId = null;
+  document.getElementById('reg-campo-form').style.display = 'none';
+  document.getElementById('reg-campo-form').reset();
+}
+document.getElementById('reg-campo-cancel').addEventListener('click', closeCampoForm);
+
+document.getElementById('reg-campo-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  if(!regCampoEditingId) return;
+  const form = e.target;
+  const payload = {};
+  ['codigo_modular', 'nombre_ie_detectado', 'fecha_visita', 'especialista_detectado', 'motivo_revision'].forEach(name => {
+    payload[name] = form.elements[name].value.trim();
+  });
+  payload.requiere_revision = form.elements['requiere_revision'].checked;
+  Object.assign(payload, collectCampoVariables());
+  payload.hallazgos = collectCampoHallazgos();
+  try {
+    await apiFetch(`/informes_campo/${encodeURIComponent(regCampoEditingId)}`, {method: 'PUT', body: JSON.stringify(payload)});
+    showToast('Informe de campo actualizado.', 'success');
+    closeCampoForm();
+    await loadRegistrosCampo();
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+});
+
+async function deleteCampo(id) {
+  const v = registrosCampo.find(x => x.visita_campo_id === id);
+  const ok = window.confirm(`¿Eliminar el informe de campo de "${v ? (v.nombre_ie_detectado || v.codigo_modular) : id}"? Podrás restaurarlo luego.`);
+  if(!ok) return;
+  try {
+    await apiFetch(`/informes_campo/${encodeURIComponent(id)}`, {method: 'DELETE'});
+    showToast('Informe de campo eliminado.', 'success');
+    if(regCampoEditingId === id) closeCampoForm();
+    await loadRegistrosCampo();
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function restoreCampo(id) {
+  try {
+    await apiFetch(`/informes_campo/${encodeURIComponent(id)}`, {method: 'PUT', body: JSON.stringify({restaurar: true})});
+    showToast('Informe de campo restaurado.', 'success');
+    await loadRegistrosCampo();
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
 /* Preguntas dinamicas */
 const QUESTION_LEVEL_FIELDS = [
   ['question-level-1', 'NIVEL I'],
@@ -2705,6 +3485,7 @@ const VIEW_TITLES = {
   form: ['Ficha de monitoreo','Registro offline'],
   ocr: ['OCR de ficha','Azure Document Intelligence'],
   campo: ['Informes de campo','OCR + IA · Gemini / OpenAI'],
+  registros: ['Registros','Fichas e informes de campo'],
   dashboard: ['Gestión educativa','Indicadores y alertas'],
   config: ['Configuración','Usuarios y accesos'],
   preguntas: ['Preguntas dinámicas','Instrumento UGEL']
@@ -2739,6 +3520,7 @@ function switchView(id) {
   if(id==='config') loadConfigData();
   if(id==='preguntas') loadDynamicQuestions();
   if(id==='campo') prepareCampoView();
+  if(id==='registros') loadRegistrosData();
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(el => el.addEventListener('click', () => switchView(el.dataset.view)));
 document.getElementById('sidebar-toggle').addEventListener('click', () => {
@@ -2756,7 +3538,7 @@ document.getElementById('btn-empty-pdf').addEventListener('click', () => {
 });
 document.getElementById('btn-logout').addEventListener('click', () => {
   apiFetch('/logout', {method:'POST'}).catch(() => {}); // invalida el token en el servidor (best-effort)
-  sessionStorage.removeItem('sugka_session');
+  localStorage.removeItem('sugka_session');
   currentUser = null;
   selectedIECode = null;
   document.body.classList.remove('is-admin');
@@ -3548,9 +4330,19 @@ function renderDashboard() {
       <div class="dash-kpi-sub">${infraStats.en_alerta || 0} en alerta · score promedio ${infraStats.promedio_score || 0}</div>
     </div>
     <div class="dash-kpi green">
-      <div class="dash-kpi-label">Promedio SIMON</div>
-      <div class="dash-kpi-value">${simonStats.promedio_nivel || resultados.promedio_observado || 0}</div>
-      <div class="dash-kpi-sub">${resultados.fichas_recolectadas || 0} fichas · ${docentesRefuerzo} con promedio menor a Nivel III</div>
+      <div class="dash-kpi-hero-top">
+        <div class="dash-kpi-label" style="margin-bottom:0">Promedio general SIMON</div>
+        <span class="dash-kpi-hero-target">Meta Nivel III · 3.0</span>
+      </div>
+      <div class="dash-kpi-hero-value">${(Number(simonStats.promedio_nivel || resultados.promedio_observado || 0)).toFixed(2)} <span>/ 4.0</span></div>
+      <div class="dash-meter-track">
+        <div class="dash-meter-fill" style="width:${Math.max(2, Math.min(100, (Number(simonStats.promedio_nivel || resultados.promedio_observado || 0) / 4) * 100))}%"></div>
+        <div class="dash-meter-target" style="left:75%"></div>
+      </div>
+      <div class="dash-kpi-hero-foot">
+        <span>${resultados.fichas_recolectadas || 0} fichas · ${docentesRefuerzo} bajo Nivel III</span>
+        ${simonStats.nivel_actual ? `<span class="dash-nivel-pill ${Number(simonStats.promedio_nivel) < 2.25 ? 'critico' : Number(simonStats.promedio_nivel) < 2.75 ? 'alerta' : 'logrado'}">${esc(simonStats.nivel_actual)}</span>` : ''}
+      </div>
     </div>
   ` : `
     <div class="dash-kpi">
@@ -3615,18 +4407,65 @@ function renderDashboard() {
   bindDashboardInteractions();
 }
 
+/* Color de severidad para un promedio SIMON 1-4, con el mismo umbral que la
+ * regla documentada de riesgo_intervencion (< 2.25 critico, < 2.75 alerta). */
+function simonSeverityColor(promedio) {
+  const value = Number(promedio) || 0;
+  if (value < 2.25) return 'var(--dash-red)';
+  if (value < 2.75) return 'var(--dash-amber)';
+  return 'var(--dash-green)';
+}
+
+function dashIndicatorBar(item, pregunta) {
+  const promedio = Number(item.promedio) || 0;
+  const pct = Math.max(2, Math.min(100, Math.round((promedio / 4) * 100)));
+  const color = simonSeverityColor(promedio);
+  const tip = pregunta
+    ? `<div class="dash-ind-tip"><strong>${esc(item.pregunta_codigo || item.area)}</strong><br/>${esc(pregunta)}<br/>${item.bajo_nivel || 0} de ${item.total || 0} fichas por debajo de Nivel III</div>`
+    : '';
+  return `
+    <div class="dash-ind-row ${pregunta ? 'has-tip' : ''}">
+      <span class="dash-ind-code">${esc(item.pregunta_codigo || item.area)}</span>
+      <div class="dash-ind-track"><div class="dash-ind-fill" style="width:${pct}%;background:${color}"></div></div>
+      <span class="dash-ind-val">${promedio.toFixed(2)}</span>
+      ${tip}
+    </div>
+  `;
+}
+
 function renderDashboardCharts(d, instituciones) {
-  const risk = d.risk_distribution || {};
-  const riskRows = [
-    ['Crítico', risk.Critico || 0, 'var(--dash-red)'],
-    ['Alto', risk.Alto || 0, 'var(--dash-amber)'],
-    ['Medio', risk.Medio || 0, 'var(--accent)'],
-    ['Bajo', risk.Bajo || 0, 'var(--dash-green)']
-  ];
-  const riskMax = Math.max(1, ...riskRows.map(row => row[1]));
-  document.getElementById('dash-risk-chart').innerHTML = riskRows
-    .map(row => dashMiniBar(row[0], row[1], riskMax, row[2]))
-    .join('');
+  const isSimonFilter = dashboardState.sourceFilter === 'simon';
+  const meta = d.simon_metodologia || {};
+
+  const riskTitle = document.getElementById('dash-risk-chart-title');
+  if (isSimonFilter) {
+    if (riskTitle) riskTitle.textContent = 'Riesgo de intervención SIMON';
+    const fichaDist = meta.distribucion_ficha || [];
+    const totalFichas = meta.distribucion_total_ficha || 0;
+    const colorByNivel = {Alto: 'var(--dash-red)', Medio: 'var(--dash-amber)', Bajo: 'var(--dash-green)'};
+    document.getElementById('dash-risk-chart').innerHTML = totalFichas ? `
+      <div class="dash-stack">
+        ${fichaDist.map(item => item.fichas ? `<div class="dash-stack-seg" style="width:${item.porcentaje}%;background:${colorByNivel[item.nivel] || 'var(--dash-blue)'}">${item.porcentaje >= 8 ? item.porcentaje + '%' : ''}</div>` : '').join('')}
+      </div>
+      <div class="dash-stack-legend">
+        ${fichaDist.map(item => `<span><i style="background:${colorByNivel[item.nivel] || 'var(--dash-blue)'}"></i>${esc(item.nivel)} — ${item.fichas} ${item.fichas === 1 ? 'ficha' : 'fichas'}</span>`).join('')}
+      </div>
+      <div class="dash-hbar-note" style="margin-top:2px">riesgo_intervencion calculado por ficha (regla documentada), sobre las ${totalFichas} fichas SIMON registradas.</div>
+    ` : '<div class="dash-empty">No hay fichas SIMON cargadas.</div>';
+  } else {
+    if (riskTitle) riskTitle.textContent = 'Riesgo por IE';
+    const risk = d.risk_distribution || {};
+    const riskRows = [
+      ['Crítico', risk.Critico || 0, 'var(--dash-red)'],
+      ['Alto', risk.Alto || 0, 'var(--dash-amber)'],
+      ['Medio', risk.Medio || 0, 'var(--accent)'],
+      ['Bajo', risk.Bajo || 0, 'var(--dash-green)']
+    ];
+    const riskMax = Math.max(1, ...riskRows.map(row => row[1]));
+    document.getElementById('dash-risk-chart').innerHTML = riskRows
+      .map(row => dashMiniBar(row[0], row[1], riskMax, row[2]))
+      .join('');
+  }
 
   const infra = d.infraestructura_censo || {};
   const totalInfra = Number(infra.total_ie) || instituciones.length || 1;
@@ -3647,11 +4486,55 @@ function renderDashboardCharts(d, instituciones) {
     ? sourceRows.map(([label, value]) => dashMiniBar(label, value, sourceMax, label === 'simon' ? 'var(--dash-blue)' : 'var(--accent)')).join('')
     : '<div class="dash-empty">No hay alertas pendientes en la base.</div>';
 
-  const simonItems = (((d.resultados_recolectados || {}).indicadores) || []).slice(0, 4);
-  const simonMax = Math.max(1, ...simonItems.map(item => Number(item.bajo_nivel || item.valor || 0)));
+  // Los 8 indicadores completos (antes se cortaban a 4 con slice(0,4)), ordenados
+  // de peor a mejor promedio y coloreados por severidad; el tooltip reutiliza la
+  // pregunta completa que ya vive en simon_metodologia.indicadores.
+  const preguntaPorCodigo = {};
+  (meta.indicadores || []).forEach(ind => { preguntaPorCodigo[ind.codigo_instrumento] = {pregunta: ind.pregunta, codigo_reporte: ind.codigo_reporte}; });
+  const simonItems = ((d.resultados_recolectados || {}).indicadores || [])
+    .slice()
+    .sort((a, b) => (Number(a.promedio) || 0) - (Number(b.promedio) || 0));
   document.getElementById('dash-simon-chart').innerHTML = simonItems.length
-    ? simonItems.map(item => dashMiniBar(item.area || 'Indicador SIMON', item.bajo_nivel || item.valor || 0, simonMax, 'var(--dash-blue)', `${item.total || 0} respuestas evaluadas`)).join('')
+    ? simonItems.map(item => {
+        const info = preguntaPorCodigo[item.area] || {};
+        return dashIndicatorBar({...item, pregunta_codigo: info.codigo_reporte || item.area, pregunta: info.pregunta}, info.pregunta);
+      }).join('') + `
+      <div class="dash-ind-legend">
+        <span><i style="background:var(--dash-red)"></i>Crítico · promedio &lt; 2.25</span>
+        <span><i style="background:var(--dash-amber)"></i>Alerta · 2.25–2.99</span>
+        <span><i style="background:var(--dash-green)"></i>Nivel III o más</span>
+      </div>`
     : '<div class="dash-empty">No hay respuestas SIMON cargadas.</div>';
+
+  // Charts adicionales que solo aplican cuando la fuente filtrada es SIMON.
+  const extra = document.getElementById('dash-charts-simon-extra');
+  if (extra) extra.style.display = isSimonFilter ? '' : 'none';
+  if (isSimonFilter) {
+    const nivelDist = meta.distribucion_nivel || [];
+    const nivelColors = {1: 'var(--dash-red)', 2: 'var(--dash-amber)', 3: 'var(--dash-blue)', 4: 'var(--dash-green)'};
+    const nivelMax = Math.max(1, ...nivelDist.map(item => item.cantidad || 0));
+    document.getElementById('dash-simon-nivel-chart').innerHTML = nivelDist.length
+      ? nivelDist.map(item => dashMiniBar(item.nivel, item.cantidad || 0, nivelMax, nivelColors[item.valor] || 'var(--dash-blue)', `${item.porcentaje}% de las respuestas`)).join('')
+      : '<div class="dash-empty">No hay respuestas SIMON cargadas.</div>';
+
+    const dimDist = meta.distribucion_dimension || [];
+    document.getElementById('dash-simon-dimension-chart').innerHTML = dimDist.length
+      ? dimDist.map(item => {
+          const pct = Math.max(2, Math.min(100, Math.round((item.promedio / 4) * 100)));
+          const shortLabel = item.dimension.toLowerCase().includes('preparaci') ? 'AR01 · Preparación' : 'AR02 · Enseñanza';
+          return `
+            <div class="dash-dim-row">
+              <div>
+                <div class="dash-dim-label">${esc(shortLabel)}</div>
+                <div class="dash-dim-sub">${item.indicadores} indicadores</div>
+              </div>
+              <span class="dash-dim-val">${item.promedio.toFixed(2)}</span>
+            </div>
+            <div class="dash-dim-track"><div class="dash-dim-fill" style="width:${pct}%;background:${simonSeverityColor(item.promedio)}"></div></div>
+          `;
+        }).join('')
+      : '<div class="dash-empty">No hay respuestas SIMON cargadas.</div>';
+  }
 }
 
 function renderDashboardLists(instituciones) {
@@ -4121,32 +5004,83 @@ function renderProgressSheet(focus) {
   `;
 }
 
-function renderDashboardSide(d, excel) {
-  const model = d.risk_model || {};
-  const infraDefs = d.infra_definitions || {};
-  const levels = (model.levels || []).map(level => `
-    <div class="dash-rule"><strong>${esc(level.level)}</strong> · ${esc(level.range)}<br/>${esc(level.action)}</div>
+function renderSimonMethodology(d) {
+  const meta = d.simon_metodologia || {};
+  const indicadores = meta.indicadores || [];
+  const reglaRiesgo = meta.regla_riesgo || [];
+  const ejemplo = meta.ejemplo || {};
+  const distribucion = meta.distribucion_ie || [];
+
+  const indicadoresHtml = indicadores.map(item => `
+    <div class="dash-rule">
+      <span class="dash-simon-badge">${esc(item.codigo_reporte)}</span>${esc(item.dimension)}<br/>
+      ${esc(item.pregunta)}
+    </div>
   `).join('');
-  const weights = (model.weights || []).map(w => `
-    <div class="dash-rule"><strong>${esc(w.factor)}</strong><br/>${esc(w.weight)} · ${esc(w.rule || '')}</div>
+
+  const reglaHtml = reglaRiesgo.map(r => `
+    <div class="dash-rule"><strong>${esc(r.nivel)}</strong><br/>${esc(r.condicion)}<br/><span>${esc(r.justificacion)}</span></div>
   `).join('');
-  const infraFormula = (infraDefs.formula || []).slice(0, 4).map(item => `<div class="dash-rule">${esc(item)}</div>`).join('');
+
+  const ejemploItems = (ejemplo.items || []).map(it => `${esc(it.codigo_reporte)}=N${it.nivel}`).join(', ');
+
+  const distribucionHtml = distribucion.length
+    ? distribucion.map(item => `<div class="dash-rule"><strong>${esc(item.nivel)}</strong> · ${item.ies} IE (${item.porcentaje}%)</div>`).join('')
+    : '<div class="dash-rule">Aun no hay riesgo_intervencion calculado por IE. Se actualiza al registrar o sincronizar fichas SIMON.</div>';
+
   document.getElementById('dash-model').innerHTML = `
-    <div class="dash-section-title">Modelo de clasificacion</div>
-    <div class="dash-section-sub"><strong>${esc(model.name || '')}</strong></div>
-    <div class="dash-item-meta">${esc(model.description || '')}</div>
-    <div class="dash-section-title" style="margin-top:16px">Componentes del score</div>
-    ${weights}
-    <div class="dash-section-title" style="margin-top:16px">Niveles de riesgo</div>
-    ${levels}
-    <div class="dash-section-title" style="margin-top:16px">Infraestructura 2025</div>
-    <div class="dash-rule"><strong>alertas_infraestructura_campo</strong><br/>${esc(infraDefs.alertas_infraestructura_campo || '')}</div>
-    <div class="dash-rule"><strong>risk_flags</strong><br/>${esc(infraDefs.risk_flags || '')}</div>
-    <div class="dash-rule"><strong>risk_score_infra</strong><br/>${esc(infraDefs.risk_score_infra || '')}</div>
-    ${infraFormula}
-    ${['real_simon','real_simon_infra'].includes(excel.source) ? '<span class="demo-badge" style="margin-top:12px">Datos reales activos</span>' : ''}
-    ${(excel.source === 'demo' || d.demo_mode) ? '<span class="demo-badge" style="margin-top:12px">Datos demo activos</span>' : ''}
+    <div class="dash-section-title">Ficha tecnica SIMON</div>
+    <div class="dash-section-sub">8 indicadores pedagogicos (AR01 preparacion · AR02 ensenanza) tal como los formula el instrumento aplicado por los especialistas; no son variables inventadas por el proyecto.</div>
+    <details class="dash-simon-details">
+      <summary>Ver las 8 preguntas del instrumento</summary>
+      ${indicadoresHtml}
+    </details>
+
+    <div class="dash-section-title" style="margin-top:16px">Como se clasifica el riesgo</div>
+    ${reglaHtml}
+
+    <div class="dash-section-title" style="margin-top:16px">Ejemplo aplicado (ficha ${esc(ejemplo.ficha || '')})</div>
+    <div class="dash-rule">${esc(ejemploItems)}</div>
+    <div class="dash-rule">${esc(ejemplo.calculo || '')}</div>
+    <div class="dash-rule"><strong>riesgo_intervencion = ${esc(ejemplo.resultado || '')}</strong><br/>${esc(ejemplo.explicacion || '')}</div>
+
+    <div class="dash-section-title" style="margin-top:16px">Distribucion real por IE</div>
+    ${distribucionHtml}
+
+    <div class="dash-item-meta" style="margin-top:12px">Advertencia metodologica: estos indicadores son, literalmente, los componentes de la regla que genera la etiqueta. Sirven para un primer prototipo explicable y auditable; no deben usarse como predictores independientes de un modelo (por ejemplo un Random Forest), pues este reaprenderia la regla en vez de una relacion causal.</div>
   `;
+}
+
+function renderDashboardSide(d, excel) {
+  if (dashboardState.sourceFilter === 'simon') {
+    renderSimonMethodology(d);
+  } else {
+    const model = d.risk_model || {};
+    const infraDefs = d.infra_definitions || {};
+    const levels = (model.levels || []).map(level => `
+      <div class="dash-rule"><strong>${esc(level.level)}</strong> · ${esc(level.range)}<br/>${esc(level.action)}</div>
+    `).join('');
+    const weights = (model.weights || []).map(w => `
+      <div class="dash-rule"><strong>${esc(w.factor)}</strong><br/>${esc(w.weight)} · ${esc(w.rule || '')}</div>
+    `).join('');
+    const infraFormula = (infraDefs.formula || []).slice(0, 4).map(item => `<div class="dash-rule">${esc(item)}</div>`).join('');
+    document.getElementById('dash-model').innerHTML = `
+      <div class="dash-section-title">Modelo de clasificacion</div>
+      <div class="dash-section-sub"><strong>${esc(model.name || '')}</strong></div>
+      <div class="dash-item-meta">${esc(model.description || '')}</div>
+      <div class="dash-section-title" style="margin-top:16px">Componentes del score</div>
+      ${weights}
+      <div class="dash-section-title" style="margin-top:16px">Niveles de riesgo</div>
+      ${levels}
+      <div class="dash-section-title" style="margin-top:16px">Infraestructura 2025</div>
+      <div class="dash-rule"><strong>alertas_infraestructura_campo</strong><br/>${esc(infraDefs.alertas_infraestructura_campo || '')}</div>
+      <div class="dash-rule"><strong>risk_flags</strong><br/>${esc(infraDefs.risk_flags || '')}</div>
+      <div class="dash-rule"><strong>risk_score_infra</strong><br/>${esc(infraDefs.risk_score_infra || '')}</div>
+      ${infraFormula}
+      ${['real_simon','real_simon_infra'].includes(excel.source) ? '<span class="demo-badge" style="margin-top:12px">Datos reales activos</span>' : ''}
+      ${(excel.source === 'demo' || d.demo_mode) ? '<span class="demo-badge" style="margin-top:12px">Datos demo activos</span>' : ''}
+    `;
+  }
 
   document.getElementById('dash-semaforo').innerHTML = (excel.semaforo || []).map(item => {
     const color = item.status_key === 'danger' ? '#dc2626' : item.status_key === 'warning' ? '#d97706' : '#059669';
@@ -4171,14 +5105,14 @@ function renderDashboardSide(d, excel) {
 /* Init */
 (async () => {
   applyTheme(currentTheme);
-  const s = sessionStorage.getItem('sugka_session');
+  const s = localStorage.getItem('sugka_session');
   await initLogin();
   if(s) {
     try {
       const session = JSON.parse(s);
       enterApp(session.user || session.especialista);
     } catch(e) {
-      sessionStorage.removeItem('sugka_session');
+      localStorage.removeItem('sugka_session');
       document.getElementById('screen-login').classList.add('active');
     }
   } else document.getElementById('screen-login').classList.add('active');

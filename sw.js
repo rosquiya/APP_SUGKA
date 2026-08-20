@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sugka-lab-v18';
+const CACHE_NAME = 'sugka-lab-v20';
 const ASSETS = [
   '/',
   '/index.html',
