@@ -85,10 +85,11 @@ def get_gemini_key():
         genai.configure(api_key=key)
     return key
 
-# gemini-1.5-flash fue retirado por Google (los modelos serie 1.5 dejaron de
-# responder generateContent en 2025) -- usar un modelo vigente, configurable
-# via GEMINI_MODEL por si Google retira este tambien mas adelante.
-GEMINI_DEFAULT_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+# gemini-1.5-flash y luego gemini-2.5-flash fueron retirados por Google
+# (los modelos dejan de responder generateContent con 404 NotFound cuando
+# se retiran) -- usar un modelo vigente, configurable via GEMINI_MODEL por
+# si Google retira este tambien mas adelante.
+GEMINI_DEFAULT_MODEL = os.getenv('GEMINI_MODEL', 'gemini-3.6-flash')
 
 def get_openai_key():
     load_local_env()
@@ -226,6 +227,7 @@ def get_db():
     if 'db_conn' not in g:
         g.db_conn = sqlite3.connect(str(DB_PATH))
         g.db_conn.row_factory = sqlite3.Row
+        g.db_conn.execute('PRAGMA foreign_keys = ON')
     return g.db_conn
 
 @app.teardown_appcontext
@@ -788,6 +790,8 @@ def ensure_db_schema():
         if name not in existing:
             conn.execute(f'ALTER TABLE fichas_monitoreo ADD COLUMN {name} {column_type}')
 
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_fichas_monitoreo_codigo ON fichas_monitoreo(codigo_modular)')
+
     # dim_institucion existe desde antes de este archivo (creada por el import
     # censal); solo le sumamos las columnas de auditoria/soft-delete si faltan.
     dim_institucion_tables = {
@@ -806,6 +810,26 @@ def ensure_db_schema():
         }.items():
             if name not in dim_existing:
                 conn.execute(f'ALTER TABLE dim_institucion ADD COLUMN {name} {column_type}')
+
+    # dim_alerta_categoria tambien es previa a este archivo (pensada para un
+    # sistema de deteccion por keyword_column que ya no es el principal). Las
+    # fuentes 'campo' (hallazgos de informe_campo_hallazgo) y 'dinamica'
+    # (preguntas dinamicas Nivel I/II) se agregaron despues en
+    # rebuild_simon_operational_summary() sin sumar su categoria aqui -- con
+    # PRAGMA foreign_keys=ON eso rompe el INSERT en app_alerta_priorizada.
+    if conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='dim_alerta_categoria'"
+    ).fetchone():
+        conn.executemany(
+            'INSERT OR IGNORE INTO dim_alerta_categoria (alerta_codigo, nombre, tipo, descripcion, peso_base) '
+            'VALUES (?, ?, ?, ?, ?)',
+            [
+                ('informe_campo', 'Hallazgo de informe de campo', 'informe_campo',
+                 'Variable concreta detectada en un informe de campo (ausencia docente, infraestructura, etc.), con evidencia textual.', 3),
+                ('preguntas_dinamicas', 'Preguntas dinamicas Nivel I/II', 'preguntas_dinamicas',
+                 'Respuesta en Nivel I o II del instrumento dinamico (UGEL) para una IE.', 2),
+            ],
+        )
 
     conn.execute('''
         CREATE TABLE IF NOT EXISTS app_user (
@@ -1615,9 +1639,6 @@ def risk_level(score):
         return 'Medio'
     return 'Bajo'
 
-def pseudo_percent(seed, base, spread):
-    return max(0, min(100, base + (int(str(seed)[-2:] or 0) % spread) - spread // 2))
-
 def calculate_risk(row):
     priority = safe_float(row.get('priority_score'), 0.0)
     coverage = row.get('coverage_category') or 'Sin evidencia'
@@ -1759,64 +1780,8 @@ INFRA_DEFINITIONS = {
     'flags': INFRA_FLAG_DESCRIPTIONS,
 }
 
-RADAR_CATEGORIES = [
-    'Planificacion',
-    'Ejecucion pedagogica',
-    'Retroalimentacion',
-    'Convivencia',
-    'Gestion de evidencias',
-]
-
-INFRA_CATEGORIES = [
-    'Aulas seguras',
-    'Servicios basicos',
-    'Conectividad',
-    'Mobiliario',
-    'Material pedagogico',
-]
-
-STUDENT_AREAS = [
-    'Comunicacion',
-    'Matematica',
-    'Ciencia y Tecnologia',
-    'Personal Social',
-]
-
-TEACHER_NAMES = [
-    'Ana Rojas',
-    'Carlos Mendoza',
-    'Rosa Huaman',
-    'Luis Tello',
-    'Mariela Pinedo',
-    'Jose Chujandama',
-    'Elena Vargas',
-    'Miguel Amasifuen',
-    'Patricia Diaz',
-    'Ruben Salas',
-]
-
 def clamp_score(value, low=0, high=100):
     return max(low, min(high, int(round(value))))
-
-def seed_from_row(row, offset=0):
-    code = safe_int(str(row.get('codigo_modular', ''))[-5:], 0)
-    priority = int(round(safe_float(row.get('priority_score'), 0) * 10))
-    return code + priority + offset
-
-def semaforo_from_score(score):
-    if score < 60:
-        return dict(SEMAFORO_PEDAGOGICO[0])
-    if score < 75:
-        return dict(SEMAFORO_PEDAGOGICO[1])
-    return dict(SEMAFORO_PEDAGOGICO[2])
-
-def semaforo_from_color(color):
-    color = (color or '').lower()
-    if color == 'rojo':
-        return dict(SEMAFORO_PEDAGOGICO[0])
-    if color == 'amarillo':
-        return dict(SEMAFORO_PEDAGOGICO[1])
-    return dict(SEMAFORO_PEDAGOGICO[2])
 
 def simon_level_state(level):
     level = safe_float(level, 0.0)
@@ -1862,6 +1827,44 @@ def simon_values_from_row(row):
         if level > 0:
             values.append(level)
     return values
+
+def _ficha_es_mas_reciente(candidata, actual):
+    """True si `candidata` reemplaza a `actual` como la visita mas reciente
+    del mismo docente: compara fecha_ejecucion, luego n_visita, luego el id
+    de insercion como ultimo desempate (fichas identicas cargadas dos veces)."""
+    fecha_a, fecha_b = str(candidata.get('fecha_ejecucion') or ''), str(actual.get('fecha_ejecucion') or '')
+    if fecha_a != fecha_b:
+        return fecha_a > fecha_b
+    visita_a, visita_b = safe_int(candidata.get('n_visita'), 0), safe_int(actual.get('n_visita'), 0)
+    if visita_a != visita_b:
+        return visita_a > visita_b
+    return safe_int(candidata.get('id'), 0) > safe_int(actual.get('id'), 0)
+
+def simon_latest_ficha_por_docente(conn):
+    """Una fila de fichas_monitoreo por cada (codigo_modular, docente): si el
+    mismo docente tiene mas de una ficha -- una visita de seguimiento real, o
+    simplemente una carga duplicada -- se conserva solo la mas reciente.
+
+    Esto alimenta TODAS las metricas agregadas de SIMON (KPIs, graficos,
+    ranking de priorizacion): un docente que ya mejoro no debe seguir
+    penalizando el promedio ni el riesgo con una evaluacion vieja y superada,
+    y una ficha cargada dos veces no debe contarse dos veces."""
+    rows = conn.execute('''
+        SELECT * FROM fichas_monitoreo WHERE COALESCE(codigo_modular, '') != ''
+    ''').fetchall()
+    latest = {}
+    total_bruto = 0
+    for row in rows:
+        item = dict(row)
+        total_bruto += 1
+        item['codigo_modular'] = canonical_codigo_modular(conn, item.get('codigo_modular'))
+        key = (item['codigo_modular'], (item.get('docente') or '').strip().upper())
+        actual = latest.get(key)
+        if actual is None or _ficha_es_mas_reciente(item, actual):
+            latest[key] = item
+    resultado = list(latest.values())
+    resultado_meta = {'total_bruto': total_bruto, 'total_unico': len(resultado), 'duplicados_excluidos': total_bruto - len(resultado)}
+    return resultado, resultado_meta
 
 # Regla oficial de "riesgo_intervencion" documentada en el subproyecto de datos SIMON
 # (docs/02_criterios_riesgo_intervencion.md), validada 24/24 contra el dataset real
@@ -1989,7 +1992,12 @@ def rebuild_simon_operational_summary(conn):
         if not entry['sample'] and row['observacion']:
             entry['sample'] = row['observacion']
 
-    all_codes = sorted(set(grouped) | set(infra_by_code) | set(campo_by_code))
+    # institucion_resumen.codigo_modular tiene FK a dim_institucion: un codigo
+    # que no resuelve a una IE real (typo de OCR, codigo inventado) se excluye
+    # aqui en vez de dejar que el INSERT falle -- mismo criterio que ya se usa
+    # para informes de campo (resolve_codigo_modular_strict).
+    valid_codes = {row['codigo_modular'] for row in conn.execute('SELECT codigo_modular FROM dim_institucion').fetchall()}
+    all_codes = sorted((set(grouped) | set(infra_by_code) | set(campo_by_code)) & valid_codes)
     now = datetime.now().isoformat(timespec='seconds')
 
     for code in all_codes:
@@ -2362,6 +2370,63 @@ def infra_status_from_score(score):
         return dict(SEMAFORO_PEDAGOGICO[1])
     return dict(SEMAFORO_PEDAGOGICO[2])
 
+def build_infra_ranking(conn):
+    """Ranking de priorizacion por IE del Censo Educativo 2025: a diferencia de
+    SIMON, el censo es una sola foto (no hay 'visitas' que deduplicar), asi que
+    se ordena directamente por risk_score_infra descendente -- mayor riesgo,
+    mayor prioridad de atencion. Tambien agrega la frecuencia real de cada
+    bandera de riesgo (risk_flags) para ver que problema es mas comun en las
+    382 IE, no solo cuantas estan en rojo."""
+    rows = conn.execute('''
+        SELECT codigo_modular, nombre_iiee, distrito, risk_score_infra, risk_flags,
+               edificaciones_riesgo, aulas, aulas_en_uso, alumnos_por_aula_en_uso
+        FROM infraestructura_censo_2025
+        ORDER BY risk_score_infra DESC
+    ''').fetchall()
+
+    flags_count = {}
+    ranking = []
+    for row in rows:
+        item = dict(row)
+        flags = [f for f in str(item.get('risk_flags') or '').split('|') if f]
+        for flag in flags:
+            flags_count[flag] = flags_count.get(flag, 0) + 1
+        estado = infra_status_from_score(item.get('risk_score_infra'))
+        ranking.append({
+            'codigo_modular': item['codigo_modular'],
+            'nombre_iiee': item.get('nombre_iiee') or item['codigo_modular'],
+            'distrito': item.get('distrito'),
+            'risk_score_infra': round(safe_float(item.get('risk_score_infra'), 0.0), 2),
+            'nivel': estado['label'],
+            'banderas': len(flags),
+            'edificaciones_riesgo': safe_int(item.get('edificaciones_riesgo'), 0),
+            'aulas_en_uso': safe_int(item.get('aulas_en_uso'), 0),
+            'aulas': safe_int(item.get('aulas'), 0),
+        })
+
+    total = len(rows)
+    flags_distribution = sorted(
+        [
+            {
+                'flag': flag,
+                'descripcion': INFRA_FLAG_DESCRIPTIONS.get(flag, flag),
+                'ies': count,
+                'porcentaje': round(count / total * 100, 1) if total else 0,
+            }
+            for flag, count in flags_count.items()
+        ],
+        key=lambda item: item['ies'],
+        reverse=True,
+    )
+
+    return {
+        'ies': ranking,
+        'total_ie': total,
+        'criticas': sum(1 for r in ranking if r['nivel'] == 'Critico'),
+        'en_alerta': sum(1 for r in ranking if r['nivel'] == 'Alerta'),
+        'flags_distribution': flags_distribution,
+    }
+
 def build_real_infra_sheet(infra):
     if not infra:
         return unavailable_sheet('infraestructura', 'No hay registro de infraestructura censal 2025 para esta IE.')
@@ -2449,12 +2514,11 @@ def build_real_infra_sheet(infra):
     }
 
 def build_real_simon_dashboard(conn, scored):
-    ficha_rows = conn.execute('''
-        SELECT *
-        FROM fichas_monitoreo
-        WHERE COALESCE(codigo_modular, '') != ''
-        ORDER BY codigo_modular, fecha_ejecucion, docente
-    ''').fetchall()
+    # Solo la ultima visita por docente -- ver simon_latest_ficha_por_docente:
+    # si un docente tiene mas de una ficha, la hoja "Docentes" debe mostrar su
+    # estado actual, no una evaluacion vieja ya superada (ni una carga duplicada).
+    ficha_rows, _dedup_meta = simon_latest_ficha_por_docente(conn)
+    ficha_rows = sorted(ficha_rows, key=lambda item: (item.get('codigo_modular') or '', item.get('fecha_ejecucion') or '', item.get('docente') or ''))
     infra_rows = conn.execute('SELECT * FROM infraestructura_censo_2025').fetchall()
     if not ficha_rows and not infra_rows:
         return {
@@ -2573,9 +2637,10 @@ def build_real_simon_dashboard(conn, scored):
         },
     }
 
-def build_simon_indicator_results(conn):
+def build_simon_indicator_results(conn, rows=None):
     labels = get_simon_question_labels(conn)
-    rows = conn.execute('SELECT * FROM fichas_monitoreo').fetchall()
+    if rows is None:
+        rows, _meta = simon_latest_ficha_por_docente(conn)
     if not rows:
         return []
     indicators = []
@@ -2601,207 +2666,302 @@ def build_simon_indicator_results(conn):
         })
     return indicators
 
-def build_teacher_sheet(row, idx):
-    risk = safe_float(row.get('risk_score'), 0)
-    seed = seed_from_row(row, idx * 19)
-    docentes = []
-    for i, name in enumerate(TEACHER_NAMES):
-        variation = ((seed + i * 11) % 13) - 6
-        v1 = clamp_score(83 - (risk * 0.52) + variation, 35, 88)
-        improvement = 7 + ((seed + i * 7) % 17)
-        if risk >= 75 and i % 4:
-            improvement -= 4
-        v2 = clamp_score(v1 + improvement, 40, 96)
-        v1_state = semaforo_from_score(v1)
-        v2_state = semaforo_from_score(v2)
-        docentes.append({
-            'nombre': name,
-            'grado': f'{(i % 6) + 1} grado',
-            'area': STUDENT_AREAS[i % len(STUDENT_AREAS)],
-            'visita1': {
-                'label': 'Visita 1 - Diagnostico',
-                'score': v1,
-                'estado_excel': v1_state['excel_value'],
-                'semaforo': v1_state,
-            },
-            'visita2': {
-                'label': 'Visita 2 - Seguimiento',
-                'score': v2,
-                'estado_excel': v2_state['excel_value'],
-                'semaforo': v2_state,
-            },
-            'delta': v2 - v1,
-            'necesita_refuerzo': v2_state['excel_value'] != 'bueno',
-        })
+def build_simon_ranking(conn, fichas=None, meta=None):
+    """Ranking de priorizacion por IE para SIMON: agrupa la ultima visita de
+    cada docente (ver simon_latest_ficha_por_docente) por codigo_modular y
+    calcula el riesgo de peor caso entre sus docentes -- el mismo criterio
+    de agregacion que institucion_resumen, pero calculado en vivo desde
+    fichas_monitoreo en vez de depender de un rebuild ya desincronizado.
+    Ordenado de mayor a menor prioridad: riesgo Alto primero, y dentro de un
+    mismo nivel de riesgo, el promedio general mas bajo primero."""
+    if fichas is None or meta is None:
+        fichas, meta = simon_latest_ficha_por_docente(conn)
+    por_ie = {}
+    for ficha in fichas:
+        codigo = ficha.get('codigo_modular')
+        if not codigo:
+            continue
+        por_ie.setdefault(codigo, []).append(ficha)
 
-    if risk >= 75:
-        promoted = 0
+    ranking = []
+    for codigo, docentes in por_ie.items():
+        official = conn.execute('''
+            SELECT nombre_iiee, distrito, nivel_modalidad
+            FROM dim_institucion WHERE codigo_modular = ?
+        ''', (codigo,)).fetchone()
+        promedios = []
+        risk_labels = []
+        ultima_visita = ''
         for docente in docentes:
-            if promoted >= 2:
-                break
-            if docente['visita1']['estado_excel'] == 'bajo rendimiento':
-                new_score = 76 + promoted * 3
-                docente['visita2']['score'] = new_score
-                docente['visita2']['semaforo'] = semaforo_from_score(new_score)
-                docente['visita2']['estado_excel'] = docente['visita2']['semaforo']['excel_value']
-                docente['delta'] = new_score - docente['visita1']['score']
-                docente['necesita_refuerzo'] = False
-                promoted += 1
-
-    needs = sum(1 for docente in docentes if docente['necesita_refuerzo'])
-    critical_v1 = [d for d in docentes if d['visita1']['estado_excel'] == 'bajo rendimiento']
-    critical_to_stable = [
-        d for d in critical_v1
-        if d['visita2']['estado_excel'] == 'bueno'
-    ]
-    ieap = round(len(critical_to_stable) / len(critical_v1) * 100) if critical_v1 else 0
-    return {
-        'resumen': {
-            'total': len(docentes),
-            'necesitan_refuerzo': needs,
-            'estables': len(docentes) - needs,
-            'critico_a_estable': len(critical_to_stable),
-            'criticos_iniciales': len(critical_v1),
-            'ieap': ieap,
-        },
-        'items': docentes,
-    }
-
-def build_infra_sheet(row, idx):
-    risk = safe_float(row.get('risk_score'), 0)
-    seed = seed_from_row(row, 80 + idx * 13)
-    items = []
-    for i, category in enumerate(INFRA_CATEGORIES):
-        v1 = clamp_score(82 - (risk * 0.45) + ((seed + i * 9) % 18) - 8, 32, 92)
-        v2 = clamp_score(v1 + 8 + ((seed + i * 5) % 18), 38, 98)
-        semaforo = semaforo_from_score(v2)
-        items.append({
-            'categoria': category,
-            'visita1': v1,
-            'visita2': v2,
-            'delta': v2 - v1,
-            'estado_excel': semaforo['excel_value'],
-            'semaforo': semaforo,
-            'observacion': (
-                'Requiere accion de gestion' if semaforo['status_key'] == 'danger'
-                else 'Mantener seguimiento' if semaforo['status_key'] == 'warning'
-                else 'Condicion adecuada'
-            ),
+            values = simon_values_from_row(docente)
+            if values:
+                promedios.append(sum(values) / len(values))
+            riesgo = simon_documented_risk(values)
+            if riesgo:
+                risk_labels.append(riesgo['riesgo_intervencion'])
+            fecha = str(docente.get('fecha_ejecucion') or '')
+            if fecha > ultima_visita:
+                ultima_visita = fecha
+        riesgo_ie = worst_case_simon_risk(risk_labels)
+        ranking.append({
+            'codigo_modular': codigo,
+            'nombre_iiee': (official['nombre_iiee'] if official else None) or (docentes[0].get('nombre_ie') if docentes else None) or codigo,
+            'distrito': official['distrito'] if official else None,
+            'docentes_evaluados': len(docentes),
+            'promedio_general': round(sum(promedios) / len(promedios), 2) if promedios else 0,
+            'riesgo_intervencion': riesgo_ie,
+            'ultima_visita': ultima_visita or None,
         })
 
-    if any(i['semaforo']['status_key'] == 'danger' for i in items):
-        overall = semaforo_from_color('rojo')
-    elif any(i['semaforo']['status_key'] == 'warning' for i in items):
-        overall = semaforo_from_color('amarillo')
-    else:
-        overall = semaforo_from_color('verde')
-
+    ranking.sort(key=lambda item: (-SIMON_RISK_ORDER.get(item['riesgo_intervencion'], -1), item['promedio_general']))
     return {
-        'resumen': {
-            'estado': overall,
-            'brechas_criticas': sum(1 for i in items if i['semaforo']['status_key'] == 'danger'),
-            'brechas_en_alerta': sum(1 for i in items if i['semaforo']['status_key'] == 'warning'),
-            'componentes_estables': sum(1 for i in items if i['semaforo']['status_key'] == 'ok'),
-        },
-        'items': items,
+        'ies': ranking,
+        'total_ie': len(ranking),
+        'fichas_totales': meta['total_bruto'],
+        'fichas_ultima_visita': meta['total_unico'],
+        'duplicados_excluidos': meta['duplicados_excluidos'],
     }
 
-def build_student_sheet(row, idx):
-    risk = safe_float(row.get('risk_score'), 0)
-    seed = seed_from_row(row, 140 + idx * 17)
-    items = []
-    for i, area in enumerate(STUDENT_AREAS):
-        v1 = clamp_score(78 - (risk * 0.42) + ((seed + i * 13) % 20) - 8, 34, 90)
-        v2 = clamp_score(v1 + 9 + ((seed + i * 6) % 15), 42, 97)
-        semaforo = semaforo_from_score(v2)
-        items.append({
-            'area': area,
-            'visita1': v1,
-            'visita2': v2,
-            'delta': v2 - v1,
-            'estado_excel': semaforo['excel_value'],
-            'semaforo': semaforo,
-        })
+def campo_severidad_nivel(variables):
+    """Alto/Medio/Bajo a partir de la severidad editorial documentada en
+    CAMPO_VARIABLE_META (ver esa constante): Alto si alguna variable marcada
+    es de severidad 'alta', Medio si la peor es 'media', Bajo si solo hay
+    'baja'. Regla explicita, no inferida del texto."""
+    severidades = {CAMPO_VARIABLE_META.get(v, {}).get('severidad', 'media') for v in variables}
+    if 'alta' in severidades:
+        return 'Alto'
+    if 'media' in severidades:
+        return 'Medio'
+    return 'Bajo' if severidades else None
 
-    avg_v1 = round(sum(i['visita1'] for i in items) / len(items))
-    avg_v2 = round(sum(i['visita2'] for i in items) / len(items))
-    return {
-        'resumen': {
-            'promedio_visita1': avg_v1,
-            'promedio_visita2': avg_v2,
-            'mejora': avg_v2 - avg_v1,
-            'estado': semaforo_from_score(avg_v2),
-        },
-        'items': items,
-    }
+def build_campo_ranking(conn):
+    """Ranking de priorizacion por IE de informes de campo.
 
-def build_progress_sheet(row, idx):
-    risk = safe_float(row.get('risk_score'), 0)
-    seed = seed_from_row(row, 210 + idx * 23)
-    categories = []
-    for i, category in enumerate(RADAR_CATEGORIES):
-        v1 = clamp_score(79 - (risk * 0.38) + ((seed + i * 8) % 17) - 7, 36, 90)
-        v2 = clamp_score(v1 + 10 + ((seed + i * 4) % 16), 44, 98)
-        categories.append({
-            'categoria': category,
-            'visita1': v1,
-            'visita2': v2,
-            'delta': v2 - v1,
-        })
+    A diferencia de SIMON, la fecha de visita (fecha_visita) solo esta
+    disponible en ~1 de cada 3 filas de esta fuente (el resto son informes
+    donde la fecha no se pudo extraer con confianza) -- por eso, a diferencia
+    del ranking SIMON, aqui NO se aplica "solo la ultima visita": se agregan
+    TODOS los hallazgos registrados por IE (de lo contrario se descartaria la
+    mayoria de la evidencia real), y se muestra la fecha mas reciente conocida
+    solo como dato informativo cuando existe."""
+    rows = conn.execute('''
+        SELECT v.codigo_modular, v.fecha_visita, v.especialista_detectado, i.distrito,
+        ''' + ', '.join(f'v.{var}' for var in CAMPO_CONCRETE_VARIABLES) + '''
+        FROM informe_campo_visita v
+        LEFT JOIN dim_institucion i ON i.codigo_modular = v.codigo_modular
+        WHERE v.estado_fila = 1 AND COALESCE(v.codigo_modular, '') != ''
+    ''').fetchall()
 
-    avg_v1 = round(sum(c['visita1'] for c in categories) / len(categories))
-    avg_v2 = round(sum(c['visita2'] for c in categories) / len(categories))
-    brecha_v1 = 26 + (seed % 18) + int(risk / 6)
-    brecha_v2 = max(6, brecha_v1 - (9 + (seed % 12)))
-    rtbg = round((brecha_v1 - brecha_v2) / brecha_v1 * 100)
-    return {
-        'resumen': {
-            'promedio_visita1': avg_v1,
-            'promedio_visita2': avg_v2,
-            'mejora': avg_v2 - avg_v1,
-            'dias_brecha_visita1': brecha_v1,
-            'dias_brecha_visita2': brecha_v2,
-            'rtbg': rtbg,
-        },
-        'radar': categories,
-    }
-
-def build_excel_dashboard(scored):
-    rows = scored[:8]
-    institutions = []
-    for idx, row in enumerate(rows):
+    por_ie = {}
+    variable_counts = {var: 0 for var in CAMPO_CONCRETE_VARIABLES}
+    distrito_variable = {}
+    for row in rows:
         item = dict(row)
-        docentes = build_teacher_sheet(item, idx)
-        infraestructura = build_infra_sheet(item, idx)
-        alumnos = build_student_sheet(item, idx)
-        progreso = build_progress_sheet(item, idx)
+        codigo = item['codigo_modular']
+        distrito = item.get('distrito') or 'Sin distrito'
+        entry = por_ie.setdefault(codigo, {'visitas': 0, 'variables': set(), 'ultima_visita': '', 'especialistas': set()})
+        entry['visitas'] += 1
+        if item.get('especialista_detectado'):
+            entry['especialistas'].add(item['especialista_detectado'])
+        fecha = str(item.get('fecha_visita') or '')
+        if fecha and fecha > entry['ultima_visita']:
+            entry['ultima_visita'] = fecha
+        for var in CAMPO_CONCRETE_VARIABLES:
+            if item.get(var):
+                entry['variables'].add(var)
+                variable_counts[var] += 1
+                distrito_variable.setdefault(distrito, {})
+                distrito_variable[distrito][var] = distrito_variable[distrito].get(var, 0) + 1
 
-        item.update({
-            'docentes': docentes,
-            'infraestructura': infraestructura,
-            'alumnos': alumnos,
-            'progreso': progreso,
-            'kpis': {
-                'ieap': docentes['resumen']['ieap'],
-                'rtbg': progreso['resumen']['rtbg'],
-                'docentes_refuerzo': docentes['resumen']['necesitan_refuerzo'],
-                'infra_estado': infraestructura['resumen']['estado'],
-                'alumnos_estado': alumnos['resumen']['estado'],
-            },
+    official_names = {}
+    if por_ie:
+        placeholders = ', '.join('?' for _ in por_ie)
+        for r in conn.execute(
+            f'SELECT codigo_modular, nombre_iiee, distrito FROM dim_institucion WHERE codigo_modular IN ({placeholders})',
+            list(por_ie.keys()),
+        ).fetchall():
+            official_names[r['codigo_modular']] = {'nombre_iiee': r['nombre_iiee'], 'distrito': r['distrito']}
+
+    ranking = []
+    for codigo, entry in por_ie.items():
+        nivel = campo_severidad_nivel(entry['variables'])
+        info = official_names.get(codigo, {})
+        ranking.append({
+            'codigo_modular': codigo,
+            'nombre_iiee': info.get('nombre_iiee') or codigo,
+            'distrito': info.get('distrito'),
+            'visitas': entry['visitas'],
+            'banderas': len(entry['variables']),
+            'nivel': nivel,
+            'ultima_visita': entry['ultima_visita'] or None,
+            'especialistas': len(entry['especialistas']),
         })
-        institutions.append(item)
+    ranking.sort(key=lambda item: (-SIMON_RISK_ORDER.get(item['nivel'], -1), -item['banderas']))
+
+    total_visitas = len(rows)
+    con_fecha = sum(1 for r in rows if str(r['fecha_visita'] or ''))
+    variables_distribution = sorted(
+        [
+            {
+                'variable': var,
+                'label': CAMPO_VARIABLE_META.get(var, {}).get('label', var),
+                'severidad': CAMPO_VARIABLE_META.get(var, {}).get('severidad', 'media'),
+                'importancia': CAMPO_VARIABLE_META.get(var, {}).get('importancia', ''),
+                'count': count,
+                'porcentaje': round(count / total_visitas * 100, 1) if total_visitas else 0,
+            }
+            for var, count in variable_counts.items() if count > 0
+        ],
+        key=lambda item: item['count'],
+        reverse=True,
+    )
+    infra_total = sum(c for v, c in variable_counts.items() if v in CAMPO_INFRA_BUCKET)
+    pedagogico_total = sum(c for v, c in variable_counts.items() if v in CAMPO_PEDAGOGIC_BUCKET)
+
+    # Mapa de calor distrito x variable: solo las variables con al menos una
+    # deteccion (mismo orden que variables_distribution) y los distritos
+    # reales presentes en los datos -- sin inventar celdas en cero decorativas.
+    top_variables = [item['variable'] for item in variables_distribution]
+    heatmap = {
+        'distritos': sorted(distrito_variable.keys()),
+        'variables': [{'variable': v, 'label': CAMPO_VARIABLE_META.get(v, {}).get('label', v)} for v in top_variables],
+        'celdas': [
+            {'distrito': distrito, 'variable': var, 'count': distrito_variable.get(distrito, {}).get(var, 0)}
+            for distrito in sorted(distrito_variable.keys())
+            for var in top_variables
+        ],
+    }
 
     return {
-        'source': 'demo',
-        'sheets': ['Docentes', 'Infraestructura', 'Alumnos', 'Progreso comparativo'],
-        'selected_codigo': institutions[0]['codigo_modular'] if institutions else None,
-        'semaforo': SEMAFORO_PEDAGOGICO,
-        'instituciones': institutions,
-        'definition': {
-            'ieap': 'Porcentaje de docentes que pasan de Critico en Visita 1 a Estable en Visita 2.',
-            'rtbg': 'Reduccion porcentual de dias para cerrar brechas de gestion entre visita diagnostica y seguimiento.',
-        },
+        'ies': ranking,
+        'total_ie': len(ranking),
+        'total_visitas': total_visitas,
+        'visitas_con_fecha': con_fecha,
+        'total_documentos': conn.execute('SELECT COUNT(*) FROM informe_campo_documento').fetchone()[0],
+        'riesgo_alto': sum(1 for r in ranking if r['nivel'] == 'Alto'),
+        'variables_distribution': variables_distribution,
+        'buckets': [
+            {'bucket': 'Infraestructura y seguridad', 'count': infra_total},
+            {'bucket': 'Pedagogico e institucional', 'count': pedagogico_total},
+        ],
+        'heatmap': heatmap,
     }
+
+def build_ie_coverage(conn):
+    """Cuantos dias pasaron desde el ultimo contacto real con cada IE, por
+    fuente (SIMON / informes de campo). No es lo mismo que el ranking de
+    riesgo: una IE puede tener buen desempeno y aun asi llevar meses sin
+    visita -- esta vista responde 'a quien no visitamos hace mas tiempo',
+    no 'quien esta peor'. Solo incluye IE con al menos un evento real (fichas
+    SIMON o informes de campo con fecha), para no listar 382 filas vacias."""
+    today = datetime.now().date()
+
+    simon_rows = conn.execute('''
+        SELECT codigo_modular, MAX(fecha_ejecucion) AS ultima
+        FROM fichas_monitoreo
+        WHERE COALESCE(codigo_modular, '') != '' AND COALESCE(fecha_ejecucion, '') != ''
+        GROUP BY codigo_modular
+    ''').fetchall()
+    campo_rows = conn.execute('''
+        SELECT codigo_modular, MAX(fecha_visita) AS ultima
+        FROM informe_campo_visita
+        WHERE estado_fila = 1 AND COALESCE(codigo_modular, '') != '' AND COALESCE(fecha_visita, '') != ''
+        GROUP BY codigo_modular
+    ''').fetchall()
+
+    def dias_desde(fecha_str):
+        try:
+            fecha = datetime.strptime(fecha_str[:10], '%Y-%m-%d').date()
+            return (today - fecha).days
+        except (ValueError, TypeError):
+            return None
+
+    por_ie = {}
+    for row in simon_rows:
+        entry = por_ie.setdefault(row['codigo_modular'], {'simon_fecha': None, 'campo_fecha': None})
+        entry['simon_fecha'] = row['ultima']
+    for row in campo_rows:
+        entry = por_ie.setdefault(row['codigo_modular'], {'simon_fecha': None, 'campo_fecha': None})
+        entry['campo_fecha'] = row['ultima']
+
+    official_names = {}
+    if por_ie:
+        placeholders = ', '.join('?' for _ in por_ie)
+        for r in conn.execute(
+            f'SELECT codigo_modular, nombre_iiee, distrito FROM dim_institucion WHERE codigo_modular IN ({placeholders})',
+            list(por_ie.keys()),
+        ).fetchall():
+            official_names[r['codigo_modular']] = {'nombre_iiee': r['nombre_iiee'], 'distrito': r['distrito']}
+
+    items = []
+    for codigo, entry in por_ie.items():
+        info = official_names.get(codigo, {})
+        dias_simon = dias_desde(entry['simon_fecha'])
+        dias_campo = dias_desde(entry['campo_fecha'])
+        items.append({
+            'codigo_modular': codigo,
+            'nombre_iiee': info.get('nombre_iiee') or codigo,
+            'distrito': info.get('distrito'),
+            'ultima_visita_simon': entry['simon_fecha'],
+            'dias_desde_simon': dias_simon,
+            'ultima_visita_campo': entry['campo_fecha'],
+            'dias_desde_campo': dias_campo,
+            'dias_max': max(d for d in (dias_simon, dias_campo) if d is not None),
+        })
+    items.sort(key=lambda item: item['dias_max'], reverse=True)
+
+    return {
+        'ies': items,
+        'total_ie': len(items),
+        'sin_visita_simon': sum(1 for i in items if i['dias_desde_simon'] is None),
+        'sin_visita_campo': sum(1 for i in items if i['dias_desde_campo'] is None),
+    }
+
+def build_institucion_evolucion(conn, codigo):
+    """Linea de tiempo combinada SIMON + informes de campo para UNA IE,
+    ordenada de mas reciente a mas antigua -- responde 'como va esta IE en
+    el tiempo' con eventos reales, sin inventar puntos intermedios."""
+    eventos = []
+    for row in conn.execute('''
+        SELECT fecha_ejecucion, docente, promedio, a1, a2, a3, b1, b2, b3, b4, b5
+        FROM fichas_monitoreo WHERE codigo_modular = ?
+        ORDER BY fecha_ejecucion
+    ''', (codigo,)).fetchall():
+        item = dict(row)
+        values = simon_values_from_row(item)
+        riesgo = simon_documented_risk(values)
+        eventos.append({
+            'fecha': item.get('fecha_ejecucion') or None,
+            'fuente': 'simon',
+            'titulo': f"Ficha SIMON · {item.get('docente') or 'Docente sin nombre'}",
+            'detalle': f"Promedio {item.get('promedio') or 0} · riesgo {riesgo['riesgo_intervencion']}" if riesgo else f"Promedio {item.get('promedio') or 0}",
+            'nivel': riesgo['riesgo_intervencion'] if riesgo else None,
+        })
+
+    for row in conn.execute('''
+        SELECT v.fecha_visita, v.especialista_detectado, d.nombre_archivo,
+        ''' + ', '.join(CAMPO_CONCRETE_VARIABLES) + '''
+        FROM informe_campo_visita v
+        LEFT JOIN informe_campo_documento d ON d.id = v.documento_id
+        WHERE v.codigo_modular = ? AND v.estado_fila = 1
+    ''', (codigo,)).fetchall():
+        item = dict(row)
+        variables = [v for v in CAMPO_CONCRETE_VARIABLES if item.get(v)]
+        nivel = campo_severidad_nivel(variables)
+        labels = [CAMPO_VARIABLE_META.get(v, {}).get('label', v) for v in variables]
+        eventos.append({
+            'fecha': item.get('fecha_visita') or None,
+            'fuente': 'campo',
+            'titulo': f"Informe de campo · {item.get('especialista_detectado') or 'Especialista no identificado'}",
+            'detalle': ', '.join(labels) if labels else 'Sin variables de alerta detectadas',
+            'nivel': nivel,
+            'documento': item.get('nombre_archivo'),
+        })
+
+    eventos.sort(key=lambda e: e['fecha'] or '', reverse=True)
+    con_fecha = [e for e in eventos if e['fecha']]
+    sin_fecha = [e for e in eventos if not e['fecha']]
+    return {'eventos': con_fecha + sin_fecha, 'total': len(eventos)}
 
 # ─── AUTENTICACION ────────────────────────────────────────────────────────────
 
@@ -3012,8 +3172,17 @@ def actualizar_usuario(user_id):
         conn.close()
 
 @app.route('/api/usuarios/<user_id>/password', methods=['PUT'])
-@require_admin
+@require_auth
 def cambiar_password_usuario(user_id):
+    """Un administrador puede cambiar la contraseña de cualquiera sin
+    verificarla (reseteo administrativo). Un usuario cambiando SU PROPIA
+    contraseña (autoservicio, ver 'Mi cuenta') debe confirmar la actual --
+    evita que una sesion robada cambie la contraseña sin conocerla."""
+    is_admin = normalize_role(g.current_user['rol']) == 'administrador'
+    is_self = str(g.current_user['user_id']) == str(user_id)
+    if not is_admin and not is_self:
+        return jsonify({'error': 'No tienes permiso para cambiar la contraseña de otro usuario.'}), 403
+
     data = request.get_json() or {}
     password = str(data.get('password') or '').strip()
     if len(password) < 4:
@@ -3024,6 +3193,14 @@ def cambiar_password_usuario(user_id):
         user = conn.execute('SELECT * FROM app_user WHERE user_id = ?', (user_id,)).fetchone()
         if not user:
             return jsonify({'error': 'Usuario no encontrado.'}), 404
+
+        if is_self:
+            # Un administrador cambiando su PROPIA contraseña también debe confirmar
+            # la actual -- el bypass sin verificación es solo para cuando un admin
+            # resetea la contraseña de OTRO usuario (is_self=False).
+            actual = str(data.get('password_actual') or '').strip()
+            if not verify_password(actual, user['password_salt'], user['password_hash']):
+                return jsonify({'error': 'La contraseña actual no es correcta.'}), 400
 
         salt, digest = hash_password(password)
         conn.execute('''
@@ -3241,6 +3418,30 @@ def pregunta_dinamica_detalle(pregunta_id):
     finally:
         conn.close()
 
+@app.route('/api/archivos/<int:archivo_id>', methods=['GET'])
+@require_auth
+def archivo_original(archivo_id):
+    """Sirve el archivo original (imagen/PDF) subido para un OCR de ficha o
+    de informe de campo, para que se pueda revisar contra lo que quedo
+    registrado. Cualquier usuario autenticado puede verlo (misma regla que
+    'ver' un registro ajeno), no solo el dueno."""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            'SELECT * FROM archivo_subido WHERE id = ? AND COALESCE(estado_fila, 1) = 1',
+            (archivo_id,),
+        ).fetchone()
+        if not row or not row['contenido']:
+            return jsonify({'error': 'Archivo no encontrado.'}), 404
+        return send_file(
+            io.BytesIO(row['contenido']),
+            mimetype=row['mimetype'] or 'application/octet-stream',
+            as_attachment=False,
+            download_name=row['nombre_archivo'] or f'archivo_{archivo_id}',
+        )
+    finally:
+        conn.close()
+
 @app.route('/api/ficha-vacia/pdf', methods=['GET'])
 def ficha_vacia_pdf():
     # Publico a proposito: es solo la plantilla vacia (sin datos de ninguna
@@ -3375,6 +3576,10 @@ def registro():
             # rol='especialista' esta fijo a proposito: el auto-registro
             # publico nunca debe poder crear administradores. Para eso
             # sigue existiendo el panel de administración (POST /api/usuarios).
+            # activo=0: el auto-registro publico crea la cuenta pendiente de
+            # aprobacion en vez de darle acceso inmediato a datos reales de
+            # las IE. Un administrador la activa desde Configuracion > Usuarios
+            # (el toggle Activar/Desactivar que ya existia para esto).
             user = create_app_user(
                 conn,
                 nombre=nombre,
@@ -3382,7 +3587,7 @@ def registro():
                 email=email,
                 password=password,
                 rol='especialista',
-                activo=1,
+                activo=0,
             )
             conn.commit()
         except sqlite3.IntegrityError:
@@ -3392,7 +3597,11 @@ def registro():
             conn.rollback()
             return jsonify({'error': str(exc)}), 400
 
-        return jsonify(build_login_payload(conn, user))
+        return jsonify({
+            'success': True,
+            'pending_approval': True,
+            'message': 'Cuenta creada. Un administrador debe activarla antes de que puedas ingresar.',
+        })
     finally:
         conn.close()
 
@@ -3445,8 +3654,25 @@ def get_instituciones():
           AND COALESCE(i.estado_fila, 1) = 1
         ORDER BY COALESCE(r.priority_score,0) DESC
     ''').fetchall()
+
+    # Riesgo por fuente, calculado en vivo con la MISMA regla que el Panel
+    # (build_simon_ranking / build_infra_ranking / build_campo_ranking) -- para
+    # que el mapa nunca muestre un nivel distinto al que el especialista ya vio
+    # en el ranking de esa fuente. None = la IE no tiene datos de esa fuente.
+    simon_lookup = {ie['codigo_modular']: ie['riesgo_intervencion'] for ie in build_simon_ranking(conn)['ies']}
+    infra_lookup = {ie['codigo_modular']: ie['nivel'] for ie in build_infra_ranking(conn)['ies']}
+    campo_lookup = {ie['codigo_modular']: ie['nivel'] for ie in build_campo_ranking(conn)['ies']}
+
+    result = []
+    for row in rows:
+        item = dict(row)
+        item['riesgo_simon'] = simon_lookup.get(item['codigo_modular'])
+        item['riesgo_censo'] = infra_lookup.get(item['codigo_modular'])
+        item['riesgo_campo'] = campo_lookup.get(item['codigo_modular'])
+        result.append(item)
+
     conn.close()
-    return jsonify(rows_to_list(rows))
+    return jsonify(result)
 
 # CRUD administrativo del listado de instituciones educativas (dim_institucion).
 # Distinto del /api/instituciones de arriba, que es de solo lectura y esta
@@ -3641,21 +3867,18 @@ def get_dashboard():
     top_riesgo = scored[:10]
     risk_focus_count = risk_distribution['Critico'] + risk_distribution['Alto']
 
-    ficha_stats = conn.execute('''
-        SELECT
-            COUNT(*) AS total,
-            SUM(CASE WHEN source = 'ocr' THEN 1 ELSE 0 END) AS ocr_total,
-            AVG(promedio) AS promedio,
-            SUM(CASE WHEN COALESCE(compromisos_monitoreado, compromisos, '') != '' THEN 1 ELSE 0 END) AS compromisos
-        FROM fichas_monitoreo
-    ''').fetchone()
-
-    actual_fichas = safe_int(ficha_stats['total'], 0) if ficha_stats else 0
+    # Estadisticas de SIMON calculadas sobre la ULTIMA VISITA de cada docente
+    # (ver simon_latest_ficha_por_docente): un docente que ya mejoro no debe
+    # seguir penalizando el promedio general con una evaluacion vieja, y una
+    # ficha cargada dos veces no debe contarse dos veces.
+    simon_fichas_dedup, simon_dedup_meta = simon_latest_ficha_por_docente(conn)
+    actual_fichas = len(simon_fichas_dedup)
     demo_mode = False
     fichas_recolectadas = actual_fichas
-    ocr_total = safe_int(ficha_stats['ocr_total'], 0) if ficha_stats else 0
-    promedio_observado = safe_float(ficha_stats['promedio'], 0.0) if ficha_stats else 0.0
-    compromisos = safe_int(ficha_stats['compromisos'], 0) if ficha_stats else 0
+    ocr_total = sum(1 for f in simon_fichas_dedup if f.get('source') == 'ocr')
+    promedios_fichas = [safe_float(f.get('promedio'), 0.0) for f in simon_fichas_dedup if safe_float(f.get('promedio'), 0.0) > 0]
+    promedio_observado = round(sum(promedios_fichas) / len(promedios_fichas), 4) if promedios_fichas else 0.0
+    compromisos = sum(1 for f in simon_fichas_dedup if str(f.get('compromisos_monitoreado') or f.get('compromisos') or '').strip())
     infra_stats = conn.execute('''
         SELECT
             COUNT(*) AS total_ie,
@@ -3676,12 +3899,8 @@ def get_dashboard():
         'sin_aulas_en_uso': safe_int(infra_stats['sin_aulas_en_uso'], 0) if infra_stats else 0,
         'alertas_infraestructura': safe_int(infra_stats['alertas_infraestructura'], 0) if infra_stats else 0,
     }
-    resultados = build_simon_indicator_results(conn)
-    docentes_refuerzo_total = conn.execute('''
-        SELECT COUNT(*) AS total
-        FROM fichas_monitoreo
-        WHERE promedio > 0 AND promedio < 3
-    ''').fetchone()[0]
+    resultados = build_simon_indicator_results(conn, simon_fichas_dedup)
+    docentes_refuerzo_total = sum(1 for f in simon_fichas_dedup if 0 < safe_float(f.get('promedio'), 0.0) < 3)
     item_critico = sorted(
         resultados,
         key=lambda item: (safe_int(item.get('bajo_nivel'), 0), -safe_float(item.get('promedio'), 0)),
@@ -3721,8 +3940,8 @@ def get_dashboard():
     # sin depender del rebuild de institucion_resumen (ver distribucion_ie arriba).
     nivel_counts = {1: 0, 2: 0, 3: 0, 4: 0}
     ficha_risk_counts = {'Alto': 0, 'Medio': 0, 'Bajo': 0}
-    for ficha_row in conn.execute('SELECT * FROM fichas_monitoreo').fetchall():
-        valores = simon_values_from_row(dict(ficha_row))
+    for ficha_row in simon_fichas_dedup:
+        valores = simon_values_from_row(ficha_row)
         for valor in valores:
             if valor in nivel_counts:
                 nivel_counts[valor] += 1
@@ -3777,6 +3996,16 @@ def get_dashboard():
         'distribucion_dimension': distribucion_dimension,
     }
 
+    # Ranking de priorizacion por IE -- siempre calculado sobre la ULTIMA
+    # VISITA de cada docente (ver simon_latest_ficha_por_docente): no es un
+    # filtro opcional, es la unica forma correcta de priorizar (una IE que
+    # ya mejoro en su visita mas reciente no debe seguir arriba del ranking
+    # por una evaluacion vieja y superada).
+    simon_ranking = build_simon_ranking(conn, simon_fichas_dedup, simon_dedup_meta)
+    infra_ranking = build_infra_ranking(conn)
+    campo_ranking = build_campo_ranking(conn)
+    ie_coverage = build_ie_coverage(conn)
+
     conn.close()
     return jsonify({
         'total_ies':        total_ies,
@@ -3793,6 +4022,10 @@ def get_dashboard():
         'risk_model': RISK_MODEL,
         'alert_rules': ALERT_RULES,
         'simon_metodologia': simon_metodologia,
+        'simon_ranking': simon_ranking,
+        'infra_ranking': infra_ranking,
+        'campo_ranking': campo_ranking,
+        'ie_coverage': ie_coverage,
         'infra_definitions': INFRA_DEFINITIONS,
         'infraestructura_censo': infra_summary,
         'excel_dashboard': excel_dashboard,
@@ -4357,6 +4590,8 @@ CAMPO_JSON_SCHEMA = {
     'hallazgos': [
         {
             'codigo_modular': '7 digitos o ""',
+            'nombre_ie': 'nombre o numero local de la IE tal como aparece en el texto (ej. "288" o "288 - Wawaim"), aunque no sepas el codigo oficial',
+            'centro_poblado': 'centro poblado de la IE si se menciona, para poder ubicarla aunque no tengas el codigo oficial',
             'variable_detectada': ' | '.join(CAMPO_CONCRETE_VARIABLES + ['otro']),
             'tema': 'string corto',
             'descripcion': 'string, maximo 1000 caracteres',
@@ -4379,7 +4614,11 @@ def build_campo_llm_prompt(text, filename=''):
         "No asignes puntajes. No estimes gravedad, urgencia ni confianza.\n"
         "Marca solo problemas explicitamente observados y siempre copia la frase textual de evidencia.\n"
         "Si no hay evidencia textual, no crees el hallazgo.\n"
-        "Si el hallazgo no se puede asociar a una IE especifica, deja codigo_modular vacio.\n\n"
+        "Si el hallazgo no se puede asociar a una IE especifica, deja codigo_modular vacio.\n"
+        "Muchos informes no traen el codigo modular oficial de 7 digitos, solo el nombre o "
+        "numero local de la IE (ej. \"288 - Wawaim\") y su centro poblado. En ese caso deja "
+        "codigo_modular vacio pero SIEMPRE completa nombre_ie y centro_poblado del hallazgo "
+        "con lo que diga el texto, para poder ubicar la IE despues aunque no tengas el codigo.\n\n"
         "Criterio textual minimo de cada variable:\n"
         f"{campo_criteria_block()}\n\n"
         "Esquema JSON requerido (usa exactamente estas claves):\n"
@@ -4478,11 +4717,15 @@ def extract_informe_campo_hallazgos(text, filename=''):
     error = fallback['error'] or result['error'] or 'sin_proveedor_disponible'
     return {}, 'ninguno', error
 
-def consolidate_campo_hallazgos(payload, official_codes_resolver=None):
+def consolidate_campo_hallazgos(payload, official_codes_resolver=None, resolver_by_nombre=None):
     """Agrupa hallazgos por codigo_modular en filas visita-IE, con los pares
     <variable>/span_<variable> materializados, igual que la tabla oficial del
     subproyecto. `official_codes_resolver(codigo)` puede normalizar/validar
-    contra dim_institucion; si no resuelve, el hallazgo queda para revision."""
+    contra dim_institucion; si no resuelve, se intenta `resolver_by_nombre(
+    nombre_ie, centro_poblado)` como respaldo (ver resolve_by_nombre_local --
+    cubre el caso frecuente de informes que solo traen el numero/nombre local
+    de la IE, no el codigo oficial). Si ninguno resuelve, el hallazgo queda
+    para revision."""
     hallazgos = payload.get('hallazgos') or []
     instituciones = {inst.get('codigo_modular', ''): inst for inst in (payload.get('instituciones') or [])}
 
@@ -4498,6 +4741,8 @@ def consolidate_campo_hallazgos(payload, official_codes_resolver=None):
         codigo = re.sub(r'\D', '', str(h.get('codigo_modular') or ''))
         if official_codes_resolver:
             codigo = official_codes_resolver(codigo) or ''
+        if not codigo and resolver_by_nombre:
+            codigo = resolver_by_nombre(h.get('nombre_ie', ''), h.get('centro_poblado', '')) or ''
         if not codigo:
             sin_codigo.append(h)
             continue
@@ -4523,6 +4768,24 @@ def consolidate_campo_hallazgos(payload, official_codes_resolver=None):
         visitas.append(row)
 
     return visitas, sin_codigo
+
+@app.route('/api/institucion/<codigo>/evolucion', methods=['GET'])
+@require_auth
+def institucion_evolucion(codigo):
+    conn = get_db()
+    try:
+        codigo_real = resolve_codigo_modular_strict(conn, codigo) or canonical_codigo_modular(conn, codigo)
+        if not codigo_real:
+            return jsonify({'error': 'Codigo modular no reconocido.'}), 404
+        official = conn.execute(
+            'SELECT codigo_modular, nombre_iiee, distrito, nivel_modalidad FROM dim_institucion WHERE codigo_modular = ?',
+            (codigo_real,),
+        ).fetchone()
+        data = build_institucion_evolucion(conn, codigo_real)
+        data['institucion'] = dict(official) if official else {'codigo_modular': codigo_real}
+        return jsonify(data)
+    finally:
+        conn.close()
 
 # ─── OCR Y SINCRONIZACIÓN ─────────────────────────────────────────────────────
 
@@ -4636,6 +4899,49 @@ def resolve_codigo_modular_strict(conn, value):
             return candidate
     return ''
 
+def _normalize_place_text(value):
+    text = unicodedata.normalize('NFKD', str(value or '')).encode('ascii', 'ignore').decode('ascii')
+    return re.sub(r'[^A-Z0-9]+', '', text.upper())
+
+def resolve_by_nombre_local(conn, nombre_ie, centro_poblado=''):
+    """Fallback cuando el informe no trae el codigo modular oficial de 7
+    digitos. En el padron de IBIR-IMAZA, dim_institucion.nombre_iiee suele
+    guardar el numero local corto de la IE (ej. "288") en vez de un nombre
+    propio -- y los especialistas escriben ese mismo numero junto al centro
+    poblado en sus informes (ej. "288 - Wawaim"). Si el numero es unico en
+    todo el padron Y el centro poblado (cuando el informe trae uno) coincide
+    con el de ese registro, se resuelve; si el numero es unico pero el centro
+    poblado NO calza (mismo numero local, otro caserio -- pasa en la
+    practica), o si hay varios registros con ese numero y ninguno desambigua
+    por centro poblado, se deja para revision manual -- mismo principio de
+    "nunca adivinar" que el resto de este subproyecto."""
+    match = re.match(r'\s*(\d{1,6})\b', str(nombre_ie or ''))
+    if not match:
+        return ''
+    numero_local = match.group(1)
+    rows = conn.execute(
+        'SELECT codigo_modular, centro_poblado FROM dim_institucion WHERE nombre_iiee = ?',
+        (numero_local,),
+    ).fetchall()
+    if not rows:
+        return ''
+    cp_norm = _normalize_place_text(centro_poblado)
+    if len(rows) == 1:
+        row = rows[0]
+        db_cp_norm = _normalize_place_text(row['centro_poblado'])
+        if cp_norm and db_cp_norm and cp_norm not in db_cp_norm and db_cp_norm not in cp_norm:
+            return ''  # mismo numero local, pero el centro poblado no calza -- no adivinar
+        return row['codigo_modular']
+    if cp_norm:
+        filtered = [
+            r for r in rows
+            if _normalize_place_text(r['centro_poblado'])
+            and (cp_norm in _normalize_place_text(r['centro_poblado']) or _normalize_place_text(r['centro_poblado']) in cp_norm)
+        ]
+        if len(filtered) == 1:
+            return filtered[0]['codigo_modular']
+    return ''
+
 @app.route('/api/ocr/informe_campo/upload', methods=['POST'])
 @require_auth
 def ocr_informe_campo_upload():
@@ -4656,7 +4962,9 @@ def ocr_informe_campo_upload():
 
     conn = get_db()
     visitas, sin_codigo = consolidate_campo_hallazgos(
-        payload, official_codes_resolver=lambda c: resolve_codigo_modular_strict(conn, c)
+        payload,
+        official_codes_resolver=lambda c: resolve_codigo_modular_strict(conn, c),
+        resolver_by_nombre=lambda nombre, cp: resolve_by_nombre_local(conn, nombre, cp),
     )
 
     return jsonify({
@@ -4773,6 +5081,7 @@ def informes_campo():
 
         incluir_eliminadas = request.args.get('incluir_eliminadas') == '1'
         q = (request.args.get('q') or '').strip()
+        creado_por_email = (request.args.get('creado_por_email') or '').strip()
         limit = safe_int(request.args.get('limit'), 200)
         offset = safe_int(request.args.get('offset'), 0)
 
@@ -4782,11 +5091,14 @@ def informes_campo():
             where.append('(v.nombre_ie_detectado LIKE ? OR v.codigo_modular LIKE ? OR v.especialista_detectado LIKE ?)')
             like = f'%{q}%'
             params.extend([like, like, like])
+        if creado_por_email:
+            where.append('cu.email LIKE ?')
+            params.append(f'%{creado_por_email}%')
         where_sql = f"WHERE {' AND '.join(where)}" if where else ''
 
         rows = conn.execute(f'''
             SELECT v.*, d.subido_por AS creado_por, cu.nombre AS creado_por_nombre,
-                   mu.nombre AS modificado_por_nombre
+                   cu.email AS creado_por_email, mu.nombre AS modificado_por_nombre
             FROM informe_campo_visita v
             LEFT JOIN informe_campo_documento d ON d.id = v.documento_id
             LEFT JOIN app_user cu ON cu.user_id = d.subido_por
@@ -4806,7 +5118,7 @@ def informe_campo_detalle(visita_campo_id):
     try:
         row = conn.execute('''
             SELECT v.*, d.subido_por AS creado_por, d.texto_extraido, d.tipo_documento,
-                   d.nombre_archivo AS documento_nombre_archivo,
+                   d.nombre_archivo AS documento_nombre_archivo, d.archivo_subido_id,
                    cu.nombre AS creado_por_nombre, mu.nombre AS modificado_por_nombre
             FROM informe_campo_visita v
             LEFT JOIN informe_campo_documento d ON d.id = v.documento_id
@@ -4946,6 +5258,7 @@ def fichas():
 
         incluir_eliminadas = request.args.get('incluir_eliminadas') == '1'
         q = (request.args.get('q') or '').strip()
+        creado_por_email = (request.args.get('creado_por_email') or '').strip()
         limit = safe_int(request.args.get('limit'), 100)
         offset = safe_int(request.args.get('offset'), 0)
 
@@ -4955,10 +5268,14 @@ def fichas():
             where.append('(f.nombre_ie LIKE ? OR f.codigo_modular LIKE ? OR f.docente LIKE ?)')
             like = f'%{q}%'
             params.extend([like, like, like])
+        if creado_por_email:
+            where.append('cu.email LIKE ?')
+            params.append(f'%{creado_por_email}%')
         where_sql = f"WHERE {' AND '.join(where)}" if where else ''
 
         rows = conn.execute(f'''
-            SELECT f.*, cu.nombre AS creado_por_nombre, mu.nombre AS modificado_por_nombre
+            SELECT f.*, cu.nombre AS creado_por_nombre, cu.email AS creado_por_email,
+                   mu.nombre AS modificado_por_nombre
             FROM fichas_monitoreo f
             LEFT JOIN app_user cu ON cu.user_id = f.creado_por
             LEFT JOIN app_user mu ON mu.user_id = f.modificado_por

@@ -74,6 +74,13 @@ input,select,textarea{font-family:inherit}
 .login-glow{
   display:none;
 }
+/* Escena de selva + escuelita (Imaza esta en la Amazonia) con estetica tipo
+   anime/Ghibli -- ilustracion vectorial propia (formas planas, contorno
+   grueso, paleta calida), no una foto ni un asset externo: no tenemos fotos
+   reales del lugar y no vamos a incrustar arte con derechos poco claros.
+   Ancla abajo del login. */
+.login-jungle{position:absolute;left:0;right:0;bottom:0;width:100%;height:340px;pointer-events:none}
+[data-theme="dark"] .login-jungle{opacity:.75}
 .login-card{
   position:relative;z-index:10;width:430px;
   background:rgba(255,255,255,.92);border:1px solid var(--border);
@@ -167,7 +174,7 @@ input,select,textarea{font-family:inherit}
   transition:width var(--transition);
   color:#eaf3f8;
 }
-#sidebar.expanded{width:232px;align-items:flex-start;padding:18px 14px}
+#sidebar:is(.expanded,.peek){width:232px;align-items:flex-start;padding:18px 14px}
 
 .sidebar-logo-wrap{display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:0 4px;width:100%}
 .sidebar-logo{
@@ -175,14 +182,14 @@ input,select,textarea{font-family:inherit}
   background:transparent;display:flex;align-items:center;justify-content:center;
   flex-shrink:0;box-shadow:none;overflow:visible;
 }
-#sidebar.expanded .sidebar-logo{width:58px;height:48px}
+#sidebar:is(.expanded,.peek) .sidebar-logo{width:58px;height:48px}
 .sidebar-brand-text{display:none;flex-direction:column;line-height:1.1}
-#sidebar.expanded .sidebar-brand-text{display:flex}
+#sidebar:is(.expanded,.peek) .sidebar-brand-text{display:flex}
 .sidebar-brand-text .b1{font-size:14px;font-weight:800;color:#fff}
 .sidebar-brand-text .b2{font-size:10px;color:#a9c4d5;text-transform:uppercase;letter-spacing:.8px}
 
 .nav-divider{width:38px;height:1px;background:rgba(255,255,255,.12);margin:8px auto}
-#sidebar.expanded .nav-divider{width:100%}
+#sidebar:is(.expanded,.peek) .nav-divider{width:100%}
 
 .nav-item{
   display:flex;align-items:center;gap:12px;
@@ -190,20 +197,20 @@ input,select,textarea{font-family:inherit}
   cursor:pointer;transition:all var(--transition);
   width:100%;position:relative;color:#cfe0eb;
 }
-#sidebar:not(.expanded) .nav-item{justify-content:center;width:46px}
+#sidebar:not(.expanded):not(.peek) .nav-item{justify-content:center;width:46px}
 .nav-item:hover{background:rgba(255,255,255,.08);color:#fff}
 .nav-item.active{background:#fff;color:#0b3555;box-shadow:0 12px 24px rgba(0,0,0,.14)}
 .nav-icon{font-size:10px;flex-shrink:0;width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:900;letter-spacing:0;background:rgba(255,255,255,.10);color:inherit}
 .nav-item.active .nav-icon{background:var(--brand-sky);color:var(--brand-blue)}
 .nav-label{font-size:13px;font-weight:700;white-space:nowrap;display:none}
-#sidebar.expanded .nav-label{display:block}
-#sidebar:not(.expanded) .nav-item[data-tooltip]::after{
+#sidebar:is(.expanded,.peek) .nav-label{display:block}
+#sidebar:not(.expanded):not(.peek) .nav-item[data-tooltip]::after{
   content:attr(data-tooltip);position:absolute;left:58px;top:50%;transform:translateY(-50%) translateX(-4px);
   background:var(--surface);color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow);
   border-radius:8px;padding:7px 10px;font-size:12px;font-weight:800;white-space:nowrap;
   opacity:0;pointer-events:none;transition:opacity .16s ease,transform .16s ease;z-index:120;
 }
-#sidebar:not(.expanded) .nav-item[data-tooltip]:hover::after{opacity:1;transform:translateY(-50%) translateX(0)}
+#sidebar:not(.expanded):not(.peek) .nav-item[data-tooltip]:hover::after{opacity:1;transform:translateY(-50%) translateX(0)}
 .admin-only{display:none!important}
 body.is-admin .admin-only:not(.view){display:flex!important}
 body.is-admin .view.admin-only.active{display:flex!important}
@@ -215,7 +222,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
   display:flex;align-items:center;justify-content:center;gap:8px;
   width:100%;margin-bottom:12px;font-size:12px;font-weight:600;
 }
-#sidebar:not(.expanded) .sync-btn .slbl{display:none}
+#sidebar:not(.expanded):not(.peek) .sync-btn .slbl{display:none}
 .sync-btn:disabled{opacity:.5;cursor:not-allowed}
 .sync-btn.is-hidden{display:none}
 .sync-badge{
@@ -227,8 +234,9 @@ body.is-admin .view.admin-only.active{display:flex!important}
   padding:10px 0;border-radius:var(--radius-sm);
   background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.10);
   display:flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;appearance:none;-webkit-appearance:none;color:inherit;font:inherit;text-align:left;cursor:pointer;
 }
-#sidebar.expanded .user-card{padding:10px 12px;justify-content:flex-start}
+#sidebar:is(.expanded,.peek) .user-card{padding:10px 12px;justify-content:flex-start}
 .user-avatar{
   width:32px;height:32px;border-radius:10px;flex-shrink:0;
   background:#fff;color:var(--brand-navy);
@@ -236,7 +244,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
   font-size:13px;font-weight:800;
 }
 .user-info{display:none;flex-direction:column;min-width:0}
-#sidebar.expanded .user-info{display:flex}
+#sidebar:is(.expanded,.peek) .user-info{display:flex}
 .user-info .uname{font-size:11px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .user-info .urole{font-size:10px;color:#a9c4d5}
 
@@ -246,10 +254,10 @@ body.is-admin .view.admin-only.active{display:flex!important}
   background:transparent;color:#a9c4d5;font-size:12px;
   transition:all var(--transition);margin-top:8px;width:100%;
 }
-#sidebar.expanded .btn-logout{padding:9px 12px}
+#sidebar:is(.expanded,.peek) .btn-logout{padding:9px 12px}
 .btn-logout:hover{background:rgba(220,38,38,.18);border-color:rgba(248,113,113,.35);color:#fff}
 .btn-logout .logout-label{display:none}
-#sidebar.expanded .btn-logout .logout-label{display:inline}
+#sidebar:is(.expanded,.peek) .btn-logout .logout-label{display:inline}
 
 .sidebar-toggle{
   position:absolute;top:50%;right:-14px;transform:translateY(-50%);
@@ -274,6 +282,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
   display:flex;align-items:center;gap:8px;border:1px solid var(--border);
   background:var(--surface);border-radius:999px;padding:5px 10px 5px 5px;
   box-shadow:0 8px 18px rgba(12,35,56,.06);min-width:0;
+  appearance:none;-webkit-appearance:none;color:inherit;font:inherit;cursor:pointer;
 }
 .top-user-avatar{
   width:24px;height:24px;border-radius:50%;background:var(--brand-navy);color:#fff;
@@ -547,6 +556,18 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .config-filter-row input[type=checkbox]{width:15px;height:15px;accent-color:var(--brand-blue)}
 .config-selected{font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:12px}
 .config-selected strong{color:var(--text)}
+.reg-card{border:1px solid var(--border);border-left:4px solid var(--border2);border-radius:9px;padding:12px 14px;margin-bottom:10px;background:var(--surface);transition:background var(--transition),border-color var(--transition)}
+.reg-card.checked{background:var(--surface3)}
+.reg-card-label{display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:800;color:var(--text);cursor:pointer;margin-bottom:8px}
+.reg-card-label input[type=checkbox]{width:16px;height:16px;accent-color:var(--brand-blue);flex-shrink:0}
+.reg-card-tag{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;margin-left:auto;white-space:nowrap}
+.reg-card-tag.sev-alta{background:rgba(220,38,38,.12);color:var(--danger)}
+.reg-card-tag.sev-media{background:rgba(217,119,6,.14);color:var(--warning)}
+.reg-card-tag.sev-baja{background:rgba(21,95,131,.12);color:var(--brand-blue)}
+.reg-card-title{font-size:11px;font-weight:800;color:var(--text-muted);margin-bottom:8px}
+.reg-card textarea, .reg-card input.form-input{margin-top:0}
+.reg-card-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.reg-card-fields .field-item{margin-bottom:0}
 .question-admin-grid{display:grid;grid-template-columns:380px minmax(0,1fr);gap:18px;align-items:start}
 .question-level-editor{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .question-level-editor textarea{min-height:72px;resize:vertical}
@@ -572,6 +593,42 @@ body.is-admin .view.admin-only.active{display:flex!important}
 /*──────────────────────────────────────────────────────────────────────────────
   DASHBOARD
 ──────────────────────────────────────────────────────────────────────────────*/
+/* Vista de Inicio: tarjetas de entrada a cada seccion, con un numero real
+ * cuando ya hay datos cargados, en vez de aterrizar directo en el Mapa sin
+ * contexto. */
+.home-shell{max-width:1180px;margin:0 auto;width:100%}
+.home-hero{
+  position:relative;overflow:hidden;
+  display:flex;justify-content:space-between;gap:18px;align-items:flex-start;
+  padding:4px 0 20px;border-bottom:1px solid var(--border);margin-bottom:24px;
+}
+/* Acento decorativo de hojas (Imaza, selva amazonica) -- ilustracion SVG
+   propia detras del saludo, no una foto. */
+.home-hero-leaf{position:absolute;top:0;right:0;width:280px;height:100%;pointer-events:none;z-index:0}
+.home-greeting{position:relative;font-size:28px;font-weight:900;color:var(--text);line-height:1.08}
+.home-sub{position:relative;font-size:13px;color:var(--text-muted);margin-top:8px;max-width:560px;line-height:1.55}
+.home-date{position:relative;display:inline-flex;align-items:center;border:1px solid var(--border);background:var(--surface);color:var(--brand-blue);border-radius:999px;padding:8px 14px;font-size:11px;font-weight:900;text-transform:capitalize;white-space:nowrap}
+.home-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+/* Banner ilustrado (mismo lenguaje visual anime/Ghibli del login) para que
+   Inicio no quede en blanco debajo de las tarjetas -- ilustracion vectorial
+   propia, sin imagenes externas. */
+.home-illustration{margin-top:28px;border-radius:16px;overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow)}
+.home-illustration svg{display:block;width:100%;height:260px}
+[data-theme="dark"] .home-illustration svg{opacity:.82}
+.home-card{
+  display:flex;flex-direction:column;gap:10px;text-align:left;
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:20px;cursor:pointer;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease;
+}
+.home-card:hover{transform:translateY(-2px);box-shadow:0 16px 30px -14px rgba(11,53,85,.25);border-color:var(--brand-blue)}
+.home-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.home-card-icon{width:38px;height:38px;border-radius:11px;background:var(--brand-sky);color:var(--brand-blue);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex-shrink:0}
+.home-card-admin{font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);border:1px solid var(--border);border-radius:999px;padding:3px 8px}
+.home-card-title{font-size:15px;font-weight:800;color:var(--text)}
+.home-card-copy{font-size:12px;color:var(--text-muted);line-height:1.5;flex:1}
+.home-card-stat{font-size:20px;font-weight:900;color:var(--brand-blue);font-variant-numeric:tabular-nums}
+.home-card-stat-label{font-size:10.5px;color:var(--text-dim);margin-top:-6px}
+
 .dash-shell{
   min-height:100%;border-radius:0;padding:0 0 28px;color:var(--dash-text);
   --dash-bg:var(--bg);--dash-surface:var(--surface);--dash-surface2:var(--surface2);--dash-surface3:var(--surface3);
@@ -596,10 +653,18 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .dash-new-btn:hover{background:var(--brand-blue)}
 .dash-board{max-width:1180px;margin:0 auto;padding:24px}
 .dash-overview.is-hidden{display:none}
+.dash-alerts-overview.is-hidden{display:none}
+.dash-alerts-overview{margin-bottom:16px}
 .dash-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
 .dash-kpi{background:var(--dash-surface);border:1px solid var(--dash-border);border-radius:10px;padding:18px 20px;border-top:3px solid var(--dash-blue);box-shadow:var(--dash-shadow)}
 .dash-kpi.red{border-top-color:var(--dash-red)}.dash-kpi.amber{border-top-color:var(--accent)}.dash-kpi.green{border-top-color:var(--dash-green)}
 .dash-kpi-label{font-size:11px;text-transform:uppercase;color:var(--dash-muted);font-weight:800;margin-bottom:10px}
+.dash-kpi-icon-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.dash-kpi-icon-row .dash-kpi-label{margin-bottom:0}
+.dash-kpi-icon{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;flex-shrink:0;background:var(--brand-sky);color:var(--dash-blue)}
+.dash-kpi.red .dash-kpi-icon{background:var(--dash-red-wash,rgba(220,38,38,.12));color:var(--dash-red)}
+.dash-kpi.amber .dash-kpi-icon{background:var(--dash-amber-wash,rgba(217,119,6,.14));color:var(--dash-amber)}
+.dash-kpi.green .dash-kpi-icon{background:var(--dash-green-wash,rgba(15,159,110,.14));color:var(--dash-green)}
 .dash-kpi-value{font-size:30px;line-height:1;font-weight:800;color:var(--dash-text);margin-bottom:8px}
 .dash-kpi-sub{font-size:12px;color:var(--dash-muted)}
 .dash-metric-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
@@ -664,12 +729,69 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .dash-dim-fill{height:100%;border-radius:4px}
 .dash-dim-val{font-size:11.5px;font-weight:800;color:var(--dash-text);text-align:right;align-self:center}
 
+/* KPIs "proximamente" para fuentes sin logica dedicada todavia (Todas /
+ * Preguntas dinamicas / Informes de campo) -- honesto en vez de mezclar
+ * metricas de origenes distintos como si ya estuvieran unificadas. */
+.dash-kpi-soon{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:var(--dash-surface);border:1px dashed var(--dash-border2);border-radius:10px;padding:22px 24px}
+.dash-kpi-soon-tag{display:inline-flex;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--dash-dim);background:var(--dash-surface3);border-radius:999px;padding:3px 10px;margin-bottom:8px}
+.dash-kpi-soon-title{font-size:15px;font-weight:800;color:var(--dash-text);margin-bottom:4px}
+.dash-kpi-soon-copy{font-size:12.5px;color:var(--dash-muted);max-width:56ch;line-height:1.5}
+.dash-kpi-soon-cta{flex-shrink:0;border:1px solid var(--dash-blue);color:var(--dash-blue);background:transparent;border-radius:8px;padding:9px 16px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap}
+.dash-kpi-soon-cta:hover{background:var(--brand-sky)}
+
+/* Ranking de priorizacion SIMON */
+.dash-ranking-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dash-filter-badge{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;color:var(--dash-blue);background:var(--brand-sky);border:1px solid var(--dash-border);border-radius:999px;padding:4px 10px;white-space:nowrap;cursor:help}
+.dash-filter-badge::before{content:'●';font-size:7px;color:var(--dash-blue)}
+.dash-ranking-body{max-height:420px;overflow-y:auto;padding:6px 16px 16px}
+.dash-ranking-row{display:grid;grid-template-columns:26px 1fr 74px 56px 44px;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--dash-border)}
+.dash-ranking-row:last-child{border-bottom:none}
+.dash-ranking-row[data-evo-codigo]{cursor:pointer;border-radius:6px;margin:0 -8px;padding:10px 8px}
+.dash-ranking-row[data-evo-codigo]:hover{background:var(--dash-surface2)}
+.dash-ranking-rank{font-size:11px;font-weight:800;color:var(--dash-dim);font-variant-numeric:tabular-nums}
+.dash-ranking-ie{min-width:0}
+.dash-ranking-ie-name{font-size:12.5px;font-weight:700;color:var(--dash-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dash-ranking-ie-meta{font-size:11px;color:var(--dash-muted)}
+.dash-ranking-promedio{font-size:12.5px;font-weight:800;color:var(--dash-text);text-align:right;font-variant-numeric:tabular-nums}
+.dash-ranking-docentes{font-size:11px;color:var(--dash-muted);text-align:right;white-space:nowrap}
+.dash-ranking-foot{padding:10px 16px 14px;font-size:11px;color:var(--dash-muted);border-top:1px solid var(--dash-border)}
+
+/* Modal de evolucion de una IE (linea de tiempo SIMON + campo) */
+.dash-modal-overlay{position:fixed;inset:0;background:rgba(11,17,26,.55);z-index:2000;display:flex;align-items:flex-start;justify-content:center;padding:48px 20px;overflow-y:auto;
+  --dash-surface:var(--surface);--dash-surface2:var(--surface2);--dash-surface3:var(--surface3);
+  --dash-border:var(--border);--dash-text:var(--text);--dash-muted:var(--text-muted);--dash-dim:var(--text-dim);
+  --dash-blue:var(--brand-blue);--dash-green:var(--success);--dash-amber:var(--warning);--dash-red:var(--danger);--dash-purple:var(--purple);
+}
+.dash-modal-overlay.is-hidden{display:none}
+.dash-modal{background:var(--dash-surface);border-radius:12px;max-width:640px;width:100%;box-shadow:0 30px 60px -20px rgba(0,0,0,.4)}
+.dash-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--dash-border)}
+.dash-modal-title{font-size:16px;font-weight:800;color:var(--dash-text)}
+.dash-modal-sub{font-size:12px;color:var(--dash-muted);margin-top:3px}
+.dash-modal-close{border:none;background:var(--dash-surface3);color:var(--dash-muted);width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:14px;flex-shrink:0}
+.dash-modal-close:hover{background:var(--dash-border)}
+.dash-modal-body{padding:18px 22px;max-height:70vh;overflow-y:auto}
+.dash-timeline{position:relative;padding-left:20px}
+.dash-timeline::before{content:'';position:absolute;left:5px;top:4px;bottom:4px;width:2px;background:var(--dash-border)}
+.dash-timeline-item{position:relative;padding-bottom:18px}
+.dash-timeline-item:last-child{padding-bottom:0}
+.dash-timeline-dot{position:absolute;left:-20px;top:2px;width:12px;height:12px;border-radius:99px;border:2px solid var(--dash-surface)}
+.dash-timeline-date{font-size:11px;font-weight:800;color:var(--dash-dim);font-variant-numeric:tabular-nums;margin-bottom:2px}
+.dash-timeline-title{font-size:12.5px;font-weight:700;color:var(--dash-text)}
+.dash-timeline-detail{font-size:11.5px;color:var(--dash-muted);margin-top:2px;line-height:1.4}
+
+/* Mapa de calor distrito x variable (informes de campo) */
+.dash-heatmap{display:grid;gap:2px;font-size:10px}
+.dash-heatmap-head{font-size:9px;font-weight:800;text-transform:uppercase;color:var(--dash-dim);text-align:center;padding:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dash-heatmap-row-label{font-size:10.5px;font-weight:700;color:var(--dash-text);padding:4px 6px 4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dash-heatmap-cell{border-radius:4px;min-height:22px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;cursor:default}
+.dash-heatmap-cell.zero{background:var(--dash-surface3)!important;color:var(--dash-dim)}
+
 .dash-grid-layout{display:grid;grid-template-columns:340px minmax(0,1fr) 320px;gap:16px;align-items:start}
-.dash-grid-layout.mode-panel{grid-template-columns:minmax(0,1fr) 320px}
-.dash-grid-layout.mode-panel .dash-left{display:none}
-.dash-grid-layout.mode-panel .dash-center{min-width:0}
-.dash-grid-layout.mode-institutions .dash-alerts-card{display:none}
-.dash-grid-layout.mode-alerts .dash-institutions-card{display:none}
+/* La vista "Panel" es el resumen de KPIs/graficos por fuente (dash-overview,
+ * arriba); el detalle de una IE puntual (docentes/infraestructura/alumnos +
+ * modelo de clasificacion general) no esta filtrado por fuente y no
+ * corresponde mezclarlo ahi -- solo vive en la vista "Instituciones". */
+.dash-grid-layout.mode-panel{display:none}
 .dash-card{background:var(--dash-surface);border:1px solid var(--dash-border);border-radius:10px;box-shadow:var(--dash-shadow);overflow:hidden}
 .dash-card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--dash-border);font-weight:800;color:var(--dash-text)}
 .dash-card-header.red{background:#fff1f2;color:#be123c;border-color:#fecdd3}
@@ -793,6 +915,62 @@ body.is-admin .view.admin-only.active{display:flex!important}
 <div id="screen-login" class="screen">
   <div class="login-bg-grid"></div>
   <div class="login-glow"></div>
+  <svg class="login-jungle" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <defs>
+      <linearGradient id="jgSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#cfe9f2"/>
+        <stop offset="55%" stop-color="#eaf3e2"/>
+        <stop offset="100%" stop-color="#ffe3bd"/>
+      </linearGradient>
+      <radialGradient id="jgSun" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff6d8" stop-opacity=".9"/>
+        <stop offset="60%" stop-color="#ffdb8a" stop-opacity=".55"/>
+        <stop offset="100%" stop-color="#ffdb8a" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+
+    <rect x="0" y="0" width="1200" height="420" fill="url(#jgSky)"/>
+    <circle cx="970" cy="95" r="90" fill="url(#jgSun)"/>
+    <circle cx="970" cy="95" r="34" fill="#ffedb0" stroke="#f3c766" stroke-width="2.5"/>
+
+    <path d="M120 95q8-8 16 0q8-8 16 0" stroke="#355e4d" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <path d="M700 70q7-7 14 0q7-7 14 0" stroke="#355e4d" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+    <path d="M780 110q6-6 12 0q6-6 12 0" stroke="#355e4d" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+    <path d="M0 300c120-46 210-46 330-14s220 30 340 4 250-40 340-6 190 34 190 34v102H0Z" fill="#b7cfc6" opacity=".55"/>
+
+    <g fill="#a8d3b0" opacity=".8">
+      <ellipse cx="70" cy="292" rx="60" ry="42"/><ellipse cx="120" cy="278" rx="46" ry="36"/>
+      <ellipse cx="300" cy="298" rx="66" ry="44"/><ellipse cx="360" cy="282" rx="46" ry="34"/>
+      <ellipse cx="560" cy="290" rx="58" ry="40"/><ellipse cx="615" cy="276" rx="44" ry="32"/>
+      <ellipse cx="860" cy="296" rx="64" ry="42"/><ellipse cx="915" cy="280" rx="46" ry="34"/>
+      <ellipse cx="1110" cy="290" rx="60" ry="40"/><ellipse cx="1160" cy="276" rx="44" ry="32"/>
+    </g>
+
+    <path d="M0 330c150-18 260 6 420-8s260-14 400 2 260 10 380-6v122H0Z" fill="#2f6b4d"/>
+
+    <g stroke="#234a38" stroke-width="3" stroke-linejoin="round">
+      <g><circle cx="90" cy="320" r="52" fill="#4f9d72"/><circle cx="150" cy="336" r="40" fill="#4f9d72"/><circle cx="55" cy="345" r="36" fill="#4f9d72"/></g>
+      <g><circle cx="1000" cy="322" r="54" fill="#4f9d72"/><circle cx="1065" cy="340" r="42" fill="#4f9d72"/><circle cx="945" cy="348" r="34" fill="#4f9d72"/></g>
+      <g><circle cx="1160" cy="330" r="50" fill="#4f9d72"/><circle cx="1210" cy="348" r="38" fill="#4f9d72"/></g>
+    </g>
+    <g fill="#7ecb92">
+      <circle cx="72" cy="300" r="16"/><circle cx="982" cy="302" r="17"/><circle cx="1145" cy="312" r="15"/>
+    </g>
+    <g stroke="#5c3d2a" stroke-width="5" stroke-linecap="round">
+      <path d="M90 358v18"/><path d="M1000 360v20"/><path d="M1160 366v16"/>
+    </g>
+
+    <g>
+      <rect x="520" y="330" width="130" height="70" fill="#fdf1de" stroke="#3a2a20" stroke-width="3"/>
+      <path d="M508 332 585 288 662 332Z" fill="#d9754a" stroke="#3a2a20" stroke-width="3" stroke-linejoin="round"/>
+      <rect x="568" y="358" width="34" height="42" fill="#3a2a20"/>
+      <rect x="536" y="348" width="20" height="20" fill="#bfe3ea" stroke="#3a2a20" stroke-width="2"/>
+      <rect x="614" y="348" width="20" height="20" fill="#bfe3ea" stroke="#3a2a20" stroke-width="2"/>
+      <line x1="585" y1="288" x2="585" y2="268" stroke="#3a2a20" stroke-width="3"/>
+      <path d="M585 268h20v12h-20Z" fill="#e2574c" stroke="#3a2a20" stroke-width="2"/>
+    </g>
+  </svg>
   <div class="login-card">
     <div class="login-logo">
       <div class="login-logo-icon"><img src="logo/logo-transparent.png" class="app-logo-img" alt="SUGKA LAB"/></div>
@@ -820,7 +998,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
 
     <div id="register-fields" class="is-hidden">
       <div class="login-heading">Crear cuenta</div>
-      <div class="login-subheading">Te registras como especialista. Un administrador puede darte otro rol después si corresponde.</div>
+      <div class="login-subheading">Te registras como especialista. Un administrador debe aprobar tu cuenta antes de que puedas ingresar.</div>
 
       <div class="form-group">
         <label>Nombre completo</label>
@@ -857,29 +1035,32 @@ body.is-admin .view.admin-only.active{display:flex!important}
     </div>
     <div class="nav-divider"></div>
 
-    <div class="nav-item active" data-view="mapa" id="nav-mapa" data-tooltip="Mapa de IEs" title="Mapa de IEs">
-      <span class="nav-icon">IE</span><span class="nav-label">Mapa de IEs</span>
+    <div class="nav-item active" data-view="inicio" id="nav-inicio" data-tooltip="Inicio" title="Inicio">
+      <span class="nav-icon" data-icon="home"></span><span class="nav-label">Inicio</span>
     </div>
-    <div class="nav-item" data-view="form" id="nav-form" data-tooltip="Llenar ficha" title="Llenar ficha">
-      <span class="nav-icon">FM</span><span class="nav-label">Llenar Ficha</span>
-    </div>
-    <div class="nav-item" data-view="ocr" id="nav-ocr" data-tooltip="OCR ficha" title="OCR ficha">
-      <span class="nav-icon">AI</span><span class="nav-label">OCR Ficha</span>
-    </div>
-    <div class="nav-item" data-view="campo" id="nav-campo" data-tooltip="Informes de campo" title="Informes de campo">
-      <span class="nav-icon">IC</span><span class="nav-label">Informes de Campo</span>
-    </div>
-    <div class="nav-item" data-view="registros" id="nav-registros" data-tooltip="Registros" title="Registros">
-      <span class="nav-icon">REG</span><span class="nav-label">Registros</span>
+    <div class="nav-item" data-view="mapa" id="nav-mapa" data-tooltip="Mapa de IEs" title="Mapa de IEs">
+      <span class="nav-icon" data-icon="map"></span><span class="nav-label">Mapa de IEs</span>
     </div>
     <div class="nav-item" data-view="dashboard" id="nav-dashboard" data-tooltip="Gestión" title="Gestión">
-      <span class="nav-icon">KPI</span><span class="nav-label">Gestión</span>
+      <span class="nav-icon" data-icon="chart"></span><span class="nav-label">Gestión</span>
+    </div>
+    <div class="nav-item" data-view="form" id="nav-form" data-tooltip="Llenar ficha" title="Llenar ficha">
+      <span class="nav-icon" data-icon="pencil"></span><span class="nav-label">Llenar Ficha</span>
+    </div>
+    <div class="nav-item" data-view="ocr" id="nav-ocr" data-tooltip="OCR ficha" title="OCR ficha">
+      <span class="nav-icon" data-icon="camera"></span><span class="nav-label">OCR Ficha</span>
+    </div>
+    <div class="nav-item" data-view="campo" id="nav-campo" data-tooltip="Informes de campo" title="Informes de campo">
+      <span class="nav-icon" data-icon="clipboardCheck"></span><span class="nav-label">Informes de Campo</span>
+    </div>
+    <div class="nav-item" data-view="registros" id="nav-registros" data-tooltip="Registros" title="Registros">
+      <span class="nav-icon" data-icon="archive"></span><span class="nav-label">Registros</span>
     </div>
     <div class="nav-item admin-only" data-view="config" id="nav-config" data-tooltip="Configuración" title="Configuración">
-      <span class="nav-icon">CFG</span><span class="nav-label">Configuración</span>
+      <span class="nav-icon" data-icon="gear"></span><span class="nav-label">Configuración</span>
     </div>
     <div class="nav-item admin-only" data-view="preguntas" id="nav-preguntas" data-tooltip="Preguntas dinámicas" title="Preguntas dinámicas">
-      <span class="nav-icon">PD</span><span class="nav-label">Preguntas</span>
+      <span class="nav-icon" data-icon="question"></span><span class="nav-label">Preguntas</span>
     </div>
 
     <div class="sidebar-bottom">
@@ -888,13 +1069,13 @@ body.is-admin .view.admin-only.active{display:flex!important}
         <span class="sync-badge" id="sync-count">0</span>
       </button>
 
-      <div class="user-card">
+      <button class="user-card" id="btn-perfil" type="button" title="Mi cuenta">
         <div class="user-avatar" id="user-avatar">?</div>
         <div class="user-info">
           <span class="uname" id="user-name">Usuario</span>
           <span class="urole" id="user-role">Rol</span>
         </div>
-      </div>
+      </button>
       <button class="btn-logout" id="btn-logout">
         <span>Salir</span><span class="logout-label">Cerrar sesión</span>
       </button>
@@ -902,15 +1083,50 @@ body.is-admin .view.admin-only.active{display:flex!important}
     <div class="sidebar-toggle" id="sidebar-toggle">▶</div>
   </nav>
 
+  <div class="dash-modal-overlay is-hidden" id="perfil-modal">
+    <div class="dash-modal">
+      <div class="dash-modal-head">
+        <div>
+          <div class="dash-modal-title">Mi cuenta</div>
+          <div class="dash-modal-sub" id="perfil-sub"></div>
+        </div>
+        <button type="button" class="dash-modal-close" id="perfil-close">✕</button>
+      </div>
+      <div class="dash-modal-body">
+        <div class="panel-label">Datos de la cuenta</div>
+        <div id="perfil-info" class="config-selected" style="margin-bottom:18px"></div>
+
+        <div class="panel-label">Cambiar mi contraseña</div>
+        <form id="perfil-password-form">
+          <div class="form-group">
+            <label>Contraseña actual</label>
+            <div class="password-wrapper">
+              <input class="form-input" id="perfil-pw-actual" type="password" required autocomplete="current-password"/>
+              <button class="password-toggle" type="button" data-toggle-password="perfil-pw-actual">Ver</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Nueva contraseña</label>
+            <div class="password-wrapper">
+              <input class="form-input" id="perfil-pw-nueva" type="password" required minlength="4" autocomplete="new-password"/>
+              <button class="password-toggle" type="button" data-toggle-password="perfil-pw-nueva">Ver</button>
+            </div>
+          </div>
+          <button class="btn-primary" type="submit">Actualizar contraseña</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <div id="main-content">
     <div id="topbar">
       <span class="topbar-title" id="topbar-title">Mapa</span>
       <span class="topbar-sub" id="topbar-sub">UGEL</span>
       <div class="topbar-spacer"></div>
-      <div class="top-user-chip" title="Usuario actual">
+      <button class="top-user-chip" id="btn-perfil-top" type="button" title="Mi cuenta">
         <span class="top-user-avatar" id="top-user-avatar">?</span>
         <span class="top-user-name" id="top-user-name">Usuario</span>
-      </div>
+      </button>
       <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Cambiar tema">
         <span class="theme-toggle-indicator"></span>
         <span id="theme-toggle-label">Claro</span>
@@ -923,13 +1139,92 @@ body.is-admin .view.admin-only.active{display:flex!important}
 
     <div id="views-container">
 
+      <!-- INICIO -->
+      <div id="view-inicio" class="view scroll-view active">
+        <div class="home-shell">
+          <div class="home-hero">
+            <svg class="home-hero-leaf" viewBox="0 0 300 140" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
+              <circle cx="255" cy="35" r="30" fill="#ffdb8a" opacity=".25"/>
+              <g opacity=".8">
+                <g stroke="#234a38" stroke-width="2.5" stroke-linejoin="round">
+                  <circle cx="215" cy="85" r="30" fill="#4f9d72"/><circle cx="248" cy="98" r="24" fill="#4f9d72"/><circle cx="195" cy="102" r="20" fill="#4f9d72"/>
+                  <circle cx="275" cy="92" r="26" fill="#5cae7f"/><circle cx="300" cy="106" r="20" fill="#5cae7f"/>
+                </g>
+                <g fill="#7ecb92">
+                  <circle cx="205" cy="72" r="9"/><circle cx="268" cy="80" r="8"/>
+                </g>
+              </g>
+            </svg>
+            <div>
+              <div class="home-greeting" id="home-greeting">Hola</div>
+              <div class="home-sub">Elige una sección para continuar. Cada tarjeta muestra lo esencial antes de entrar.</div>
+            </div>
+            <div class="home-date" id="home-date"></div>
+          </div>
+          <div class="home-grid" id="home-grid"></div>
+
+          <div class="home-illustration">
+            <svg viewBox="0 0 1200 360" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+              <defs>
+                <linearGradient id="hiSky" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#dff0f4"/>
+                  <stop offset="55%" stop-color="#eef4e6"/>
+                  <stop offset="100%" stop-color="#ffe9c8"/>
+                </linearGradient>
+                <radialGradient id="hiSun" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#fff6d8" stop-opacity=".9"/>
+                  <stop offset="60%" stop-color="#ffdb8a" stop-opacity=".5"/>
+                  <stop offset="100%" stop-color="#ffdb8a" stop-opacity="0"/>
+                </radialGradient>
+              </defs>
+              <rect x="0" y="0" width="1200" height="360" fill="url(#hiSky)"/>
+              <circle cx="150" cy="70" r="80" fill="url(#hiSun)"/>
+              <circle cx="150" cy="70" r="30" fill="#ffedb0" stroke="#f3c766" stroke-width="2.5"/>
+              <path d="M900 60q8-8 16 0q8-8 16 0" stroke="#355e4d" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+              <path d="M980 95q7-7 14 0q7-7 14 0" stroke="#355e4d" stroke-width="2" fill="none" stroke-linecap="round"/>
+              <path d="M0 250c120-40 210-40 330-12s220 26 340 4 250-36 340-6 190 30 190 30v94H0Z" fill="#b7cfc6" opacity=".55"/>
+              <g fill="#a8d3b0" opacity=".8">
+                <ellipse cx="60" cy="248" rx="56" ry="38"/><ellipse cx="110" cy="234" rx="42" ry="32"/>
+                <ellipse cx="980" cy="252" rx="60" ry="40"/><ellipse cx="1040" cy="236" rx="44" ry="32"/>
+                <ellipse cx="1150" cy="244" rx="52" ry="36"/>
+              </g>
+              <path d="M0 282c150-16 260 6 420-8s260-12 400 2 260 8 380-6v90H0Z" fill="#2f6b4d"/>
+              <g stroke="#234a38" stroke-width="3" stroke-linejoin="round">
+                <g><circle cx="70" cy="270" r="46" fill="#4f9d72"/><circle cx="125" cy="284" r="34" fill="#4f9d72"/></g>
+                <g><circle cx="1070" cy="272" r="46" fill="#4f9d72"/><circle cx="1125" cy="286" r="34" fill="#4f9d72"/><circle cx="1170" cy="266" r="30" fill="#5cae7f"/></g>
+              </g>
+              <g fill="#7ecb92">
+                <circle cx="55" cy="252" r="13"/><circle cx="1055" cy="254" r="13"/>
+              </g>
+              <g>
+                <rect x="540" y="278" width="120" height="62" fill="#fdf1de" stroke="#3a2a20" stroke-width="3"/>
+                <path d="M528 280 600 240 672 280Z" fill="#d9754a" stroke="#3a2a20" stroke-width="3" stroke-linejoin="round"/>
+                <rect x="583" y="304" width="30" height="36" fill="#3a2a20"/>
+                <rect x="554" y="296" width="18" height="18" fill="#bfe3ea" stroke="#3a2a20" stroke-width="2"/>
+                <rect x="628" y="296" width="18" height="18" fill="#bfe3ea" stroke="#3a2a20" stroke-width="2"/>
+              </g>
+              <g stroke="#5c3d2a" stroke-width="4" stroke-linecap="round">
+                <path d="M70 302v14"/><path d="M1070 304v14"/>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+
       <!-- MAPA -->
-      <div id="view-mapa" class="view active">
+      <div id="view-mapa" class="view">
         <div id="map-panel">
           <div class="panel-section">
             <div class="map-heading">
               <div class="map-heading-title">IE de Imaza</div>
-              <div class="map-heading-sub">Instituciones educativas monitoreadas por nivel, alerta y distrito.</div>
+              <div class="map-heading-sub" id="map-heading-sub">Instituciones educativas monitoreadas por nivel, alerta y distrito.</div>
+            </div>
+            <div class="panel-label">Fuente de riesgo</div>
+            <div class="dash-source-tabs map-source-tabs" id="map-source-tabs" style="margin-bottom:14px">
+              <button type="button" class="dash-source-tab active" data-map-source="todas">Todas</button>
+              <button type="button" class="dash-source-tab" data-map-source="simon">SIMON</button>
+              <button type="button" class="dash-source-tab" data-map-source="censo">Censo</button>
+              <button type="button" class="dash-source-tab" data-map-source="campo">Campo</button>
             </div>
             <div class="panel-label">Buscar institución</div>
             <input id="map-search" class="map-search" placeholder="Nombre, código o centro poblado..."/>
@@ -959,10 +1254,11 @@ body.is-admin .view.admin-only.active{display:flex!important}
           </div>
 
           <div class="panel-section">
-            <div class="panel-label">Nivel de Alerta</div>
-            <div class="legend-row"><div class="leg-dot" style="background:var(--danger)"></div><span>Alerta alta (≥15)</span><span class="leg-count" id="leg-alta">0</span></div>
-            <div class="legend-row"><div class="leg-dot" style="background:var(--warning)"></div><span>Alerta media (≥8)</span><span class="leg-count" id="leg-media">0</span></div>
-            <div class="legend-row"><div class="leg-dot" style="background:var(--accent)"></div><span>Sin alerta crítica</span><span class="leg-count" id="leg-baja">0</span></div>
+            <div class="panel-label" id="map-legend-title">Nivel de Alerta</div>
+            <div class="legend-row"><div class="leg-dot" style="background:var(--danger)"></div><span id="leg-alta-label">Alerta alta (≥15)</span><span class="leg-count" id="leg-alta">0</span></div>
+            <div class="legend-row"><div class="leg-dot" style="background:var(--warning)"></div><span id="leg-media-label">Alerta media (≥8)</span><span class="leg-count" id="leg-media">0</span></div>
+            <div class="legend-row"><div class="leg-dot" style="background:var(--accent)"></div><span id="leg-baja-label">Sin alerta crítica</span><span class="leg-count" id="leg-baja">0</span></div>
+            <div class="legend-row" id="leg-sindatos-row" style="display:none"><div class="leg-dot" style="background:#9ca3af"></div><span>Sin datos de esta fuente</span><span class="leg-count" id="leg-sindatos">0</span></div>
           </div>
 
           <div class="ie-list-header">
@@ -1168,6 +1464,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
             <form class="panel" id="reg-ficha-form" style="display:none">
               <div class="panel-title" id="reg-ficha-form-title">Editar ficha</div>
               <div class="config-selected" id="reg-ficha-meta"></div>
+              <div id="reg-ficha-archivos" class="config-actions" style="margin-bottom:10px"></div>
 
               <div class="panel-label">Identificación de la IE</div>
               <div class="fields-grid">
@@ -1235,6 +1532,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
               <div class="config-filter-row">
                 <label><input type="checkbox" id="reg-ficha-show-deleted"/> Mostrar eliminadas</label>
                 <input class="form-input" id="reg-ficha-search" placeholder="Buscar por IE, código o docente..." style="max-width:280px"/>
+                <select class="form-input" id="reg-ficha-filter-autor" style="max-width:240px"><option value="">Todos los correos</option></select>
               </div>
               <table class="user-table">
                 <thead>
@@ -1249,6 +1547,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
             <form class="panel" id="reg-campo-form" style="display:none">
               <div class="panel-title" id="reg-campo-form-title">Editar informe de campo</div>
               <div class="config-selected" id="reg-campo-meta"></div>
+              <div id="reg-campo-archivos" class="config-actions" style="margin-bottom:10px"></div>
 
               <div class="fields-grid">
                 <div class="field-item"><label class="form-group label">Código modular</label><input class="form-input" name="codigo_modular"/></div>
@@ -1281,6 +1580,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
               <div class="config-filter-row">
                 <label><input type="checkbox" id="reg-campo-show-deleted"/> Mostrar eliminados</label>
                 <input class="form-input" id="reg-campo-search" placeholder="Buscar por IE, código o especialista..." style="max-width:280px"/>
+                <select class="form-input" id="reg-campo-filter-autor" style="max-width:240px"><option value="">Todos los correos</option></select>
               </div>
               <table class="user-table">
                 <thead>
@@ -1306,50 +1606,98 @@ body.is-admin .view.admin-only.active{display:flex!important}
             </div>
             <div class="dash-nav">
               <button class="dash-nav-pill active" type="button" data-dash-view="panel">Panel</button>
-              <button class="dash-nav-pill" type="button" data-dash-view="institutions">Instituciones</button>
               <button class="dash-nav-pill" type="button" data-dash-view="alerts">Alertas <span class="dash-red-dot" id="dash-alert-count">0</span></button>
             </div>
             <button class="dash-new-btn" type="button" onclick="switchView('ocr')">Nuevo monitoreo</button>
           </div>
 
           <div class="dash-board">
-            <div class="dash-overview" id="dash-overview">
-              <div class="dash-source-filter" id="dash-source-filter">
-                <span class="dash-source-filter-label">Fuente de datos para KPIs y alertas:</span>
-                <div class="dash-source-tabs">
-                  <button type="button" class="dash-source-tab active" data-source="todas">Todas</button>
-                  <button type="button" class="dash-source-tab" data-source="simon">SIMON</button>
-                  <button type="button" class="dash-source-tab" data-source="dinamica">Preguntas dinámicas</button>
-                  <button type="button" class="dash-source-tab" data-source="campo">Informes de campo</button>
-                </div>
+            <div class="dash-source-filter" id="dash-source-filter">
+              <span class="dash-source-filter-label">Fuente de datos:</span>
+              <div class="dash-source-tabs">
+                <button type="button" class="dash-source-tab active" data-source="todas">Todas</button>
+                <button type="button" class="dash-source-tab" data-source="simon">SIMON</button>
+                <button type="button" class="dash-source-tab" data-source="censo">Censo</button>
+                <button type="button" class="dash-source-tab" data-source="dinamica">Preguntas dinámicas</button>
+                <button type="button" class="dash-source-tab" data-source="campo">Informes de campo</button>
               </div>
+            </div>
+            <div class="dash-overview" id="dash-overview">
               <div class="dash-kpi-grid" id="dash-kpis">
                 <div class="spinner" style="margin:auto"></div>
               </div>
 
-              <div class="dash-metric-row">
+              <div class="dash-metric-row" id="dash-metric-row">
                 <div class="dash-metric" id="dash-ieap"></div>
                 <div class="dash-metric green" id="dash-rtbg"></div>
               </div>
 
+              <div class="dash-card" id="dash-coverage-card" style="display:none;margin-bottom:16px">
+                <div class="dash-card-header dash-ranking-header">
+                  <span>Cobertura de monitoreo · días sin visita</span>
+                  <span class="dash-filter-badge" title="No es un ranking de riesgo: una IE puede ir bien y aun asi llevar mucho tiempo sin que la visitemos. Clic en una fila para ver su linea de tiempo.">SIMON + Campo</span>
+                </div>
+                <div id="dash-coverage-body"></div>
+              </div>
+
+              <div class="dash-card" id="dash-simon-ranking-card" style="display:none;margin-bottom:16px">
+                <div class="dash-card-header dash-ranking-header">
+                  <span>Ranking de priorización · IE SIMON</span>
+                  <span class="dash-filter-badge" title="Cada IE se ordena según la evaluación más reciente de cada docente; visitas anteriores ya superadas no se toman en cuenta.">Última visita</span>
+                </div>
+                <div id="dash-simon-ranking-body"></div>
+              </div>
+
+              <div class="dash-card" id="dash-infra-ranking-card" style="margin-bottom:16px">
+                <div class="dash-card-header dash-ranking-header">
+                  <span>Ranking de priorización · Censo de Infraestructura</span>
+                  <span class="dash-filter-badge" title="Foto unica del Censo Educativo 2025 (no hay visitas que comparar); ordenado por risk_score_infra descendente.">Censo 2025</span>
+                </div>
+                <div id="dash-infra-ranking-body"></div>
+              </div>
+
+              <div class="dash-card" id="dash-campo-ranking-card" style="display:none;margin-bottom:16px">
+                <div class="dash-card-header dash-ranking-header">
+                  <span>Ranking de priorización · Informes de Campo</span>
+                  <span class="dash-filter-badge" title="Solo 1 de cada 3 informes trae fecha de visita confiable; por eso se agregan todas las visitas registradas por IE en vez de filtrar a la ultima.">Todas las visitas</span>
+                </div>
+                <div id="dash-campo-ranking-body"></div>
+              </div>
+
               <div class="dash-chart-grid" id="dash-charts">
-                <div class="dash-card dash-chart-card">
+                <div class="dash-card dash-chart-card" id="dash-risk-chart-card">
                   <div class="dash-card-header" id="dash-risk-chart-title">Riesgo por IE</div>
                   <div class="dash-chart-body" id="dash-risk-chart"></div>
                 </div>
-                <div class="dash-card dash-chart-card">
+                <div class="dash-card dash-chart-card" id="dash-infra-chart-card">
                   <div class="dash-card-header">Infraestructura 2025</div>
                   <div class="dash-chart-body" id="dash-infra-chart"></div>
                 </div>
-                <div class="dash-card dash-chart-card">
-                  <div class="dash-card-header">Alertas por fuente</div>
-                  <div class="dash-chart-body" id="dash-alert-source-chart"></div>
-                </div>
-                <div class="dash-card dash-chart-card">
+                <div class="dash-card dash-chart-card" id="dash-simon-chart-card">
                   <div class="dash-card-header">Brechas SIMON · los 8 indicadores</div>
                   <div class="dash-chart-body" id="dash-simon-chart"></div>
                 </div>
               </div>
+              <div class="dash-card dash-chart-card" id="dash-infra-flags-card" style="margin-bottom:16px">
+                <div class="dash-card-header">Banderas de infraestructura más frecuentes · Censo 2025</div>
+                <div class="dash-chart-body" id="dash-infra-flags-chart"></div>
+              </div>
+
+              <div class="dash-card dash-chart-card" id="dash-campo-variables-card" style="display:none;margin-bottom:16px">
+                <div class="dash-card-header">Variables más frecuentes · Informes de Campo</div>
+                <div class="dash-chart-body" id="dash-campo-variables-chart"></div>
+              </div>
+              <div class="dash-chart-grid" id="dash-campo-extra" style="display:none;margin-bottom:16px">
+                <div class="dash-card dash-chart-card">
+                  <div class="dash-card-header">Infraestructura vs. pedagógico</div>
+                  <div class="dash-chart-body" id="dash-campo-bucket-chart"></div>
+                </div>
+                <div class="dash-card dash-chart-card">
+                  <div class="dash-card-header">Mapa de calor · distrito × variable</div>
+                  <div class="dash-chart-body" id="dash-campo-heatmap"></div>
+                </div>
+              </div>
+
               <div class="dash-chart-grid" id="dash-charts-simon-extra" style="display:none">
                 <div class="dash-card dash-chart-card">
                   <div class="dash-card-header">Distribución por nivel (I–IV)</div>
@@ -1362,16 +1710,19 @@ body.is-admin .view.admin-only.active{display:flex!important}
               </div>
             </div>
 
+            <div class="dash-alerts-overview is-hidden" id="dash-alerts-overview">
+              <div class="dash-kpi-grid" id="dash-alerts-kpis"></div>
+              <div class="dash-card" id="dash-alerts-severity-card" style="margin-top:16px">
+                <div class="dash-card-header">Alertas por severidad y fuente</div>
+                <div class="dash-chart-body" id="dash-alerts-severity-chart"></div>
+              </div>
+            </div>
+
             <div class="dash-grid-layout mode-panel" id="dash-main-grid">
               <div class="dash-left">
-                <div class="dash-card dash-alerts-card" id="dash-alerts-card" style="margin-bottom:16px">
+                <div class="dash-card dash-alerts-card" id="dash-alerts-card">
                   <div class="dash-card-header red">Alertas priorizadas <span id="dash-critical-count">0</span></div>
                   <div class="dash-list" id="dash-alert-list"></div>
-                </div>
-
-                <div class="dash-card dash-institutions-card" id="dash-institutions-card">
-                  <div class="dash-card-header">Instituciones <span id="dash-institution-count">0</span></div>
-                  <div class="dash-list" id="dash-institution-list"></div>
                 </div>
               </div>
 
@@ -1408,6 +1759,19 @@ body.is-admin .view.admin-only.active{display:flex!important}
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div class="dash-modal-overlay is-hidden" id="dash-evolucion-modal">
+            <div class="dash-modal">
+              <div class="dash-modal-head">
+                <div>
+                  <div class="dash-modal-title" id="dash-evolucion-title">Evolución de la IE</div>
+                  <div class="dash-modal-sub" id="dash-evolucion-sub"></div>
+                </div>
+                <button type="button" class="dash-modal-close" id="dash-evolucion-close">✕</button>
+              </div>
+              <div class="dash-modal-body" id="dash-evolucion-body"></div>
             </div>
           </div>
         </div>
@@ -2392,9 +2756,12 @@ document.getElementById('btn-register').addEventListener('click', async () => {
   const password = getField('reg-password');
   try {
     const d = await apiFetch('/registro', {method:'POST', body: JSON.stringify({nombre, email, password})});
-    localStorage.setItem('sugka_session', JSON.stringify(d));
-    showToast('Cuenta creada correctamente.', 'success');
-    enterApp(d.user || d.especialista);
+    showToast(d.message || 'Cuenta creada. Un administrador debe activarla antes de que puedas ingresar.', 'success');
+    document.getElementById('reg-nombre').value = '';
+    document.getElementById('reg-email').value = '';
+    document.getElementById('reg-password').value = '';
+    updateRegisterButton();
+    showLoginForm();
   } catch(e) {
     document.getElementById('login-error').textContent = e.message;
     document.getElementById('login-error').style.display = 'block';
@@ -2423,8 +2790,129 @@ function enterApp(esp) {
   loadInstrumentos();
   initMap(); loadDashboardData();
   if(isAdminUser()) loadConfigData();
-  switchView('mapa'); updateSyncUI();
+  switchView('inicio'); updateSyncUI();
+  renderHomeGrid();
+  setPerfilInfo();
 }
+
+/* Set propio de iconos en linea (estilo trazo, 24x24, sin depender de
+ * librerias ni imagenes externas) para navegacion, tarjetas de Inicio y
+ * KPIs de Gestion. currentColor hereda el color del contenedor (badge). */
+const ICON_SVGS = {
+  school: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M9 21v-6h6v6"/></svg>',
+  teacher: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7.2" r="3.2"/><path d="M4.5 21c0-4.4 3.4-8 7.5-8s7.5 3.6 7.5 8"/><path d="M12 10.2v3.2l-1.3 2.1h2.6L12 13.4"/></svg>',
+  student: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l10-4 10 4-10 4-10-4Z"/><path d="M6 10.5V15c0 1.7 2.7 3 6 3s6-1.3 6-3v-4.5"/><path d="M22 8v5.5"/></svg>',
+  alert: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20L12 3Z"/><path d="M12 9.5v4.2"/><path d="M12 17h.01"/></svg>',
+  chart: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V12M10 20V4M16 20V9"/><path d="M2 20h20"/></svg>',
+  map: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.2"/></svg>',
+  pencil: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9z"/><path d="M9 12h4M9 16h6"/></svg>',
+  camera: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M4 16v2a2 2 0 0 0 2 2h2M20 8V6a2 2 0 0 0-2-2h-2M20 16v2a2 2 0 0 1-2 2h-2"/><circle cx="12" cy="12" r="3.1"/></svg>',
+  clipboardCheck: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 3h6v3H9z"/><path d="M9.3 13.4l1.8 1.8L15 11.2"/></svg>',
+  archive: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4.3" rx="1"/><path d="M4.5 8.3V17a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8.3"/><path d="M10 13h4"/></svg>',
+  gear: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.3-2-3.4-2.3.8a7.6 7.6 0 0 0-1.7-1L15 3.5h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.3-.8-2 3.4L6.6 11a7.5 7.5 0 0 0 0 2l-2 1.3 2 3.4 2.3-.8a7.6 7.6 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 1.7-1l2.3.8 2-3.4-2-1.3Z"/></svg>',
+  question: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.2 9.3a3 3 0 1 1 4.3 2.7c-.9.5-1.5 1-1.5 2.4"/><path d="M12 17h.01"/></svg>',
+  hash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9h14M5 15h14M10 3 8 21M16 3l-2 18"/></svg>',
+  home: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>',
+};
+document.querySelectorAll('.nav-icon[data-icon]').forEach(el => { el.innerHTML = ICON_SVGS[el.dataset.icon] || ''; });
+
+const HOME_CARDS = [
+  { view:'mapa', icon:ICON_SVGS.map, title:'Mapa de IEs', admin:false,
+    copy:'Todas las instituciones georreferenciadas, coloreadas por nivel de riesgo según la fuente que elijas.',
+    stat:(d)=>{ const n = d.total_ies || (excelDashboard().instituciones||[]).length || 0; return n ? {value:n, label:'IE registradas'} : null; } },
+  { view:'dashboard', icon:ICON_SVGS.chart, title:'Gestión', admin:false,
+    copy:'Indicadores y rankings de riesgo por fuente: SIMON, Censo de Infraestructura e Informes de Campo.',
+    stat:(d)=>{ const n = d.alertas_pendientes || (dashboardState.alertas||[]).length || 0; return n ? {value:n, label:'alertas activas'} : null; } },
+  { view:'form', icon:ICON_SVGS.pencil, title:'Llenar Ficha', admin:false,
+    copy:'Registra una nueva ficha de monitoreo docente SIMON directamente desde la aplicación.', stat:null },
+  { view:'ocr', icon:ICON_SVGS.camera, title:'OCR Ficha', admin:false,
+    copy:'Sube una foto o PDF de una ficha física y extrae los datos automáticamente con IA.', stat:null },
+  { view:'campo', icon:ICON_SVGS.clipboardCheck, title:'Informes de Campo', admin:false,
+    copy:'Hallazgos, visitas y evolución de cada institución a partir de los informes de campo.',
+    stat:(d)=>{ const n=(d.campo_ranking&&d.campo_ranking.total_ie)||0; return n ? {value:n, label:'IE con informes'} : null; } },
+  { view:'registros', icon:ICON_SVGS.archive, title:'Registros', admin:false,
+    copy:'Historial completo de fichas, hojas e informes registrados en el sistema.', stat:null },
+  { view:'config', icon:ICON_SVGS.gear, title:'Configuración', admin:true,
+    copy:'Gestiona usuarios, instituciones y parámetros generales del sistema.', stat:null },
+  { view:'preguntas', icon:ICON_SVGS.question, title:'Preguntas dinámicas', admin:true,
+    copy:'Diseña instrumentos y preguntas personalizadas para nuevas recolecciones.', stat:null },
+];
+
+function renderHomeGrid() {
+  const grid = document.getElementById('home-grid');
+  if(!grid) return;
+  const first = (currentUser && currentUser.nombre) ? currentUser.nombre.trim().split(/\s+/)[0] : '';
+  document.getElementById('home-greeting').textContent = first ? `Hola, ${first}` : 'Hola';
+  const dateEl = document.getElementById('home-date');
+  if(dateEl) dateEl.textContent = new Date().toLocaleDateString('es-PE', {weekday:'long', day:'numeric', month:'long'});
+  const d = dashboardState.data || {};
+  const admin = isAdminUser();
+  grid.innerHTML = HOME_CARDS.filter(c => !c.admin || admin).map(c => {
+    const stat = c.stat ? c.stat(d) : null;
+    return `<button type="button" class="home-card" data-home-view="${c.view}">
+      <div class="home-card-top">
+        <span class="home-card-icon">${c.icon}</span>
+        ${c.admin ? '<span class="home-card-admin">Admin</span>' : ''}
+      </div>
+      <div class="home-card-title">${esc(c.title)}</div>
+      <div class="home-card-copy">${esc(c.copy)}</div>
+      ${stat ? `<div class="home-card-stat">${esc(String(stat.value))}</div><div class="home-card-stat-label">${esc(stat.label)}</div>` : ''}
+    </button>`;
+  }).join('');
+  grid.querySelectorAll('[data-home-view]').forEach(btn => {
+    btn.addEventListener('click', () => switchView(btn.dataset.homeView));
+  });
+}
+
+function setPerfilInfo() {
+  const u = currentUser || {};
+  const sub = document.getElementById('perfil-sub');
+  const info = document.getElementById('perfil-info');
+  if(sub) sub.textContent = u.nombre || 'Usuario';
+  if(info) {
+    const rows = [
+      ['Nombre', u.nombre || '-'],
+      ['Usuario', u.username || '-'],
+      ['Correo', u.email || '-'],
+      ['Rol', u.rol_label || u.rol_inferido || '-'],
+      ['Especialidad', u.especialidad || u.cargo || '-'],
+    ];
+    info.innerHTML = rows.map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+      <span style="color:var(--text-dim);font-weight:700">${esc(k)}</span><span style="color:var(--text);font-weight:600;text-align:right">${esc(String(v))}</span>
+    </div>`).join('');
+  }
+}
+
+function openPerfilModal() {
+  setPerfilInfo();
+  const form = document.getElementById('perfil-password-form');
+  if(form) form.reset();
+  document.getElementById('perfil-modal')?.classList.remove('is-hidden');
+}
+document.getElementById('btn-perfil')?.addEventListener('click', openPerfilModal);
+document.getElementById('btn-perfil-top')?.addEventListener('click', openPerfilModal);
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'perfil-close' || e.target.id === 'perfil-modal') {
+    document.getElementById('perfil-modal')?.classList.add('is-hidden');
+  }
+});
+document.getElementById('perfil-password-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const actual = getField('perfil-pw-actual');
+  const nueva = getField('perfil-pw-nueva');
+  if(!currentUser || !currentUser.user_id) return;
+  try {
+    await apiFetch(`/usuarios/${currentUser.user_id}/password`, {
+      method: 'PUT',
+      body: JSON.stringify({password_actual: actual, password: nueva})
+    });
+    showToast('Contraseña actualizada correctamente.', 'success');
+    document.getElementById('perfil-password-form').reset();
+    document.getElementById('perfil-modal')?.classList.add('is-hidden');
+  } catch(err) {
+    showToast(err.message || 'No se pudo actualizar la contraseña.', 'error');
+  }
+});
 
 async function loadConfigData() {
   if(!isAdminUser()) return;
@@ -2839,25 +3327,61 @@ const SIMON_INDICATORS = [
   ['b4', 'B4', 'Comunicación con respeto, calidez y atención a necesidades'],
   ['b5', 'B5', 'Normas de convivencia claras y formativas'],
 ];
+const NIVEL_COLOR = {1: 'var(--danger)', 2: 'var(--warning)', 3: 'var(--brand-blue)', 4: 'var(--success)'};
 document.getElementById('reg-ficha-indicadores').innerHTML = SIMON_INDICATORS.map(([field, code, label]) => `
-  <div class="field-item full">
-    <label class="form-group label">${code} · ${esc(label)}</label>
+  <div class="reg-card" data-indicador-card="${field}">
+    <label class="reg-card-label" style="cursor:default">
+      ${code} · ${esc(label)}
+    </label>
     <div style="display:flex;gap:8px;align-items:flex-start">
-      <select class="form-select" name="${field}" style="max-width:130px">
+      <select class="form-select" name="${field}" style="max-width:130px;flex-shrink:0">
         <option value="0">Sin observar</option>
         <option value="1">Nivel I</option>
         <option value="2">Nivel II</option>
         <option value="3">Nivel III</option>
         <option value="4">Nivel IV</option>
       </select>
-      <textarea class="form-input" name="${field}_observacion" rows="1" placeholder="Observación"></textarea>
+      <textarea class="form-input" name="${field}_observacion" rows="1" placeholder="Observación" style="flex:1"></textarea>
     </div>
   </div>
 `).join('');
+SIMON_INDICATORS.forEach(([field]) => {
+  document.querySelector(`[name="${field}"]`).addEventListener('change', e => {
+    const card = document.querySelector(`[data-indicador-card="${field}"]`);
+    card.style.borderLeftColor = NIVEL_COLOR[Number(e.target.value)] || 'var(--border2)';
+  });
+});
 
 function canEditRegistro(row) {
   if(isAdminUser()) return true;
   return !!row.creado_por && !!currentUser && row.creado_por === currentUser.user_id;
+}
+
+/* Abre en una pestaña nueva el archivo original (imagen/PDF) de un OCR.
+   Se descarga como blob autenticado en vez de un <a href> directo porque
+   la sesión usa Bearer token, no cookies, y un link plano no puede
+   adjuntar el header Authorization. */
+async function viewArchivoOriginal(archivoId) {
+  try {
+    const r = await fetch(`${API}/archivos/${archivoId}`, {headers: authHeaders()});
+    if(!r.ok) throw new Error('No se pudo abrir el archivo original.');
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+function renderArchivoLinks(containerId, items) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = items.map(({id, label}) =>
+    `<button type="button" class="mini-btn" data-view-archivo="${id}">${esc(label)}</button>`
+  ).join('');
+  container.querySelectorAll('[data-view-archivo]').forEach(btn => {
+    btn.addEventListener('click', () => viewArchivoOriginal(btn.dataset.viewArchivo));
+  });
 }
 
 async function loadRegistrosData() {
@@ -2890,10 +3414,24 @@ async function loadRegistrosFichas() {
   }
 }
 
+function populateRegistrosAutorFilter(selectId, rows) {
+  const sel = document.getElementById(selectId);
+  const prev = sel.value;
+  const myEmail = (currentUser && currentUser.email || '').toLowerCase();
+  const emails = [...new Set(rows.map(r => r.creado_por_email).filter(Boolean))]
+    .sort((a, b) => (a.toLowerCase() === myEmail ? -1 : b.toLowerCase() === myEmail ? 1 : a.localeCompare(b)));
+  sel.innerHTML = '<option value="">Todos los correos</option>'
+    + emails.map(e => `<option value="${esc(e)}">${e.toLowerCase() === myEmail ? '(Yo) ' : ''}${esc(e)}</option>`).join('');
+  if(emails.includes(prev)) sel.value = prev;
+}
+
 function renderRegistrosFichas() {
   const body = document.getElementById('reg-ficha-body');
   const q = getField('reg-ficha-search').toLowerCase();
+  const autorEmail = document.getElementById('reg-ficha-filter-autor').value;
+  populateRegistrosAutorFilter('reg-ficha-filter-autor', registrosFichas);
   const rows = registrosFichas.filter(f => {
+    if(autorEmail && f.creado_por_email !== autorEmail) return false;
     if(!q) return true;
     return [f.nombre_ie, f.codigo_modular, f.docente].some(v => (v || '').toLowerCase().includes(q));
   });
@@ -2913,7 +3451,7 @@ function renderRegistrosFichas() {
         <td>${esc(f.fecha_ejecucion || '')}</td>
         <td>${origen}</td>
         <td>${f.promedio ?? ''}</td>
-        <td>${esc(f.creado_por_nombre || 'Sin autor')}</td>
+        <td>${esc(f.creado_por_nombre || 'Sin autor')}${f.creado_por_email ? `<div class="dash-item-meta">${esc(f.creado_por_email)}</div>` : ''}</td>
         <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminada' : 'Activa'}</span></td>
         <td>
           <div class="config-actions">
@@ -2938,26 +3476,29 @@ function renderRegistrosFichas() {
 
 document.getElementById('reg-ficha-show-deleted').addEventListener('change', loadRegistrosFichas);
 document.getElementById('reg-ficha-search').addEventListener('input', renderRegistrosFichas);
+document.getElementById('reg-ficha-filter-autor').addEventListener('change', renderRegistrosFichas);
 
 function fichaDinamicaRowHtml(r, i, editable) {
   const nivel = Number(r.nivel) || 0;
   return `
-    <div class="fields-grid" data-dinamica-row="${i}" style="margin-bottom:8px">
-      <div class="field-item">
-        <label class="form-group label">Código de pregunta</label>
-        <input class="form-input" data-din-field="pregunta_codigo" value="${esc(r.pregunta_codigo || '')}" ${editable ? '' : 'disabled'}/>
+    <div class="reg-card" data-dinamica-row="${i}" style="border-left-color:${NIVEL_COLOR[nivel] || 'var(--border2)'}">
+      <div class="reg-card-fields">
+        <div class="field-item">
+          <label class="form-group label">Código de pregunta</label>
+          <input class="form-input" data-din-field="pregunta_codigo" value="${esc(r.pregunta_codigo || '')}" ${editable ? '' : 'disabled'}/>
+        </div>
+        <div class="field-item">
+          <label class="form-group label">Nivel</label>
+          <select class="form-select" data-din-field="nivel" ${editable ? '' : 'disabled'}>
+            ${[0,1,2,3,4].map(n => `<option value="${n}" ${nivel===n?'selected':''}>${n===0?'Sin observar':'Nivel '+n}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-item full">
+          <label class="form-group label">Observación</label>
+          <input class="form-input" data-din-field="observacion" value="${esc(r.observacion || '')}" ${editable ? '' : 'disabled'}/>
+        </div>
       </div>
-      <div class="field-item">
-        <label class="form-group label">Nivel</label>
-        <select class="form-select" data-din-field="nivel" ${editable ? '' : 'disabled'}>
-          ${[0,1,2,3,4].map(n => `<option value="${n}" ${nivel===n?'selected':''}>${n===0?'Sin observar':'Nivel '+n}</option>`).join('')}
-        </select>
-      </div>
-      <div class="field-item full">
-        <label class="form-group label">Observación</label>
-        <input class="form-input" data-din-field="observacion" value="${esc(r.observacion || '')}" ${editable ? '' : 'disabled'}/>
-      </div>
-      ${editable ? `<button type="button" class="mini-btn danger" data-din-remove="${i}">Quitar</button>` : ''}
+      ${editable ? `<button type="button" class="mini-btn danger" data-din-remove="${i}" style="margin-top:10px">Quitar</button>` : ''}
     </div>
   `;
 }
@@ -2965,6 +3506,11 @@ function fichaDinamicaRowHtml(r, i, editable) {
 function wireFichaDinamicaRemove() {
   document.querySelectorAll('#reg-ficha-dinamicas [data-din-remove]').forEach(btn => {
     btn.onclick = () => btn.closest('[data-dinamica-row]').remove();
+  });
+  document.querySelectorAll('#reg-ficha-dinamicas [data-din-field="nivel"]').forEach(sel => {
+    sel.onchange = () => {
+      sel.closest('.reg-card').style.borderLeftColor = NIVEL_COLOR[Number(sel.value)] || 'var(--border2)';
+    };
   });
 }
 
@@ -3005,12 +3551,19 @@ async function openFichaForm(id, wantEdit) {
       if(el) { el.value = detalle.ficha[name] ?? ''; el.disabled = !editable; }
     });
     SIMON_INDICATORS.forEach(([field]) => {
-      form.elements[field].value = detalle.ficha[field] ?? 0;
+      const nivel = detalle.ficha[field] ?? 0;
+      form.elements[field].value = nivel;
       form.elements[field].disabled = !editable;
       form.elements[`${field}_observacion`].value = detalle.ficha[`${field}_observacion`] ?? '';
       form.elements[`${field}_observacion`].disabled = !editable;
+      document.querySelector(`[data-indicador-card="${field}"]`).style.borderLeftColor = NIVEL_COLOR[Number(nivel)] || 'var(--border2)';
     });
     renderFichaDinamicas(detalle.respuestas_dinamicas || [], editable);
+    const archivos = detalle.archivos || [];
+    renderArchivoLinks('reg-ficha-archivos', archivos.map((a, i) => ({
+      id: a.id,
+      label: archivos.length > 1 ? `Ver archivo original ${i + 1}` : 'Ver archivo original',
+    })));
     document.getElementById('reg-ficha-form-title').textContent =
       `${editable ? 'Editar' : 'Ver'} ficha: ${detalle.ficha.nombre_ie || detalle.ficha.codigo_modular || ''}`;
     const metaParts = [`Autor: ${detalle.ficha.creado_por_nombre || 'Sin autor (registro histórico)'}`];
@@ -3029,6 +3582,7 @@ function closeFichaForm() {
   regFichaEditingId = null;
   document.getElementById('reg-ficha-form').style.display = 'none';
   document.getElementById('reg-ficha-form').reset();
+  document.getElementById('reg-ficha-archivos').innerHTML = '';
 }
 document.getElementById('reg-ficha-cancel').addEventListener('click', closeFichaForm);
 
@@ -3097,7 +3651,10 @@ async function loadRegistrosCampo() {
 function renderRegistrosCampo() {
   const body = document.getElementById('reg-campo-body');
   const q = getField('reg-campo-search').toLowerCase();
+  const autorEmail = document.getElementById('reg-campo-filter-autor').value;
+  populateRegistrosAutorFilter('reg-campo-filter-autor', registrosCampo);
   const rows = registrosCampo.filter(v => {
+    if(autorEmail && v.creado_por_email !== autorEmail) return false;
     if(!q) return true;
     return [v.nombre_ie_detectado, v.codigo_modular, v.especialista_detectado].some(x => (x || '').toLowerCase().includes(q));
   });
@@ -3115,7 +3672,7 @@ function renderRegistrosCampo() {
         <td>${esc(v.fecha_visita || '')}</td>
         <td>${esc(v.especialista_detectado || '')}</td>
         <td>${v.n_variables_observadas ?? 0}</td>
-        <td>${esc(v.creado_por_nombre || 'Sin autor')}</td>
+        <td>${esc(v.creado_por_nombre || 'Sin autor')}${v.creado_por_email ? `<div class="dash-item-meta">${esc(v.creado_por_email)}</div>` : ''}</td>
         <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminado' : 'Activo'}</span></td>
         <td>
           <div class="config-actions">
@@ -3140,6 +3697,9 @@ function renderRegistrosCampo() {
 
 document.getElementById('reg-campo-show-deleted').addEventListener('change', loadRegistrosCampo);
 document.getElementById('reg-campo-search').addEventListener('input', renderRegistrosCampo);
+document.getElementById('reg-campo-filter-autor').addEventListener('change', renderRegistrosCampo);
+
+const SEVERIDAD_COLOR = {alta: 'var(--danger)', media: 'var(--warning)', baja: 'var(--brand-blue)'};
 
 function renderCampoVariables(visita, meta, editable) {
   const container = document.getElementById('reg-campo-variables');
@@ -3148,15 +3708,25 @@ function renderCampoVariables(visita, meta, editable) {
     container.innerHTML = '<div class="config-selected">No hay catálogo de variables disponible.</div>';
     return;
   }
-  container.innerHTML = vars.map(v => `
-    <div class="field-item full" style="margin-bottom:10px">
-      <label class="form-group label">
-        <input type="checkbox" data-campo-var="${v}" ${visita[v] ? 'checked' : ''} ${editable ? '' : 'disabled'}/>
-        ${esc((meta[v] && meta[v].label) || v)}
-      </label>
-      <textarea class="form-input" data-campo-span="${v}" rows="1" placeholder="Evidencia textual" ${editable ? '' : 'disabled'}>${esc(visita[`span_${v}`] || '')}</textarea>
-    </div>
-  `).join('');
+  container.innerHTML = vars.map(v => {
+    const info = meta[v] || {};
+    const sev = info.severidad || '';
+    const color = SEVERIDAD_COLOR[sev] || 'var(--border2)';
+    const checked = !!visita[v];
+    return `
+      <div class="reg-card${checked ? ' checked' : ''}" style="border-left-color:${color}">
+        <label class="reg-card-label">
+          <input type="checkbox" data-campo-var="${v}" ${checked ? 'checked' : ''} ${editable ? '' : 'disabled'}/>
+          ${esc(info.label || v)}
+          ${sev ? `<span class="reg-card-tag sev-${sev}">${esc(sev)}</span>` : ''}
+        </label>
+        <textarea class="form-input" data-campo-span="${v}" rows="1" placeholder="Evidencia textual" ${editable ? '' : 'disabled'}>${esc(visita[`span_${v}`] || '')}</textarea>
+      </div>
+    `;
+  }).join('');
+  container.querySelectorAll('[data-campo-var]').forEach(chk => {
+    chk.addEventListener('change', () => chk.closest('.reg-card').classList.toggle('checked', chk.checked));
+  });
 }
 
 function collectCampoVariables() {
@@ -3171,25 +3741,30 @@ function collectCampoVariables() {
 }
 
 function campoHallazgoRowHtml(h, i, editable) {
+  const info = regCampoVariablesMeta[h.variable_detectada] || {};
+  const color = SEVERIDAD_COLOR[info.severidad] || 'var(--border2)';
   return `
-    <div class="fields-grid" data-hallazgo-row="${i}" style="margin-bottom:8px">
-      <div class="field-item">
-        <label class="form-group label">Variable</label>
-        <input class="form-input" data-hal-field="variable_detectada" value="${esc(h.variable_detectada || '')}" ${editable ? '' : 'disabled'}/>
+    <div class="reg-card" data-hallazgo-row="${i}" style="border-left-color:${color}">
+      <div class="reg-card-title">Hallazgo ${i + 1}${info.severidad ? ` <span class="reg-card-tag sev-${info.severidad}" style="margin-left:8px">${esc(info.severidad)}</span>` : ''}</div>
+      <div class="reg-card-fields">
+        <div class="field-item">
+          <label class="form-group label">Variable</label>
+          <input class="form-input" data-hal-field="variable_detectada" value="${esc(h.variable_detectada || '')}" ${editable ? '' : 'disabled'}/>
+        </div>
+        <div class="field-item">
+          <label class="form-group label">Tema</label>
+          <input class="form-input" data-hal-field="tema" value="${esc(h.tema || '')}" ${editable ? '' : 'disabled'}/>
+        </div>
+        <div class="field-item full">
+          <label class="form-group label">Descripción</label>
+          <input class="form-input" data-hal-field="descripcion" value="${esc(h.descripcion || '')}" ${editable ? '' : 'disabled'}/>
+        </div>
+        <div class="field-item full">
+          <label class="form-group label">Evidencia textual</label>
+          <input class="form-input" data-hal-field="evidencia_textual" value="${esc(h.evidencia_textual || '')}" ${editable ? '' : 'disabled'}/>
+        </div>
       </div>
-      <div class="field-item">
-        <label class="form-group label">Tema</label>
-        <input class="form-input" data-hal-field="tema" value="${esc(h.tema || '')}" ${editable ? '' : 'disabled'}/>
-      </div>
-      <div class="field-item full">
-        <label class="form-group label">Descripción</label>
-        <input class="form-input" data-hal-field="descripcion" value="${esc(h.descripcion || '')}" ${editable ? '' : 'disabled'}/>
-      </div>
-      <div class="field-item full">
-        <label class="form-group label">Evidencia textual</label>
-        <input class="form-input" data-hal-field="evidencia_textual" value="${esc(h.evidencia_textual || '')}" ${editable ? '' : 'disabled'}/>
-      </div>
-      ${editable ? `<button type="button" class="mini-btn danger" data-hal-remove="${i}">Quitar</button>` : ''}
+      ${editable ? `<button type="button" class="mini-btn danger" data-hal-remove="${i}" style="margin-top:10px">Quitar</button>` : ''}
     </div>
   `;
 }
@@ -3241,6 +3816,9 @@ async function openCampoForm(id, wantEdit) {
     form.elements['requiere_revision'].disabled = !editable;
     renderCampoVariables(detalle.visita, regCampoVariablesMeta, editable);
     renderCampoHallazgos(detalle.hallazgos || [], editable);
+    renderArchivoLinks('reg-campo-archivos', detalle.visita.archivo_subido_id
+      ? [{id: detalle.visita.archivo_subido_id, label: 'Ver documento original'}]
+      : []);
     document.getElementById('reg-campo-form-title').textContent =
       `${editable ? 'Editar' : 'Ver'} informe: ${detalle.visita.nombre_ie_detectado || detalle.visita.codigo_modular || ''}`;
     const metaParts = [`Autor: ${detalle.visita.creado_por_nombre || 'Sin autor (registro histórico)'}`];
@@ -3259,6 +3837,7 @@ function closeCampoForm() {
   regCampoEditingId = null;
   document.getElementById('reg-campo-form').style.display = 'none';
   document.getElementById('reg-campo-form').reset();
+  document.getElementById('reg-campo-archivos').innerHTML = '';
 }
 document.getElementById('reg-campo-cancel').addEventListener('click', closeCampoForm);
 
@@ -3481,6 +4060,7 @@ async function deleteDynamicQuestion(id) {
 
 /* Router */
 const VIEW_TITLES = {
+  inicio: ['Inicio','Resumen de todas las secciones'],
   mapa: ['IE de Imaza','Mapa de instituciones'],
   form: ['Ficha de monitoreo','Registro offline'],
   ocr: ['OCR de ficha','Azure Document Intelligence'],
@@ -3522,9 +4102,19 @@ function switchView(id) {
   if(id==='campo') prepareCampoView();
   if(id==='registros') loadRegistrosData();
 }
-document.querySelectorAll('.nav-item[data-view]').forEach(el => el.addEventListener('click', () => switchView(el.dataset.view)));
+document.querySelectorAll('.nav-item[data-view]').forEach(el => el.addEventListener('click', () => {
+  switchView(el.dataset.view);
+  document.getElementById('sidebar').classList.remove('peek');
+}));
 document.getElementById('sidebar-toggle').addEventListener('click', () => {
   document.getElementById('sidebar').classList.toggle('expanded');
+  document.getElementById('sidebar').classList.remove('peek');
+});
+document.getElementById('sidebar').addEventListener('mouseenter', function() {
+  if(!this.classList.contains('expanded')) this.classList.add('peek');
+});
+document.getElementById('sidebar').addEventListener('mouseleave', function() {
+  this.classList.remove('peek');
 });
 document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
 document.getElementById('btn-empty-pdf').addEventListener('click', () => {
@@ -3558,6 +4148,7 @@ let allIEs = [];
 let filteredIEs = [];
 let currentMarkers = {};
 let selectedIECode = null;
+let mapSourceFilter = 'todas';
 
 const TILE_URLS = {
   light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
@@ -3567,8 +4158,43 @@ const TILE_URLS = {
 const ALERTA_CFG = {
   alta:  {color:'var(--danger)',  hex:'#ef4444'},
   media: {color:'var(--warning)', hex:'#f59e0b'},
-  baja:  {color:'var(--accent)',  hex:'#10b981'}
+  baja:  {color:'var(--accent)',  hex:'#10b981'},
+  sindatos: {color:'#9ca3af', hex:'#9ca3af'}
 };
+
+/* Nivel a colorear en el mapa segun la fuente elegida en las pestañas
+ * "Fuente de riesgo": cada fuente aplica SU PROPIA regla (la misma que ya
+ * usa su ranking en el Panel) en vez del score combinado por defecto.
+ * null = la IE no tiene datos de esa fuente (punto gris, no "bajo riesgo"). */
+function mapEffectiveNivel(ie) {
+  const mapNivel = (valor, alto, medio) => {
+    if (!valor) return null;
+    if (valor === alto) return 'alta';
+    if (valor === medio) return 'media';
+    return 'baja';
+  };
+  if (mapSourceFilter === 'simon') return mapNivel(ie.riesgo_simon, 'Alto', 'Medio');
+  if (mapSourceFilter === 'censo') return mapNivel(ie.riesgo_censo, 'Critico', 'Alerta');
+  if (mapSourceFilter === 'campo') return mapNivel(ie.riesgo_campo, 'Alto', 'Medio');
+  return ie.nivel_alerta || 'baja';
+}
+
+const MAP_SOURCE_LEGEND = {
+  todas: {title: 'Nivel de alerta (modelo combinado)', alta: 'Alerta alta (≥15)', media: 'Alerta media (≥8)', baja: 'Sin alerta crítica', copy: 'Instituciones educativas monitoreadas por nivel, alerta y distrito.'},
+  simon: {title: 'Riesgo SIMON', alta: 'Alto', media: 'Medio', baja: 'Bajo', copy: 'Color según riesgo_intervencion de SIMON. Los puntos grises no tienen fichas SIMON.'},
+  censo: {title: 'Riesgo Censo de Infraestructura', alta: 'Crítico', media: 'Alerta', baja: 'Estable', copy: 'Color según risk_score_infra del Censo 2025.'},
+  campo: {title: 'Riesgo Informes de Campo', alta: 'Alto', media: 'Medio', baja: 'Bajo', copy: 'Color según severidad de variables detectadas en informes de campo. Los puntos grises no tienen informes.'},
+};
+
+function updateMapLegendLabels() {
+  const cfg = MAP_SOURCE_LEGEND[mapSourceFilter] || MAP_SOURCE_LEGEND.todas;
+  document.getElementById('map-legend-title').textContent = cfg.title;
+  document.getElementById('leg-alta-label').textContent = cfg.alta;
+  document.getElementById('leg-media-label').textContent = cfg.media;
+  document.getElementById('leg-baja-label').textContent = cfg.baja;
+  const sub = document.getElementById('map-heading-sub');
+  if (sub) sub.textContent = cfg.copy;
+}
 
 async function initMap() {
   if(map) return;
@@ -3582,12 +4208,22 @@ async function initMap() {
   document.getElementById('map-filter-distrito').addEventListener('change', applyMapFilters);
   document.getElementById('map-filter-alerta').addEventListener('change', applyMapFilters);
   document.getElementById('map-filter-nivel').addEventListener('change', applyMapFilters);
+  document.querySelectorAll('#map-source-tabs .dash-source-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#map-source-tabs .dash-source-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      mapSourceFilter = btn.dataset.mapSource;
+      updateMapLegendLabels();
+      renderMap();
+    });
+  });
 
   try {
     allIEs = await apiFetch('/instituciones');
     populateDistricts();
     populateLevels();
     applyMapFilters();
+    renderHomeGrid();
   } catch(e) {
     console.error('Error cargando IEs:', e);
     if (e.message !== 'Sesión expirada.') {
@@ -3661,7 +4297,7 @@ function applyMapFilters() {
 
   filteredIEs = allIEs.filter(ie => {
     if(qd && ie.distrito !== qd) return false;
-    if(qa && ie.nivel_alerta !== qa) return false;
+    if(qa && mapEffectiveNivel(ie) !== qa) return false;
     if(qn && normalizeIENivel(ie.nivel_modalidad) !== qn) return false;
     if(qs) {
       const nombre = String(ie.nombre_iiee || '').toLowerCase();
@@ -3676,7 +4312,7 @@ function applyMapFilters() {
 }
 
 function makeMarkerIcon(ie, active=false) {
-  const cfg = ALERTA_CFG[ie.nivel_alerta] || ALERTA_CFG.baja;
+  const cfg = ALERTA_CFG[mapEffectiveNivel(ie)] || ALERTA_CFG.sindatos;
   const sz = active?16:12;
   const ring = active ? '#ffffff' : (currentTheme === 'dark' ? '#0d1b2a' : '#ffffff');
   const html = `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${cfg.hex};border:2px solid ${ring};box-shadow:0 0 10px ${cfg.hex}88;transition:all .2s"></div>`;
@@ -3687,14 +4323,16 @@ function renderMap() {
   clusterGroup.clearLayers();
   currentMarkers = {};
 
-  let ca=0, cm=0, cb=0;
+  let ca=0, cm=0, cb=0, cs=0;
 
   filteredIEs.forEach(ie => {
     if(!ie.latitud) return;
 
-    if(ie.nivel_alerta==='alta') ca++;
-    else if(ie.nivel_alerta==='media') cm++;
-    else cb++;
+    const nivel = mapEffectiveNivel(ie);
+    if(nivel==='alta') ca++;
+    else if(nivel==='media') cm++;
+    else if(nivel==='baja') cb++;
+    else cs++;
 
     const m = L.marker([ie.latitud, ie.longitud], {icon: makeMarkerIcon(ie, ie.codigo_modular===selectedIECode)});
     m.on('click', () => {
@@ -3712,6 +4350,8 @@ function renderMap() {
   document.getElementById('leg-alta').textContent = ca;
   document.getElementById('leg-media').textContent = cm;
   document.getElementById('leg-baja').textContent = cb;
+  document.getElementById('leg-sindatos').textContent = cs;
+  document.getElementById('leg-sindatos-row').style.display = cs > 0 ? '' : 'none';
 
   renderIEList();
 }
@@ -3727,7 +4367,7 @@ function renderIEList() {
   toRender.forEach(ie => {
     const div = document.createElement('div');
     div.className = 'ie-row' + (ie.codigo_modular===selectedIECode?' selected':'');
-    const c = ALERTA_CFG[ie.nivel_alerta] || ALERTA_CFG.baja;
+    const c = ALERTA_CFG[mapEffectiveNivel(ie)] || ALERTA_CFG.sindatos;
     div.innerHTML = `
       <div class="ie-dot" style="background:${c.hex}"></div>
       <div style="min-width:0;flex:1">
@@ -4073,13 +4713,34 @@ const dashboardState = {
   pageSize: 10
 };
 
+/* KPIs de fuentes sin logica dedicada todavia: SIMON ya calcula sus propios
+ * KPIs reales (ver isSimonFilter en renderDashboard); las demas fuentes no
+ * tienen aun una forma correcta de combinarse o de calcularse, asi que se
+ * comunica explicitamente en vez de mostrar numeros mezclados o inventados. */
+const SOURCE_KPI_SOON = {
+  todas: {
+    title: 'Vista unificada en construcción',
+    copy: 'Aún no combinamos KPIs de SIMON, preguntas dinámicas e informes de campo en una sola lectura. Elige una fuente arriba para ver sus KPIs reales.',
+  },
+  dinamica: {
+    title: 'KPIs de preguntas dinámicas en construcción',
+    copy: 'El instrumento dinámico (Infraestructura, Docentes, Alumnos, Estudiantes, Familias) todavía no tiene respuestas registradas.',
+  },
+};
+
 /* Filtra las alertas (y por lo tanto los KPIs derivados de ellas) por
  * fuente: SIMON, preguntas dinámicas, informes de campo, o todas a la vez --
  * las 4 opciones que se pidieron explícitamente. */
+/* El filtro UI usa 'censo' (corto, igual que 'simon'/'dinamica'/'campo'), pero
+ * las alertas reales del censo se guardaron con fuente='censo_2025' -- se
+ * traduce aqui en vez de renombrar la columna en la base. */
+const DASH_SOURCE_TO_FUENTE = {censo: 'censo_2025'};
+
 function filteredDashboardAlertas() {
   const all = dashboardState.alertas || [];
   if(dashboardState.sourceFilter === 'todas') return all;
-  return all.filter(a => a.fuente === dashboardState.sourceFilter);
+  const fuente = DASH_SOURCE_TO_FUENTE[dashboardState.sourceFilter] || dashboardState.sourceFilter;
+  return all.filter(a => a.fuente === fuente);
 }
 
 document.querySelectorAll('.dash-source-tab').forEach(btn => {
@@ -4190,16 +4851,18 @@ function applyDashboardView() {
     btn.classList.toggle('active', btn.dataset.dashView === view);
   });
   const overview = document.getElementById('dash-overview');
+  const alertsOverview = document.getElementById('dash-alerts-overview');
   const mainGrid = document.getElementById('dash-main-grid');
   if (overview) overview.classList.toggle('is-hidden', view !== 'panel');
+  if (alertsOverview) alertsOverview.classList.toggle('is-hidden', view !== 'alerts');
   if (mainGrid) {
-    mainGrid.classList.remove('mode-panel', 'mode-institutions', 'mode-alerts');
+    mainGrid.classList.remove('mode-panel', 'mode-alerts');
     mainGrid.classList.add(`mode-${view}`);
   }
 }
 
 function selectDashboardView(view) {
-  dashboardState.activeView = ['panel', 'institutions', 'alerts'].includes(view) ? view : 'panel';
+  dashboardState.activeView = ['panel', 'alerts'].includes(view) ? view : 'panel';
   applyDashboardView();
 }
 
@@ -4249,10 +4912,7 @@ function bindDashboardInteractions() {
     el.onclick = () => selectDashboardView(el.dataset.dashView);
   });
   document.querySelectorAll('[data-dash-ie]').forEach(el => {
-    el.onclick = () => {
-      selectDashboardIE(el.dataset.dashIe);
-      if (dashboardState.activeView === 'panel') selectDashboardView('institutions');
-    };
+    el.onclick = () => selectDashboardIE(el.dataset.dashIe);
   });
   document.querySelectorAll('#dash-tabs .dash-tab').forEach(el => {
     el.onclick = () => selectDashboardSheet(el.dataset.sheet);
@@ -4260,7 +4920,6 @@ function bindDashboardInteractions() {
   document.querySelectorAll('[data-dash-page]').forEach(el => {
     el.onclick = () => {
       const page = Number(el.dataset.page) || 1;
-      if (el.dataset.dashPage === 'institutions') dashboardState.institutionPage = page;
       if (el.dataset.dashPage === 'alerts') dashboardState.alertPage = page;
       renderDashboardLists((excelDashboard().instituciones || []));
       bindDashboardInteractions();
@@ -4281,6 +4940,7 @@ async function loadDashboardData() {
     dashboardState.institutionPage = 1;
     dashboardState.alertPage = 1;
     renderDashboard();
+    renderHomeGrid();
   } catch(e) {
     document.getElementById('dash-kpis').innerHTML = '<div class="dash-empty">No se pudo cargar el dashboard.</div>';
   }
@@ -4311,24 +4971,35 @@ function renderDashboard() {
     : alertasDetalle.length;
   document.getElementById('dash-alert-count').textContent = alertasPendientes;
   document.getElementById('dash-critical-count').textContent = `(${alertasPendientes})`;
-  document.getElementById('dash-institution-count').textContent = `${instituciones.length}/${d.total_ies || instituciones.length || 0}`;
 
-  document.getElementById('dash-kpis').innerHTML = realSimon ? `
-    <div class="dash-kpi">
-      <div class="dash-kpi-label">IIEE oficiales</div>
-      <div class="dash-kpi-value">${d.total_ies || instituciones.length || 0}</div>
-      <div class="dash-kpi-sub">${infraStats.total_ie || 0} con cruce de infraestructura Censo 2025</div>
+  const isSimonFilter = dashboardState.sourceFilter === 'simon';
+  const isCensoFilter = dashboardState.sourceFilter === 'censo';
+  const isCampoFilter = dashboardState.sourceFilter === 'campo';
+  const isTodasFilter = dashboardState.sourceFilter === 'todas';
+  const simonRanking = d.simon_ranking || {ies: [], total_ie: 0};
+  const infraRanking = d.infra_ranking || {ies: [], total_ie: 0};
+  const infraSummary = d.infraestructura_censo || {};
+  const simonRiesgoAlto = simonRanking.ies.filter(ie => ie.riesgo_intervencion === 'Alto').length;
+  const censoScore = Number(infraSummary.promedio_score || 0);
+  const censoNivel = censoScore >= 5 ? 'Critico' : censoScore >= 3 ? 'Alerta' : 'Estable';
+  const censoHeroKpi = `
+    <div class="dash-kpi green">
+      <div class="dash-kpi-hero-top">
+        <div class="dash-kpi-label" style="margin-bottom:0">Score de riesgo promedio</div>
+        <span class="dash-kpi-hero-target">Meta &lt; 3.0</span>
+      </div>
+      <div class="dash-kpi-hero-value">${censoScore.toFixed(2)} <span>/ 6.5</span></div>
+      <div class="dash-meter-track">
+        <div class="dash-meter-fill" style="width:${Math.max(2, Math.min(100, (censoScore / 6.5) * 100))}%"></div>
+        <div class="dash-meter-target" style="left:${(3 / 6.5 * 100).toFixed(1)}%"></div>
+      </div>
+      <div class="dash-kpi-hero-foot">
+        <span>${infraSummary.total_ie || 0} IE censadas</span>
+        <span class="dash-nivel-pill ${censoNivel === 'Critico' ? 'critico' : censoNivel === 'Alerta' ? 'alerta' : 'logrado'}">${esc(censoNivel)}</span>
+      </div>
     </div>
-    <div class="dash-kpi red">
-      <div class="dash-kpi-label">Alertas priorizadas</div>
-      <div class="dash-kpi-value">${alertasPendientes}</div>
-      <div class="dash-kpi-sub">Pedagógicas SIMON e infraestructura censal pendientes</div>
-    </div>
-    <div class="dash-kpi amber">
-      <div class="dash-kpi-label">Infraestructura crítica</div>
-      <div class="dash-kpi-value">${infraStats.criticas || 0}</div>
-      <div class="dash-kpi-sub">${infraStats.en_alerta || 0} en alerta · score promedio ${infraStats.promedio_score || 0}</div>
-    </div>
+  `;
+  const simonHeroKpi = `
     <div class="dash-kpi green">
       <div class="dash-kpi-hero-top">
         <div class="dash-kpi-label" style="margin-bottom:0">Promedio general SIMON</div>
@@ -4344,24 +5015,122 @@ function renderDashboard() {
         ${simonStats.nivel_actual ? `<span class="dash-nivel-pill ${Number(simonStats.promedio_nivel) < 2.25 ? 'critico' : Number(simonStats.promedio_nivel) < 2.75 ? 'alerta' : 'logrado'}">${esc(simonStats.nivel_actual)}</span>` : ''}
       </div>
     </div>
+  `;
+
+  const campoRanking = d.campo_ranking || {ies: [], total_ie: 0, variables_distribution: [], buckets: []};
+  const campoVarTop = campoRanking.variables_distribution[0];
+  const campoHeroKpi = `
+    <div class="dash-kpi green">
+      <div class="dash-kpi-hero-top">
+        <div class="dash-kpi-label" style="margin-bottom:0">Variable más frecuente</div>
+        <span class="dash-kpi-hero-target">${campoVarTop ? campoVarTop.porcentaje + '% de las visitas' : ''}</span>
+      </div>
+      <div class="dash-kpi-hero-value" style="font-size:22px">${campoVarTop ? esc(campoVarTop.label) : 'Sin datos'}</div>
+      <div class="dash-meter-track">
+        <div class="dash-meter-fill" style="width:${campoVarTop ? Math.max(2, campoVarTop.porcentaje) : 2}%;background:${campoVarTop && campoVarTop.severidad === 'alta' ? 'var(--dash-red)' : 'var(--dash-amber)'}"></div>
+      </div>
+      <div class="dash-kpi-hero-foot">
+        <span title="${campoVarTop ? esc(campoVarTop.importancia) : ''}">${campoVarTop ? campoVarTop.count : 0} visitas la registran</span>
+        ${campoVarTop ? `<span class="dash-nivel-pill ${campoVarTop.severidad === 'alta' ? 'critico' : campoVarTop.severidad === 'media' ? 'alerta' : 'logrado'}">${esc(campoVarTop.severidad)}</span>` : ''}
+      </div>
+    </div>
+  `;
+
+  document.getElementById('dash-kpis').innerHTML = isSimonFilter ? `
+    <div class="dash-kpi">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Fichas SIMON</div><span class="dash-kpi-icon">${ICON_SVGS.clipboardCheck}</span></div>
+      <div class="dash-kpi-value">${resultados.fichas_recolectadas || 0}</div>
+      <div class="dash-kpi-sub">${simonRanking.total_ie || 0} IE · última visita por docente</div>
+    </div>
+    <div class="dash-kpi red">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">IE en riesgo alto</div><span class="dash-kpi-icon">${ICON_SVGS.alert}</span></div>
+      <div class="dash-kpi-value">${simonRiesgoAlto}</div>
+      <div class="dash-kpi-sub">de ${simonRanking.total_ie || 0} IE evaluadas</div>
+    </div>
+    <div class="dash-kpi amber">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Docentes bajo Nivel III</div><span class="dash-kpi-icon">${ICON_SVGS.teacher}</span></div>
+      <div class="dash-kpi-value">${docentesRefuerzo}</div>
+      <div class="dash-kpi-sub">de ${resultados.fichas_recolectadas || 0} evaluados</div>
+    </div>
+    ${simonHeroKpi}
+  ` : isCensoFilter ? `
+    <div class="dash-kpi">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">IE censadas</div><span class="dash-kpi-icon">${ICON_SVGS.school}</span></div>
+      <div class="dash-kpi-value">${infraSummary.total_ie || 0}</div>
+      <div class="dash-kpi-sub">Censo Educativo 2025</div>
+    </div>
+    <div class="dash-kpi red">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">IE críticas</div><span class="dash-kpi-icon">${ICON_SVGS.alert}</span></div>
+      <div class="dash-kpi-value">${infraSummary.criticas || 0}</div>
+      <div class="dash-kpi-sub" title="Score de riesgo de infraestructura (risk_score_infra) de 5 o más">Máxima prioridad de atención · de ${infraSummary.total_ie || 0}</div>
+    </div>
+    <div class="dash-kpi amber">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Aulas registradas sin uso</div><span class="dash-kpi-icon">${ICON_SVGS.chart}</span></div>
+      <div class="dash-kpi-value">${infraSummary.sin_aulas_en_uso || 0}</div>
+      <div class="dash-kpi-sub">de ${infraSummary.total_ie || 0} IE</div>
+    </div>
+    ${censoHeroKpi}
+  ` : isCampoFilter ? `
+    <div class="dash-kpi">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Visitas registradas</div><span class="dash-kpi-icon">${ICON_SVGS.map}</span></div>
+      <div class="dash-kpi-value">${campoRanking.total_visitas || 0}</div>
+      <div class="dash-kpi-sub">${campoRanking.total_documentos || 0} documentos · ${campoRanking.visitas_con_fecha || 0} con fecha conocida</div>
+    </div>
+    <div class="dash-kpi red">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">IE en riesgo alto</div><span class="dash-kpi-icon">${ICON_SVGS.alert}</span></div>
+      <div class="dash-kpi-value">${campoRanking.riesgo_alto || 0}</div>
+      <div class="dash-kpi-sub">de ${campoRanking.total_ie || 0} IE con informes</div>
+    </div>
+    <div class="dash-kpi amber">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">IE con informes de campo</div><span class="dash-kpi-icon">${ICON_SVGS.school}</span></div>
+      <div class="dash-kpi-value">${campoRanking.total_ie || 0}</div>
+      <div class="dash-kpi-sub">de 382 IE oficiales</div>
+    </div>
+    ${campoHeroKpi}
+  ` : SOURCE_KPI_SOON[dashboardState.sourceFilter] ? `
+    <div class="dash-kpi-soon">
+      <div>
+        <span class="dash-kpi-soon-tag">Próximamente</span>
+        <div class="dash-kpi-soon-title">${esc(SOURCE_KPI_SOON[dashboardState.sourceFilter].title)}</div>
+        <div class="dash-kpi-soon-copy">${esc(SOURCE_KPI_SOON[dashboardState.sourceFilter].copy)}</div>
+      </div>
+      <button type="button" class="dash-kpi-soon-cta" onclick="document.querySelector('.dash-source-tab[data-source=&quot;simon&quot;]').click()">Ver KPIs de SIMON</button>
+    </div>
+  ` : realSimon ? `
+    <div class="dash-kpi">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">IIEE oficiales</div><span class="dash-kpi-icon">${ICON_SVGS.school}</span></div>
+      <div class="dash-kpi-value">${d.total_ies || instituciones.length || 0}</div>
+      <div class="dash-kpi-sub">${infraStats.total_ie || 0} con cruce de infraestructura Censo 2025</div>
+    </div>
+    <div class="dash-kpi red">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Alertas priorizadas</div><span class="dash-kpi-icon">${ICON_SVGS.alert}</span></div>
+      <div class="dash-kpi-value">${alertasPendientes}</div>
+      <div class="dash-kpi-sub">Pedagógicas SIMON e infraestructura censal pendientes</div>
+    </div>
+    <div class="dash-kpi amber">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Infraestructura crítica</div><span class="dash-kpi-icon">${ICON_SVGS.school}</span></div>
+      <div class="dash-kpi-value">${infraStats.criticas || 0}</div>
+      <div class="dash-kpi-sub">${infraStats.en_alerta || 0} en alerta · score promedio ${infraStats.promedio_score || 0}</div>
+    </div>
+    ${simonHeroKpi}
   ` : `
     <div class="dash-kpi">
-      <div class="dash-kpi-label">Instituciones monitoreadas</div>
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Instituciones monitoreadas</div><span class="dash-kpi-icon">${ICON_SVGS.school}</span></div>
       <div class="dash-kpi-value">${d.ies_monitoreadas || 0}</div>
       <div class="dash-kpi-sub">${resultados.fichas_recolectadas || 0} fichas · ${resultados.ocr_total || 0} OCR</div>
     </div>
     <div class="dash-kpi red">
-      <div class="dash-kpi-label">Docentes en refuerzo</div>
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Docentes en refuerzo</div><span class="dash-kpi-icon">${ICON_SVGS.teacher}</span></div>
       <div class="dash-kpi-value">${docentesRefuerzo}</div>
       <div class="dash-kpi-sub">${docentesTotal} docentes demo evaluados</div>
     </div>
     <div class="dash-kpi amber">
-      <div class="dash-kpi-label">Infraestructura critica</div>
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Infraestructura critica</div><span class="dash-kpi-icon">${ICON_SVGS.alert}</span></div>
       <div class="dash-kpi-value">${infraCriticas}</div>
       <div class="dash-kpi-sub">${supportCount} IEs en riesgo alto o medio</div>
     </div>
     <div class="dash-kpi green">
-      <div class="dash-kpi-label">Promedio alumnos V2</div>
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Promedio alumnos V2</div><span class="dash-kpi-icon">${ICON_SVGS.student}</span></div>
       <div class="dash-kpi-value">${alumnosPromedio}%</div>
       <div class="dash-kpi-sub">Rendimiento academico comparativo</div>
     </div>
@@ -4398,7 +5167,46 @@ function renderDashboard() {
     </div>
   `;
 
+  const metricRow = document.getElementById('dash-metric-row');
+  if (metricRow) metricRow.style.display = isTodasFilter ? '' : 'none';
+
+  // Cada pestaña de fuente muestra solo su propio contenido: "Todas" es la
+  // unica vista que mezcla (y solo con modelos que ya combinan fuentes de
+  // forma real, como el score de riesgo ponderado); las demas pestañas
+  // ocultan cualquier tarjeta que no sea exclusivamente suya.
+  setDashCardVisible('dash-infra-ranking-card', isCensoFilter);
+  setDashCardVisible('dash-infra-flags-card', isCensoFilter);
+  setDashCardVisible('dash-infra-chart-card', isTodasFilter || isCensoFilter);
+  setDashCardVisible('dash-risk-chart-card', isTodasFilter || isSimonFilter);
+  setDashCardVisible('dash-simon-chart-card', isSimonFilter);
+  setDashCardVisible('dash-campo-ranking-card', isCampoFilter);
+  setDashCardVisible('dash-campo-variables-card', isCampoFilter);
+  setDashCardVisible('dash-campo-extra', isCampoFilter);
+
+  // La grilla de 2 columnas deja un hueco vacio cuando solo queda 1 tarjeta
+  // visible (ej. Censo, donde solo se muestra Infraestructura 2025) -- si es
+  // la unica visible, que ocupe el ancho completo en vez de dejar el hueco.
+  const chartGridCards = ['dash-risk-chart-card', 'dash-infra-chart-card', 'dash-simon-chart-card']
+    .map(id => document.getElementById(id))
+    .filter(Boolean);
+  const visibleChartCards = chartGridCards.filter(el => el.style.display !== 'none');
+  chartGridCards.forEach(el => { el.style.gridColumn = visibleChartCards.length === 1 ? '1 / -1' : ''; });
+
+  renderSimonRanking(simonRanking, isSimonFilter);
+  renderCoverage(d.ie_coverage || {ies: [], total_ie: 0}, isTodasFilter);
+  if (isCensoFilter) {
+    renderInfraRanking(infraRanking);
+    renderInfraFlagsChart(infraRanking.flags_distribution);
+  }
+  if (isCampoFilter) {
+    renderCampoRanking(campoRanking);
+    renderCampoVariablesChart(campoRanking.variables_distribution);
+    renderCampoBucketChart(campoRanking.buckets);
+    renderCampoHeatmap(campoRanking.heatmap);
+  }
+
   renderDashboardCharts(d, instituciones);
+  renderAlertsOverview();
   renderDashboardLists(instituciones);
   renderDashboardFocus(focus);
   renderDashboardSheet(focus);
@@ -4433,6 +5241,265 @@ function dashIndicatorBar(item, pregunta) {
   `;
 }
 
+function setDashCardVisible(id, visible) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = visible ? '' : 'none';
+}
+
+/* Ranking de priorizacion SIMON: siempre calculado sobre la ultima visita de
+ * cada docente (ver simon_latest_ficha_por_docente en el backend) -- una IE
+ * que ya mejoro no debe seguir arriba del ranking por una evaluacion vieja. */
+function renderSimonRanking(ranking, visible) {
+  const card = document.getElementById('dash-simon-ranking-card');
+  if (!card) return;
+  card.style.display = visible ? '' : 'none';
+  if (!visible) return;
+
+  const ies = ranking.ies || [];
+  const rows = ies.map((ie, idx) => `
+    <div class="dash-ranking-row" data-evo-codigo="${esc(ie.codigo_modular)}" data-evo-nombre="${esc(ie.nombre_iiee || ie.codigo_modular)}">
+      <span class="dash-ranking-rank">${idx + 1}</span>
+      <div class="dash-ranking-ie">
+        <div class="dash-ranking-ie-name">${esc(ie.nombre_iiee || ie.codigo_modular)}</div>
+        <div class="dash-ranking-ie-meta">${esc(ie.distrito || 'Sin distrito')} · última visita ${ie.ultima_visita ? esc(ie.ultima_visita) : 'sin fecha'}</div>
+      </div>
+      ${simonRiskBadge(ie.riesgo_intervencion)}
+      <span class="dash-ranking-promedio">${Number(ie.promedio_general || 0).toFixed(2)}</span>
+      <span class="dash-ranking-docentes">${ie.docentes_evaluados} doc.</span>
+    </div>
+  `).join('');
+
+  const dupNote = ranking.duplicados_excluidos
+    ? ` · ${ranking.duplicados_excluidos} ficha${ranking.duplicados_excluidos > 1 ? 's' : ''} repetida${ranking.duplicados_excluidos > 1 ? 's' : ''} excluida${ranking.duplicados_excluidos > 1 ? 's' : ''}`
+    : '';
+
+  document.getElementById('dash-simon-ranking-body').innerHTML = `
+    <div class="dash-ranking-body">${rows || '<div class="dash-empty">No hay fichas SIMON registradas.</div>'}</div>
+    <div class="dash-ranking-foot">${ranking.total_ie || 0} IE priorizadas · ${ranking.fichas_ultima_visita || 0} fichas vigentes${dupNote}</div>
+  `;
+}
+
+/* Ranking de priorizacion del Censo de Infraestructura 2025: es una foto
+ * unica por IE (no hay visitas que deduplicar como en SIMON), asi que se
+ * ordena directamente por risk_score_infra descendente. Se muestra siempre,
+ * sin importar el filtro de fuente activo. */
+function infraRiskBadge(nivel) {
+  const map = {Critico: 'danger', Alerta: 'warning', Estable: 'ok'};
+  const cls = map[nivel] || 'info';
+  return `<span class="dash-status ${cls}">${esc(nivel || 'Sin dato')}</span>`;
+}
+
+function renderInfraRanking(ranking) {
+  const body = document.getElementById('dash-infra-ranking-body');
+  if (!body) return;
+  const ies = (ranking.ies || []).slice(0, 20);
+  const rows = ies.map((ie, idx) => `
+    <div class="dash-ranking-row" data-evo-codigo="${esc(ie.codigo_modular)}" data-evo-nombre="${esc(ie.nombre_iiee || ie.codigo_modular)}">
+      <span class="dash-ranking-rank">${idx + 1}</span>
+      <div class="dash-ranking-ie">
+        <div class="dash-ranking-ie-name">${esc(ie.nombre_iiee || ie.codigo_modular)}</div>
+        <div class="dash-ranking-ie-meta">${esc(ie.distrito || 'Sin distrito')} · ${ie.aulas_en_uso}/${ie.aulas} aulas en uso</div>
+      </div>
+      ${infraRiskBadge(ie.nivel)}
+      <span class="dash-ranking-promedio">${Number(ie.risk_score_infra || 0).toFixed(1)}</span>
+      <span class="dash-ranking-docentes">${ie.banderas} ${ie.banderas === 1 ? 'bandera' : 'banderas'}</span>
+    </div>
+  `).join('');
+
+  body.innerHTML = `
+    <div class="dash-ranking-body">${rows || '<div class="dash-empty">No hay datos censales cargados.</div>'}</div>
+    <div class="dash-ranking-foot" title="Ordenado por risk_score_infra descendente">${ranking.total_ie || 0} IE evaluadas · mostrando las ${ies.length} de mayor a menor riesgo (${ranking.criticas || 0} críticas, ${ranking.en_alerta || 0} en alerta)</div>
+  `;
+}
+
+/* Cobertura de monitoreo: dias desde la ultima visita real por fuente, no
+ * confundir con el ranking de riesgo -- aqui "primero" es "mas tiempo sin
+ * visitar", no "peor desempeno". */
+function coverageDiasBadge(dias) {
+  if (dias === null || dias === undefined) return '<span class="dash-status info">Sin visita</span>';
+  const cls = dias >= 180 ? 'danger' : dias >= 60 ? 'warning' : 'ok';
+  return `<span class="dash-status ${cls}">${dias} días</span>`;
+}
+
+function renderCoverage(coverage, visible) {
+  const card = document.getElementById('dash-coverage-card');
+  if (!card) return;
+  card.style.display = visible ? '' : 'none';
+  if (!visible) return;
+
+  const ies = (coverage.ies || []).slice(0, 20);
+  const rows = ies.map((ie, idx) => `
+    <div class="dash-ranking-row" data-evo-codigo="${esc(ie.codigo_modular)}" data-evo-nombre="${esc(ie.nombre_iiee || ie.codigo_modular)}" style="grid-template-columns:26px 1fr 90px 90px">
+      <span class="dash-ranking-rank">${idx + 1}</span>
+      <div class="dash-ranking-ie">
+        <div class="dash-ranking-ie-name">${esc(ie.nombre_iiee || ie.codigo_modular)}</div>
+        <div class="dash-ranking-ie-meta">${esc(ie.distrito || 'Sin distrito')}</div>
+      </div>
+      <div style="text-align:center"><div class="dash-item-meta" style="margin-bottom:3px">SIMON</div>${coverageDiasBadge(ie.dias_desde_simon)}</div>
+      <div style="text-align:center"><div class="dash-item-meta" style="margin-bottom:3px">Campo</div>${coverageDiasBadge(ie.dias_desde_campo)}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('dash-coverage-body').innerHTML = `
+    <div class="dash-ranking-body">${rows || '<div class="dash-empty">No hay IE con visitas fechadas todavía.</div>'}</div>
+    <div class="dash-ranking-foot">${coverage.total_ie || 0} IE con al menos un evento fechado · ordenadas de más a menos tiempo sin contacto · clic en una fila para ver su línea de tiempo</div>
+  `;
+}
+
+/* Linea de tiempo combinada SIMON + campo de una IE, en un modal. */
+async function openIEEvolucion(codigo, nombre) {
+  const overlay = document.getElementById('dash-evolucion-modal');
+  const body = document.getElementById('dash-evolucion-body');
+  const title = document.getElementById('dash-evolucion-title');
+  const sub = document.getElementById('dash-evolucion-sub');
+  if (!overlay || !body) return;
+  title.textContent = nombre || codigo;
+  sub.textContent = 'Cargando línea de tiempo...';
+  body.innerHTML = '<div class="spinner" style="margin:24px auto"></div>';
+  overlay.classList.remove('is-hidden');
+
+  try {
+    const data = await apiFetch(`/institucion/${encodeURIComponent(codigo)}/evolucion`);
+    const inst = data.institucion || {};
+    sub.textContent = `${inst.codigo_modular || codigo} · ${esc(inst.distrito || 'Sin distrito')} · ${esc(inst.nivel_modalidad || '')}`;
+    const eventos = data.eventos || [];
+    if (!eventos.length) {
+      body.innerHTML = '<div class="dash-empty">No hay eventos SIMON ni de campo registrados para esta IE.</div>';
+      return;
+    }
+    const colorByFuente = {simon: 'var(--dash-blue)', campo: 'var(--dash-purple)'};
+    const nivelColor = {Alto: 'var(--dash-red)', Medio: 'var(--dash-amber)', Bajo: 'var(--dash-green)'};
+    body.innerHTML = `
+      <div class="dash-timeline">
+        ${eventos.map(ev => `
+          <div class="dash-timeline-item">
+            <span class="dash-timeline-dot" style="background:${colorByFuente[ev.fuente] || 'var(--dash-blue)'}"></span>
+            <div class="dash-timeline-date">${ev.fecha ? esc(ev.fecha) : 'Fecha no registrada'}</div>
+            <div class="dash-timeline-title">${esc(ev.titulo)}</div>
+            <div class="dash-timeline-detail">${esc(ev.detalle || '')}</div>
+            ${ev.nivel ? `<span class="dash-status ${ev.nivel === 'Alto' ? 'danger' : ev.nivel === 'Medio' ? 'warning' : 'ok'}" style="margin-top:6px;display:inline-flex">${esc(ev.nivel)}</span>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  } catch (e) {
+    body.innerHTML = `<div class="dash-empty">No se pudo cargar la línea de tiempo (${esc(e.message || 'error')}).</div>`;
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const evoRow = e.target.closest('[data-evo-codigo]');
+  if (evoRow) { openIEEvolucion(evoRow.dataset.evoCodigo, evoRow.dataset.evoNombre); return; }
+  if (e.target.id === 'dash-evolucion-close' || e.target.id === 'dash-evolucion-modal') {
+    document.getElementById('dash-evolucion-modal')?.classList.add('is-hidden');
+  }
+});
+
+function renderInfraFlagsChart(distribution) {
+  const el = document.getElementById('dash-infra-flags-chart');
+  if (!el) return;
+  const items = distribution || [];
+  const max = Math.max(1, ...items.map(item => item.ies || 0));
+  el.innerHTML = items.length
+    ? items.map(item => dashMiniBar(item.descripcion, item.ies, max, 'var(--dash-blue)', `${item.porcentaje}% de las 382 IE`)).join('')
+    : '<div class="dash-empty">No hay datos censales cargados.</div>';
+}
+
+/* Ranking de priorizacion de Informes de Campo: agrega TODAS las visitas por
+ * IE (no solo la ultima) porque solo ~1 de cada 3 filas trae fecha confiable
+ * -- ver campo_ranking() en el backend. */
+function campoRiskBadge(nivel) {
+  const map = {Alto: 'danger', Medio: 'warning', Bajo: 'ok'};
+  return `<span class="dash-status ${map[nivel] || 'info'}">${esc(nivel || 'Sin dato')}</span>`;
+}
+
+function renderCampoRanking(ranking) {
+  const body = document.getElementById('dash-campo-ranking-body');
+  if (!body) return;
+  const ies = (ranking.ies || []).slice(0, 20);
+  const rows = ies.map((ie, idx) => `
+    <div class="dash-ranking-row" data-evo-codigo="${esc(ie.codigo_modular)}" data-evo-nombre="${esc(ie.nombre_iiee || ie.codigo_modular)}">
+      <span class="dash-ranking-rank">${idx + 1}</span>
+      <div class="dash-ranking-ie">
+        <div class="dash-ranking-ie-name">${esc(ie.nombre_iiee || ie.codigo_modular)}</div>
+        <div class="dash-ranking-ie-meta">${esc(ie.distrito || 'Sin distrito')} · ${ie.ultima_visita ? 'última visita ' + esc(ie.ultima_visita) : 'fecha no registrada'}</div>
+      </div>
+      ${campoRiskBadge(ie.nivel)}
+      <span class="dash-ranking-promedio">${ie.visitas} vis.</span>
+      <span class="dash-ranking-docentes">${ie.banderas} ${ie.banderas === 1 ? 'variable' : 'variables'}</span>
+    </div>
+  `).join('');
+
+  body.innerHTML = `
+    <div class="dash-ranking-body">${rows || '<div class="dash-empty">No hay informes de campo registrados.</div>'}</div>
+    <div class="dash-ranking-foot">${ranking.total_ie || 0} IE con informes · ${ranking.total_visitas || 0} visitas (${ranking.visitas_con_fecha || 0} con fecha conocida)</div>
+  `;
+}
+
+function renderCampoVariablesChart(distribution) {
+  const el = document.getElementById('dash-campo-variables-chart');
+  if (!el) return;
+  const items = distribution || [];
+  const max = Math.max(1, ...items.map(item => item.count || 0));
+  const colorBySeveridad = {alta: 'var(--dash-red)', media: 'var(--dash-amber)', baja: 'var(--dash-blue)'};
+  el.innerHTML = items.length
+    ? items.map(item => dashMiniBar(item.label, item.count, max, colorBySeveridad[item.severidad] || 'var(--dash-blue)', `${item.porcentaje}% de las visitas · severidad ${item.severidad}`)).join('')
+      + `<div class="dash-ind-legend" style="margin-top:4px">
+          <span title="Requiere atención inmediata"><i style="background:var(--dash-red)"></i>Severidad alta</span>
+          <span title="Amerita seguimiento"><i style="background:var(--dash-amber)"></i>Severidad media</span>
+          <span title="Contexto operativo"><i style="background:var(--dash-blue)"></i>Severidad baja</span>
+        </div>`
+    : '<div class="dash-empty">No hay informes de campo registrados.</div>';
+}
+
+function renderCampoBucketChart(buckets) {
+  const el = document.getElementById('dash-campo-bucket-chart');
+  if (!el) return;
+  const items = buckets || [];
+  const total = items.reduce((sum, b) => sum + (b.count || 0), 0);
+  if (!total) { el.innerHTML = '<div class="dash-empty">No hay informes de campo registrados.</div>'; return; }
+  el.innerHTML = items.map((item, idx) => {
+    const pct = Math.round(item.count / total * 100);
+    return `
+      <div class="dash-dim-row">
+        <div>
+          <div class="dash-dim-label">${esc(item.bucket)}</div>
+          <div class="dash-dim-sub">${item.count} detecciones</div>
+        </div>
+        <span class="dash-dim-val">${pct}%</span>
+      </div>
+      <div class="dash-dim-track"><div class="dash-dim-fill" style="width:${Math.max(2, pct)}%;background:${idx === 0 ? 'var(--dash-red)' : 'var(--dash-blue)'}"></div></div>
+    `;
+  }).join('');
+}
+
+function renderCampoHeatmap(heatmap) {
+  const el = document.getElementById('dash-campo-heatmap');
+  if (!el) return;
+  const distritos = (heatmap || {}).distritos || [];
+  const variables = (heatmap || {}).variables || [];
+  const celdas = (heatmap || {}).celdas || [];
+  if (!distritos.length || !variables.length) { el.innerHTML = '<div class="dash-empty">No hay informes de campo registrados.</div>'; return; }
+
+  const lookup = {};
+  celdas.forEach(c => { lookup[`${c.distrito}|${c.variable}`] = c.count; });
+  const max = Math.max(1, ...celdas.map(c => c.count || 0));
+
+  const cols = `minmax(90px,1.4fr) repeat(${distritos.length}, minmax(34px,1fr))`;
+  const headCells = distritos.map(d => `<div class="dash-heatmap-head">${esc(d.length > 8 ? d.slice(0, 8) + '…' : d)}</div>`).join('');
+  const rows = variables.map(v => {
+    const cells = distritos.map(d => {
+      const count = lookup[`${d}|${v.variable}`] || 0;
+      const intensity = count ? Math.max(0.18, count / max) : 0;
+      const style = count ? `background:rgba(37,99,235,${intensity.toFixed(2)})` : '';
+      return `<div class="dash-heatmap-cell ${count ? '' : 'zero'}" style="${style}" title="${esc(d)} · ${esc(v.label)}: ${count}">${count || '·'}</div>`;
+    }).join('');
+    return `<div class="dash-heatmap-row-label" title="${esc(v.label)}">${esc(v.label)}</div>${cells}`;
+  }).join('');
+
+  el.innerHTML = `<div class="dash-heatmap" style="grid-template-columns:${cols}"><div></div>${headCells}${rows}</div>`;
+}
+
 function renderDashboardCharts(d, instituciones) {
   const isSimonFilter = dashboardState.sourceFilter === 'simon';
   const meta = d.simon_metodologia || {};
@@ -4450,7 +5517,7 @@ function renderDashboardCharts(d, instituciones) {
       <div class="dash-stack-legend">
         ${fichaDist.map(item => `<span><i style="background:${colorByNivel[item.nivel] || 'var(--dash-blue)'}"></i>${esc(item.nivel)} — ${item.fichas} ${item.fichas === 1 ? 'ficha' : 'fichas'}</span>`).join('')}
       </div>
-      <div class="dash-hbar-note" style="margin-top:2px">riesgo_intervencion calculado por ficha (regla documentada), sobre las ${totalFichas} fichas SIMON registradas.</div>
+      <div class="dash-hbar-note" style="margin-top:2px" title="riesgo_intervencion segun la regla documentada, sobre la ultima visita de cada docente.">Última visita por docente · ${totalFichas} fichas</div>
     ` : '<div class="dash-empty">No hay fichas SIMON cargadas.</div>';
   } else {
     if (riskTitle) riskTitle.textContent = 'Riesgo por IE';
@@ -4473,18 +5540,10 @@ function renderDashboardCharts(d, instituciones) {
   const infraAlert = Number(infra.en_alerta) || 0;
   const infraStable = Math.max(0, totalInfra - infraCrit - infraAlert);
   document.getElementById('dash-infra-chart').innerHTML = [
-    dashMiniBar('Críticas', infraCrit, totalInfra, 'var(--dash-red)', 'risk_score_infra >= 5'),
-    dashMiniBar('En alerta', infraAlert, totalInfra, 'var(--dash-amber)', 'risk_score_infra entre 3 y 4.99'),
+    dashMiniBar('Críticas', infraCrit, totalInfra, 'var(--dash-red)', 'Score de riesgo 5 o más'),
+    dashMiniBar('En alerta', infraAlert, totalInfra, 'var(--dash-amber)', 'Score de riesgo entre 3 y 5'),
     dashMiniBar('Sin prioridad alta', infraStable, totalInfra, 'var(--dash-green)', 'Sin alerta crítica censal')
   ].join('');
-
-  const alertas = filteredDashboardAlertas();
-  const sourceCounts = sumBy(alertas, 'fuente');
-  const sourceRows = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]);
-  const sourceMax = Math.max(1, ...sourceRows.map(row => row[1]));
-  document.getElementById('dash-alert-source-chart').innerHTML = sourceRows.length
-    ? sourceRows.map(([label, value]) => dashMiniBar(label, value, sourceMax, label === 'simon' ? 'var(--dash-blue)' : 'var(--accent)')).join('')
-    : '<div class="dash-empty">No hay alertas pendientes en la base.</div>';
 
   // Los 8 indicadores completos (antes se cortaban a 4 con slice(0,4)), ordenados
   // de peor a mejor promedio y coloreados por severidad; el tooltip reutiliza la
@@ -4500,9 +5559,9 @@ function renderDashboardCharts(d, instituciones) {
         return dashIndicatorBar({...item, pregunta_codigo: info.codigo_reporte || item.area, pregunta: info.pregunta}, info.pregunta);
       }).join('') + `
       <div class="dash-ind-legend">
-        <span><i style="background:var(--dash-red)"></i>Crítico · promedio &lt; 2.25</span>
-        <span><i style="background:var(--dash-amber)"></i>Alerta · 2.25–2.99</span>
-        <span><i style="background:var(--dash-green)"></i>Nivel III o más</span>
+        <span title="Promedio menor a 2.25"><i style="background:var(--dash-red)"></i>Crítico</span>
+        <span title="Promedio entre 2.25 y 2.99"><i style="background:var(--dash-amber)"></i>Alerta</span>
+        <span title="Nivel III o más"><i style="background:var(--dash-green)"></i>Logrado</span>
       </div>`
     : '<div class="dash-empty">No hay respuestas SIMON cargadas.</div>';
 
@@ -4537,6 +5596,79 @@ function renderDashboardCharts(d, instituciones) {
   }
 }
 
+/* Nombre en lenguaje llano de cada fuente -- nunca el valor crudo de BD
+ * (simon / censo_2025 / dinamica / campo) en texto visible por defecto. */
+const DASH_FUENTE_LABEL = {
+  simon: 'SIMON',
+  censo_2025: 'Censo 2025',
+  dinamica: 'Preguntas dinámicas',
+  campo: 'Informes de campo',
+};
+function fuenteLabel(fuente) {
+  return DASH_FUENTE_LABEL[fuente] || fuente || 'Sin fuente';
+}
+
+/* Dashboard de la vista "Alertas": KPIs + severidad/fuente, siempre sobre la
+ * fuente elegida en el filtro compartido (misma logica que el Panel). */
+function renderAlertsOverview() {
+  const alertas = filteredDashboardAlertas();
+  const total = alertas.length;
+  const porSeveridad = {alta: 0, media: 0, baja: 0};
+  alertas.forEach(a => {
+    const key = String(a.severidad || 'media').toLowerCase();
+    if (porSeveridad[key] === undefined) porSeveridad[key] = 0;
+    porSeveridad[key]++;
+  });
+  const porFuente = sumBy(alertas, 'fuente');
+  const fuenteTop = Object.entries(porFuente).sort((a, b) => b[1] - a[1])[0];
+  const scores = alertas.map(a => Number(a.score) || 0).filter(v => v > 0);
+  const scorePromedio = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+
+  document.getElementById('dash-alerts-kpis').innerHTML = `
+    <div class="dash-kpi">
+      <div class="dash-kpi-label">Alertas activas</div>
+      <div class="dash-kpi-value">${total}</div>
+      <div class="dash-kpi-sub">Pendientes de atención</div>
+    </div>
+    <div class="dash-kpi red">
+      <div class="dash-kpi-label">Severidad alta</div>
+      <div class="dash-kpi-value">${porSeveridad.alta}</div>
+      <div class="dash-kpi-sub">${total ? Math.round(porSeveridad.alta / total * 100) : 0}% del total · requieren visita prioritaria</div>
+    </div>
+    <div class="dash-kpi amber">
+      <div class="dash-kpi-label">Fuente principal</div>
+      <div class="dash-kpi-value">${fuenteTop ? esc(fuenteLabel(fuenteTop[0])) : '—'}</div>
+      <div class="dash-kpi-sub">${fuenteTop ? `${fuenteTop[1]} alertas` : 'Sin alertas'}</div>
+    </div>
+    <div class="dash-kpi green">
+      <div class="dash-kpi-label">Score promedio de prioridad</div>
+      <div class="dash-kpi-value">${scorePromedio.toFixed(1)}</div>
+      <div class="dash-kpi-sub" title="Cada regla de alerta suma puntos editoriales segun su severidad (ver 'Reglas de alertas'); a mayor score, mayor urgencia.">Editorial, no es un porcentaje</div>
+    </div>
+  `;
+
+  const sevRows = [
+    ['Alta', porSeveridad.alta, 'var(--dash-red)'],
+    ['Media', porSeveridad.media, 'var(--dash-amber)'],
+    ['Baja', porSeveridad.baja, 'var(--dash-green)'],
+  ];
+  const sevMax = Math.max(1, ...sevRows.map(r => r[1]));
+  const fuenteRows = Object.entries(porFuente).sort((a, b) => b[1] - a[1]);
+  const fuenteMax = Math.max(1, ...fuenteRows.map(r => r[1]));
+  document.getElementById('dash-alerts-severity-chart').innerHTML = total ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+      <div>
+        <div class="dash-hbar-note" style="margin-bottom:8px;font-weight:800;color:var(--dash-text)">Por severidad</div>
+        ${sevRows.map(r => dashMiniBar(r[0], r[1], sevMax, r[2])).join('')}
+      </div>
+      <div>
+        <div class="dash-hbar-note" style="margin-bottom:8px;font-weight:800;color:var(--dash-text)">Por fuente</div>
+        ${fuenteRows.map(([f, v]) => dashMiniBar(fuenteLabel(f), v, fuenteMax, 'var(--dash-blue)')).join('')}
+      </div>
+    </div>
+  ` : '<div class="dash-empty">No hay alertas para esta fuente.</div>';
+}
+
 function renderDashboardLists(instituciones) {
   const selected = String(dashboardState.selectedCodigo || '');
   const pageSize = dashboardState.pageSize || 10;
@@ -4549,44 +5681,25 @@ function renderDashboardLists(instituciones) {
   document.getElementById('dash-alert-list').innerHTML = alertPage.items.map(alerta => {
     const isDbAlert = Boolean(alerta.alerta_id || alerta.alerta_codigo);
     const code = alerta.codigo_modular || '';
-    const riskCls = isDbAlert ? dashAlertSeverityClass(alerta.severidad) : dashRiskClass(alerta.risk_level);
+    const severidadCls = isDbAlert ? dashAlertSeverityClass(alerta.severidad) : dashRiskClass(alerta.risk_level);
+    const severidadLabel = isDbAlert ? (alerta.severidad || 'media') : (alerta.risk_level || 'Media');
     const title = isDbAlert ? (alerta.titulo || alerta.cat_nombre || 'Alerta priorizada') : alerta.nombre_iiee;
-    const ieName = isDbAlert ? (alerta.nombre_iiee || `CM ${code}`) : alerta.nombre_iiee;
+    const ieName = isDbAlert ? (alerta.nombre_iiee || `IE ${code}`) : alerta.nombre_iiee;
     const meta = isDbAlert
-      ? `${ieName} · ${alerta.distrito || 'Sin distrito'} · ${alerta.fuente || 'BD'} · score ${alerta.score || 0}`
-      : `${alerta.distrito || 'Sin distrito'} · ${alerta.risk_level} · ${alerta.risk_score}%`;
-    const detail = isDbAlert && alerta.descripcion ? String(alerta.descripcion).slice(0, 112) : '';
+      ? `${esc(ieName)} · ${esc(alerta.distrito || 'Sin distrito')} · ${esc(fuenteLabel(alerta.fuente))}`
+      : `${esc(alerta.distrito || 'Sin distrito')} · ${esc(alerta.risk_level)}`;
+    const detail = isDbAlert && alerta.descripcion ? String(alerta.descripcion).slice(0, 130) : '';
     return `
       <button class="dash-list-item selectable ${selected === String(code) ? 'selected' : ''}" type="button" data-dash-ie="${esc(code)}">
-        <span class="dash-dot ${dashDotClass(riskCls)}"></span>
+        <span class="dash-status ${severidadCls}" style="flex-shrink:0;text-transform:capitalize">${esc(severidadLabel)}</span>
         <div style="flex:1;min-width:0">
           <div class="dash-item-title">${esc(title)}</div>
-          <div class="dash-item-meta">${esc(meta)}</div>
-          ${detail ? `<div class="dash-item-meta">${esc(detail)}${String(alerta.descripcion).length > 112 ? '...' : ''}</div>` : ''}
+          <div class="dash-item-meta">${meta}</div>
+          ${detail ? `<div class="dash-item-meta" title="Cómo se detectó esta alerta">${esc(detail)}${String(alerta.descripcion).length > 130 ? '…' : ''}</div>` : ''}
         </div>
       </button>
     `;
-  }).join('') + dashPagerHtml('alerts', alertPage.page, alertPage.totalPages, alertPage.total, 'Alertas') || '<div class="dash-empty">No hay alertas criticas activas.</div>';
-
-  const institutionPage = dashPaged(instituciones, dashboardState.institutionPage, pageSize);
-  dashboardState.institutionPage = institutionPage.page;
-  document.getElementById('dash-institution-list').innerHTML = institutionPage.items.map(ie => {
-    const riskCls = dashRiskClass(ie.risk_level);
-    const dot = dashDotClass(riskCls);
-    const active = selected === String(ie.codigo_modular) ? 'selected' : '';
-    const width = Math.min(100, Number(ie.risk_score) || 0);
-    return `
-      <button class="dash-list-item selectable ${active}" type="button" data-dash-ie="${esc(ie.codigo_modular)}">
-        <span class="dash-dot ${dot}"></span>
-        <div style="flex:1;min-width:0">
-          <div class="dash-item-title">${esc(ie.nombre_iiee)}</div>
-          <div class="dash-item-meta">${esc(ie.distrito || 'Sin distrito')} · ${esc(ie.nivel_modalidad || 'IE')}</div>
-          <div class="dash-progress"><span style="width:${width}%"></span></div>
-        </div>
-        <div class="dash-score">${ie.risk_score}%</div>
-      </button>
-    `;
-  }).join('') + dashPagerHtml('institutions', institutionPage.page, institutionPage.totalPages, institutionPage.total, 'Instituciones') || '<div class="dash-empty">No hay instituciones para mostrar.</div>';
+  }).join('') + dashPagerHtml('alerts', alertPage.page, alertPage.totalPages, alertPage.total, 'Alertas') || '<div class="dash-empty">No hay alertas activas para esta fuente.</div>';
 }
 
 function renderDashboardFocus(focus) {
@@ -4763,20 +5876,19 @@ function renderInfraSheet(focus) {
       </div>
     `).join('');
     const flagRows = flags.map(item => `
-      <div class="dash-rule">
-        <strong>${esc(item.flag)}</strong><br/>
+      <div class="dash-rule" title="${esc(item.flag)}">
         ${esc(item.descripcion)}
       </div>
     `).join('') || '<div class="dash-empty">Sin banderas de riesgo registradas.</div>';
     document.getElementById('dash-sheet-panel').innerHTML = `
       <div class="dash-result-grid" style="margin-bottom:16px">
-        <div class="dash-result ${dashStatusClass(resumen.estado)}">
-          <div class="dash-result-label">risk_score_infra</div>
+        <div class="dash-result ${dashStatusClass(resumen.estado)}" title="risk_score_infra">
+          <div class="dash-result-label">Score de riesgo</div>
           <div class="dash-result-value">${resumen.risk_score_infra || 0}</div>
           <div class="dash-item-meta">${esc((resumen.estado || {}).label || 'Sin estado')} · Censo 2025</div>
         </div>
         <div class="dash-result warning">
-          <div class="dash-result-label">Alertas infraestructura campo</div>
+          <div class="dash-result-label">Alertas de infraestructura en campo</div>
           <div class="dash-result-value">${resumen.alertas_infraestructura_campo || 0}</div>
           <div class="dash-item-meta">Menciones de infraestructura/servicios</div>
         </div>
@@ -4788,10 +5900,10 @@ function renderInfraSheet(focus) {
       </div>
       <div class="dash-sheet-grid" style="margin-bottom:16px">${cards}</div>
       <div class="dash-note" style="margin-bottom:12px">
-        risk_flags explica las razones del riesgo; risk_score_infra ordena la prioridad de atencion. A mayor puntaje, mayor prioridad.
+        Motivos detectados del riesgo (banderas) y el score que ordena la prioridad de atención: a mayor puntaje, mayor urgencia.
       </div>
       <div class="dash-card" style="box-shadow:none">
-        <div class="dash-card-header">risk_flags</div>
+        <div class="dash-card-header">Motivos del riesgo</div>
         <div style="padding:0 16px 8px">${flagRows}</div>
       </div>
     `;
