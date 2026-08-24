@@ -3533,10 +3533,24 @@ SIMON_INDICATORS.forEach(([field]) => {
 
 function formatRegistroFecha(value) {
   if(!value) return '';
-  const [fecha, hora] = String(value).split(' ');
-  const [y, m, d] = (fecha || '').split('-');
-  if(!y || !m || !d) return value;
-  return `${d}/${m}/${y}${hora ? ' ' + hora.slice(0, 5) : ''}`;
+  const str = String(value).trim();
+  const hasTime = /\d{2}:\d{2}/.test(str);
+  if (!hasTime) {
+    const [y, m, d] = str.split('-');
+    return (y && m && d) ? `${d}/${m}/${y}` : str;
+  }
+  // Los timestamps del backend son CURRENT_TIMESTAMP de SQLite (UTC, sin
+  // sufijo de zona horaria). Se interpretan como UTC explicitamente y se
+  // muestran en hora de Peru (UTC-5) para que coincidan con el momento real
+  // en que se registro el dato, en vez de mostrar la hora UTC cruda.
+  const date = new Date(str.replace(' ', 'T') + 'Z');
+  if (isNaN(date.getTime())) return str;
+  const parts = new Intl.DateTimeFormat('es-PE', {
+    timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(date);
+  const get = t => (parts.find(p => p.type === t) || {}).value || '';
+  return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}`;
 }
 
 function canEditRegistro(row) {
@@ -3968,7 +3982,7 @@ async function openFichaForm(id, wantEdit) {
       metaParts.push(`Registrado: ${formatRegistroFecha(detalle.ficha.fecha_sincronizacion)}`);
     }
     if(detalle.ficha.modificado_por_nombre) {
-      metaParts.push(`Última edición: ${detalle.ficha.modificado_por_nombre} (${detalle.ficha.actualizado_en || ''})`);
+      metaParts.push(`Última edición: ${detalle.ficha.modificado_por_nombre} (${formatRegistroFecha(detalle.ficha.actualizado_en)})`);
     }
     document.getElementById('reg-ficha-meta').textContent = metaParts.join(' · ');
     document.getElementById('reg-ficha-submit').style.display = editable ? 'inline-flex' : 'none';
@@ -4258,7 +4272,7 @@ async function openCampoForm(id, wantEdit) {
       metaParts.push(`Registrado: ${formatRegistroFecha(detalle.visita.creado_en)}`);
     }
     if(detalle.visita.modificado_por_nombre) {
-      metaParts.push(`Última edición: ${detalle.visita.modificado_por_nombre} (${detalle.visita.actualizado_en || ''})`);
+      metaParts.push(`Última edición: ${detalle.visita.modificado_por_nombre} (${formatRegistroFecha(detalle.visita.actualizado_en)})`);
     }
     document.getElementById('reg-campo-meta').textContent = metaParts.join(' · ');
     document.getElementById('reg-campo-submit').style.display = editable ? 'inline-flex' : 'none';
