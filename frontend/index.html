@@ -571,7 +571,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .config-tab.active{background:var(--brand-blue);border-color:var(--brand-blue);color:#fff}
 .config-tab-panel{display:none}
 .config-tab-panel.active{display:block}
-.config-filter-row{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.config-filter-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}
 .config-filter-row label{font-size:11px;color:var(--text-muted);font-weight:700;display:flex;align-items:center;gap:6px}
 .config-filter-row input[type=checkbox]{width:15px;height:15px;accent-color:var(--brand-blue)}
 .config-selected{font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:12px}
@@ -1553,6 +1553,16 @@ body.is-admin .view.admin-only.active{display:flex!important}
                 <input class="form-input" id="reg-ficha-search" placeholder="Buscar por IE, código o docente..." style="max-width:280px"/>
                 <select class="form-input" id="reg-ficha-filter-autor" style="max-width:240px"><option value="">Todos los correos</option></select>
               </div>
+              <div class="config-filter-row">
+                <label class="dash-item-meta" style="display:flex;align-items:center;gap:6px">Registrado desde
+                  <input class="form-input" type="date" id="reg-ficha-filter-desde" style="max-width:150px"/>
+                </label>
+                <label class="dash-item-meta" style="display:flex;align-items:center;gap:6px">hasta
+                  <input class="form-input" type="date" id="reg-ficha-filter-hasta" style="max-width:150px"/>
+                </label>
+                <button type="button" class="mini-btn" id="reg-ficha-export-csv">Exportar CSV</button>
+                <button type="button" class="mini-btn" id="reg-ficha-export-xlsx">Exportar Excel</button>
+              </div>
               <div class="reg-table-scroll">
                 <table class="user-table">
                   <thead>
@@ -1643,6 +1653,16 @@ body.is-admin .view.admin-only.active{display:flex!important}
                 <label><input type="checkbox" id="reg-campo-show-deleted"/> Mostrar eliminados</label>
                 <input class="form-input" id="reg-campo-search" placeholder="Buscar por IE, código o especialista..." style="max-width:280px"/>
                 <select class="form-input" id="reg-campo-filter-autor" style="max-width:240px"><option value="">Todos los correos</option></select>
+              </div>
+              <div class="config-filter-row">
+                <label class="dash-item-meta" style="display:flex;align-items:center;gap:6px">Registrado desde
+                  <input class="form-input" type="date" id="reg-campo-filter-desde" style="max-width:150px"/>
+                </label>
+                <label class="dash-item-meta" style="display:flex;align-items:center;gap:6px">hasta
+                  <input class="form-input" type="date" id="reg-campo-filter-hasta" style="max-width:150px"/>
+                </label>
+                <button type="button" class="mini-btn" id="reg-campo-export-csv">Exportar CSV</button>
+                <button type="button" class="mini-btn" id="reg-campo-export-xlsx">Exportar Excel</button>
               </div>
               <div class="reg-table-scroll">
                 <table class="user-table">
@@ -2975,7 +2995,13 @@ const HOME_CARDS = [
     stat:(d)=>{ const n = d.total_ies || (excelDashboard().instituciones||[]).length || 0; return n ? {value:n, label:'IE registradas'} : null; } },
   { view:'dashboard', icon:ICON_SVGS.chart, title:'Gestión', admin:false,
     copy:'Indicadores y rankings de riesgo por fuente: SIMON, Censo de Infraestructura e Informes de Campo.',
-    stat:(d)=>{ const n = d.alertas_pendientes || (dashboardState.alertas||[]).length || 0; return n ? {value:n, label:'alertas activas'} : null; } },
+    stat:(d)=>{
+      const alertas = dashboardState.alertas || [];
+      const n = alertas.length
+        ? new Set(alertas.filter(a => ['alta','critica'].includes(String(a.severidad || '').toLowerCase())).map(a => a.codigo_modular)).size
+        : ((d.risk_distribution || {}).Critico || 0);
+      return n ? {value:n, label:'IE con alerta alta'} : null;
+    } },
   { view:'form', icon:ICON_SVGS.pencil, title:'Llenar Ficha', admin:false,
     copy:'Registra una nueva ficha de monitoreo docente SIMON directamente desde la aplicación.', stat:null },
   { view:'ocr', icon:ICON_SVGS.camera, title:'OCR Ficha', admin:false,
@@ -3613,16 +3639,84 @@ function populateRegistrosAutorFilter(selectId, rows) {
   if(emails.includes(prev)) sel.value = prev;
 }
 
-function renderRegistrosFichas() {
-  const body = document.getElementById('reg-ficha-body');
+let xlsxLibPromise = null;
+function ensureXlsxLib() {
+  if (window.XLSX) return Promise.resolve();
+  if (xlsxLibPromise) return xlsxLibPromise;
+  xlsxLibPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => { xlsxLibPromise = null; reject(new Error('No se pudo cargar la librería de Excel.')); };
+    document.head.appendChild(s);
+  });
+  return xlsxLibPromise;
+}
+
+function csvEscape(value) {
+  const s = String(value ?? '');
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportRowsToCsv(rows, columns, filename) {
+  if (!rows.length) { showToast('No hay registros para exportar con los filtros actuales.', 'error'); return; }
+  const lines = [columns.map(c => csvEscape(c.label)).join(',')]
+    .concat(rows.map(r => columns.map(c => csvEscape(c.value(r))).join(',')));
+  downloadBlob(new Blob(['﻿' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8;'}), filename);
+}
+
+async function exportRowsToXlsx(rows, columns, filename) {
+  if (!rows.length) { showToast('No hay registros para exportar con los filtros actuales.', 'error'); return; }
+  try {
+    await ensureXlsxLib();
+  } catch (e) {
+    showToast(e.message, 'error');
+    return;
+  }
+  const data = [columns.map(c => c.label)].concat(rows.map(r => columns.map(c => c.value(r))));
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Registros');
+  XLSX.writeFile(wb, filename);
+}
+
+function fechaRegistroEnRango(value, desde, hasta) {
+  if (!desde && !hasta) return true;
+  if (!value) return false;
+  const d = String(value).slice(0, 10);
+  if (desde && d < desde) return false;
+  if (hasta && d > hasta) return false;
+  return true;
+}
+
+function getFilteredRegistrosFichas() {
   const q = getField('reg-ficha-search').toLowerCase();
   const autorEmail = document.getElementById('reg-ficha-filter-autor').value;
-  populateRegistrosAutorFilter('reg-ficha-filter-autor', registrosFichas);
-  const rows = registrosFichas.filter(f => {
+  const desde = getField('reg-ficha-filter-desde');
+  const hasta = getField('reg-ficha-filter-hasta');
+  return registrosFichas.filter(f => {
     if(autorEmail && f.creado_por_email !== autorEmail) return false;
+    if(!fechaRegistroEnRango(f.fecha_sincronizacion, desde, hasta)) return false;
     if(!q) return true;
     return [f.nombre_ie, f.codigo_modular, f.docente].some(v => (v || '').toLowerCase().includes(q));
   });
+}
+
+function renderRegistrosFichas() {
+  const body = document.getElementById('reg-ficha-body');
+  populateRegistrosAutorFilter('reg-ficha-filter-autor', registrosFichas);
+  const rows = getFilteredRegistrosFichas();
   if(!rows.length) {
     body.innerHTML = '<tr><td colspan="3">No hay fichas que coincidan.</td></tr>';
     return;
@@ -3665,6 +3759,27 @@ function renderRegistrosFichas() {
 document.getElementById('reg-ficha-show-deleted').addEventListener('change', loadRegistrosFichas);
 document.getElementById('reg-ficha-search').addEventListener('input', renderRegistrosFichas);
 document.getElementById('reg-ficha-filter-autor').addEventListener('change', renderRegistrosFichas);
+document.getElementById('reg-ficha-filter-desde').addEventListener('change', renderRegistrosFichas);
+document.getElementById('reg-ficha-filter-hasta').addEventListener('change', renderRegistrosFichas);
+
+const REG_FICHA_EXPORT_COLUMNS = [
+  {label: 'IE', value: f => f.nombre_ie || ''},
+  {label: 'Código modular', value: f => f.codigo_modular || ''},
+  {label: 'Docente', value: f => f.docente || ''},
+  {label: 'Fecha de ejecución', value: f => f.fecha_ejecucion || ''},
+  {label: 'Fecha de registro', value: f => formatRegistroFecha(f.fecha_sincronizacion || '')},
+  {label: 'Promedio', value: f => f.promedio ?? ''},
+  {label: 'Origen', value: f => (f.source && f.source !== 'manual') ? 'OCR' : 'Manual'},
+  {label: 'Autor', value: f => f.creado_por_nombre || 'Sin autor'},
+  {label: 'Correo autor', value: f => f.creado_por_email || ''},
+  {label: 'Estado', value: f => Number(f.estado_fila) === 0 ? 'Eliminada' : 'Activa'},
+];
+document.getElementById('reg-ficha-export-csv').addEventListener('click', () => {
+  exportRowsToCsv(getFilteredRegistrosFichas(), REG_FICHA_EXPORT_COLUMNS, 'fichas_monitoreo.csv');
+});
+document.getElementById('reg-ficha-export-xlsx').addEventListener('click', () => {
+  exportRowsToXlsx(getFilteredRegistrosFichas(), REG_FICHA_EXPORT_COLUMNS, 'fichas_monitoreo.xlsx');
+});
 
 const NIVEL_TAG_STYLE = {
   0: 'background:var(--surface3);color:var(--text-muted)',
@@ -3674,10 +3789,52 @@ const NIVEL_TAG_STYLE = {
   4: 'background:rgba(15,159,110,.12);color:var(--success)',
 };
 
+// Catalogo de preguntas dinamicas (codigo -> item/descripcion), para mostrar
+// el texto completo de la pregunta al editar una ficha en Registros, igual
+// que las preguntas fijas de SIMON (que ya muestran su descripcion siempre,
+// no solo el codigo A-01/B-02/etc). Se carga una sola vez y se cachea.
+let fichaDinamicaCatalog = null;
+async function ensureFichaDinamicaCatalog() {
+  if (fichaDinamicaCatalog) return fichaDinamicaCatalog;
+  try {
+    const data = await apiFetch('/instrumentos/dinamico/preguntas');
+    const preguntas = data.preguntas || [];
+    fichaDinamicaCatalog = {
+      list: preguntas,
+      byCodigo: new Map(preguntas.map(p => [String(p.codigo || '').toUpperCase(), p])),
+    };
+  } catch (e) {
+    fichaDinamicaCatalog = { list: [], byCodigo: new Map() };
+  }
+  return fichaDinamicaCatalog;
+}
+
+function fichaDinamicaCatalogEntry(codigo) {
+  const catalog = fichaDinamicaCatalog || { byCodigo: new Map() };
+  return catalog.byCodigo.get(String(codigo || '').toUpperCase());
+}
+
 function fichaDinamicaRowHtml(r, i, editable, forceOpen) {
   const nivel = Number(r.nivel) || 0;
   const color = NIVEL_COLOR[nivel] || 'var(--border2)';
-  const label = r.item || r.pregunta_codigo || `Pregunta ${i + 1}`;
+  const entry = fichaDinamicaCatalogEntry(r.pregunta_codigo);
+  const descripcion = r.item || (entry ? entry.item : '') || '';
+  const label = descripcion
+    ? `${r.pregunta_codigo || ''} · ${descripcion}`
+    : (r.pregunta_codigo || `Pregunta ${i + 1}`);
+  const seccionNombre = r.seccion_nombre || (entry ? entry.seccion_nombre : '') || '';
+  const catalogList = (fichaDinamicaCatalog && fichaDinamicaCatalog.list) || [];
+  const currentUpper = String(r.pregunta_codigo || '').toUpperCase();
+  const hasCurrentInCatalog = catalogList.some(p => String(p.codigo || '').toUpperCase() === currentUpper);
+  const codigoField = editable
+    ? `
+      <select class="form-select" data-din-field="pregunta_codigo">
+        <option value="">Selecciona una pregunta…</option>
+        ${!hasCurrentInCatalog && r.pregunta_codigo ? `<option value="${esc(r.pregunta_codigo)}" selected>${esc(r.pregunta_codigo)} (código no vigente)</option>` : ''}
+        ${catalogList.map(p => `<option value="${esc(p.codigo)}" ${currentUpper === String(p.codigo || '').toUpperCase() ? 'selected' : ''}>${esc(p.codigo)} · ${esc(p.item)}</option>`).join('')}
+      </select>
+    `
+    : `<input class="form-input" value="${esc(label)}" disabled/>`;
   return `
     <details class="reg-card" data-dinamica-row="${i}" style="border-left-color:${color}" ${forceOpen ? 'open' : ''}>
       <summary class="reg-card-label" style="cursor:pointer">
@@ -3686,11 +3843,11 @@ function fichaDinamicaRowHtml(r, i, editable, forceOpen) {
         <span class="reg-card-tag" style="${NIVEL_TAG_STYLE[nivel]}">${nivel === 0 ? 'Sin observar' : 'Nivel ' + nivel}</span>
       </summary>
       <div style="margin-top:10px">
-        ${r.seccion_nombre ? `<div class="config-selected" style="margin-bottom:8px">Sección: ${esc(r.seccion_nombre)}</div>` : ''}
+        <div class="config-selected" style="margin-bottom:8px${seccionNombre ? '' : ';display:none'}">Sección: ${esc(seccionNombre)}</div>
         <div class="reg-card-fields">
-          <div class="field-item">
-            <label class="form-group label">Código de pregunta</label>
-            <input class="form-input" data-din-field="pregunta_codigo" value="${esc(r.pregunta_codigo || '')}" ${editable ? '' : 'disabled'}/>
+          <div class="field-item full">
+            <label class="form-group label">Pregunta</label>
+            ${codigoField}
           </div>
           <div class="field-item">
             <label class="form-group label">Nivel</label>
@@ -3728,9 +3885,24 @@ function wireFichaDinamicaRemove() {
       }
     };
   });
+  document.querySelectorAll('#reg-ficha-dinamicas [data-din-field="pregunta_codigo"]').forEach(sel => {
+    sel.onchange = () => {
+      const entry = fichaDinamicaCatalogEntry(sel.value);
+      const label = sel.closest('.reg-card').querySelector('summary span:nth-child(2)');
+      if (label) label.textContent = entry ? `${entry.codigo} · ${entry.item}` : (sel.value || 'Pregunta');
+      const seccionBox = sel.closest('.reg-card').querySelector('.config-selected');
+      if (seccionBox && entry && entry.seccion_nombre) {
+        seccionBox.textContent = `Sección: ${entry.seccion_nombre}`;
+        seccionBox.style.display = '';
+      } else if (seccionBox) {
+        seccionBox.style.display = 'none';
+      }
+    };
+  });
 }
 
-function renderFichaDinamicas(respuestas, editable) {
+async function renderFichaDinamicas(respuestas, editable) {
+  await ensureFichaDinamicaCatalog();
   const container = document.getElementById('reg-ficha-dinamicas');
   document.getElementById('reg-ficha-add-dinamica').style.display = editable ? 'inline-flex' : 'none';
   container.innerHTML = respuestas.length
@@ -3739,7 +3911,8 @@ function renderFichaDinamicas(respuestas, editable) {
   wireFichaDinamicaRemove();
 }
 
-document.getElementById('reg-ficha-add-dinamica').addEventListener('click', () => {
+document.getElementById('reg-ficha-add-dinamica').addEventListener('click', async () => {
+  await ensureFichaDinamicaCatalog();
   const container = document.getElementById('reg-ficha-dinamicas');
   if(!container.querySelector('[data-dinamica-row]')) container.innerHTML = '';
   const idx = container.querySelectorAll('[data-dinamica-row]').length;
@@ -3782,7 +3955,7 @@ async function openFichaForm(id, wantEdit) {
       form.elements[`${field}_observacion`].disabled = !editable;
       document.querySelector(`[data-indicador-card="${field}"]`).style.borderLeftColor = NIVEL_COLOR[Number(nivel)] || 'var(--border2)';
     });
-    renderFichaDinamicas(detalle.respuestas_dinamicas || [], editable);
+    await renderFichaDinamicas(detalle.respuestas_dinamicas || [], editable);
     const archivos = detalle.archivos || [];
     renderArchivoLinks('reg-ficha-archivos', archivos.map((a, i) => ({
       id: a.id,
@@ -3877,16 +4050,23 @@ async function loadRegistrosCampo() {
   }
 }
 
-function renderRegistrosCampo() {
-  const body = document.getElementById('reg-campo-body');
+function getFilteredRegistrosCampo() {
   const q = getField('reg-campo-search').toLowerCase();
   const autorEmail = document.getElementById('reg-campo-filter-autor').value;
-  populateRegistrosAutorFilter('reg-campo-filter-autor', registrosCampo);
-  const rows = registrosCampo.filter(v => {
+  const desde = getField('reg-campo-filter-desde');
+  const hasta = getField('reg-campo-filter-hasta');
+  return registrosCampo.filter(v => {
     if(autorEmail && v.creado_por_email !== autorEmail) return false;
+    if(!fechaRegistroEnRango(v.creado_en, desde, hasta)) return false;
     if(!q) return true;
     return [v.nombre_ie_detectado, v.codigo_modular, v.especialista_detectado].some(x => (x || '').toLowerCase().includes(q));
   });
+}
+
+function renderRegistrosCampo() {
+  const body = document.getElementById('reg-campo-body');
+  populateRegistrosAutorFilter('reg-campo-filter-autor', registrosCampo);
+  const rows = getFilteredRegistrosCampo();
   if(!rows.length) {
     body.innerHTML = '<tr><td colspan="3">No hay informes que coincidan.</td></tr>';
     return;
@@ -3928,6 +4108,26 @@ function renderRegistrosCampo() {
 document.getElementById('reg-campo-show-deleted').addEventListener('change', loadRegistrosCampo);
 document.getElementById('reg-campo-search').addEventListener('input', renderRegistrosCampo);
 document.getElementById('reg-campo-filter-autor').addEventListener('change', renderRegistrosCampo);
+document.getElementById('reg-campo-filter-desde').addEventListener('change', renderRegistrosCampo);
+document.getElementById('reg-campo-filter-hasta').addEventListener('change', renderRegistrosCampo);
+
+const REG_CAMPO_EXPORT_COLUMNS = [
+  {label: 'IE detectada', value: v => v.nombre_ie_detectado || ''},
+  {label: 'Código modular', value: v => v.codigo_modular || ''},
+  {label: 'Especialista', value: v => v.especialista_detectado || ''},
+  {label: 'Fecha de visita', value: v => v.fecha_visita || ''},
+  {label: 'Fecha de registro', value: v => formatRegistroFecha(v.creado_en || '')},
+  {label: 'Variables observadas', value: v => v.n_variables_observadas ?? 0},
+  {label: 'Autor', value: v => v.creado_por_nombre || 'Sin autor'},
+  {label: 'Correo autor', value: v => v.creado_por_email || ''},
+  {label: 'Estado', value: v => Number(v.estado_fila) === 0 ? 'Eliminado' : 'Activo'},
+];
+document.getElementById('reg-campo-export-csv').addEventListener('click', () => {
+  exportRowsToCsv(getFilteredRegistrosCampo(), REG_CAMPO_EXPORT_COLUMNS, 'informes_campo.csv');
+});
+document.getElementById('reg-campo-export-xlsx').addEventListener('click', () => {
+  exportRowsToXlsx(getFilteredRegistrosCampo(), REG_CAMPO_EXPORT_COLUMNS, 'informes_campo.xlsx');
+});
 
 const SEVERIDAD_COLOR = {alta: 'var(--danger)', media: 'var(--warning)', baja: 'var(--brand-blue)'};
 
@@ -5465,7 +5665,17 @@ function renderDashboard() {
   const alertasPendientes = dashboardState.sourceFilter === 'todas'
     ? Math.max(alertasDetalle.length, d.alertas_pendientes || 0, criticalCount)
     : alertasDetalle.length;
-  document.getElementById('dash-alert-count').textContent = alertasPendientes;
+  // El "badge" del menu muestra cuantas IEs unicas tienen alerta alta/critica
+  // (no el total de filas de alerta ni el total de instituciones con
+  // cualquier alerta) porque eso es lo que realmente indica donde priorizar.
+  const iesAltaUnicas = alertasDetalle.length
+    ? new Set(
+        alertasDetalle
+          .filter(a => ['alta', 'critica'].includes(String(a.severidad || '').toLowerCase()))
+          .map(a => a.codigo_modular)
+      ).size
+    : criticalCount;
+  document.getElementById('dash-alert-count').textContent = iesAltaUnicas;
 
   const isSimonFilter = dashboardState.sourceFilter === 'simon';
   const isCensoFilter = dashboardState.sourceFilter === 'censo';

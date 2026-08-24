@@ -3352,8 +3352,14 @@ def get_instrumentos():
         conn.close()
 
 @app.route('/api/instrumentos/dinamico/preguntas', methods=['GET', 'POST'])
-@require_admin
+@require_auth
 def preguntas_dinamicas():
+    # GET es de lectura (cualquier usuario autenticado): lo necesita el
+    # formulario de fichas para mostrar la descripcion de cada pregunta
+    # dinamica al editar, igual que las preguntas fijas de SIMON. Crear/editar
+    # preguntas si sigue siendo solo de administrador.
+    if request.method != 'GET' and normalize_role(g.current_user['rol']) != 'administrador':
+        return jsonify({'error': 'Esta acción requiere permisos de administrador.'}), 403
     conn = get_db()
     try:
         payload = dynamic_questions_payload(conn)
@@ -5663,6 +5669,8 @@ def ficha_detalle(ficha_id):
                 "DELETE FROM ficha_respuesta_instrumento WHERE ficha_id = ? AND instrumento_tipo = 'dinamica'",
                 (ficha_id,),
             )
+            dynamic_instrument = get_dynamic_instrument_row(conn)
+            default_instrumento_codigo = dynamic_instrument['codigo'] if dynamic_instrument else 'dinamico'
             for r in data.get('respuestas_dinamicas') or []:
                 if not isinstance(r, dict):
                     continue
@@ -5676,7 +5684,7 @@ def ficha_detalle(ficha_id):
                     ) VALUES (?, ?, 'dinamica', ?, ?, ?, ?, ?, ?)
                 ''', (
                     ficha_id,
-                    first_text(r, 'instrumento_codigo') or 'dinamico',
+                    first_text(r, 'instrumento_codigo') or default_instrumento_codigo,
                     first_text(r, 'seccion_clave'),
                     pregunta_codigo,
                     normalize_level(r.get('nivel')),
