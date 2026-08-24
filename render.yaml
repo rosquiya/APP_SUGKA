@@ -7,7 +7,7 @@ services:
     # SQLite se perderia por completo en cada redeploy o reinicio.
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn scripts.api_server:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    startCommand: gunicorn app.api_server:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
     # Disco persistente donde vive la BD SQLite real (fichas, informes de
     # campo, usuarios). En el primer deploy arranca vacio y api_server.py
     # copia ahi la BD semilla del repo automaticamente; en los siguientes

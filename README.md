@@ -1,71 +1,53 @@
-# Mapa de IEs – UGEL IBIR-IMAZA
+# SUGKA LAB – UGEL IBIR-IMAZA
 
-Aplicación web interactiva que muestra todas las **Instituciones Educativas (IEs)** de la **UGEL IBIR-IMAZA** (Bagua, Amazonas, Perú) sobre un mapa georreferenciado.
+Aplicación de gestión educativa para la **UGEL IBIR-IMAZA** (Bagua, Amazonas, Perú): mapa georreferenciado de Instituciones Educativas, fichas de monitoreo docente (SIMON, fijas y con preguntas dinámicas), informes de campo, todo con OCR asistido por IA (Azure Document Intelligence, Google Gemini y OpenAI como respaldo) y un panel de administración con roles (especialista/administrador).
 
----
+Backend en Flask + SQLite; frontend en HTML/CSS/JS sin framework (todo vive en `frontend/index.html`), servido por el mismo proceso Flask.
 
-## 🗂️ Estructura del proyecto
+## Estructura del proyecto
 
 ```
 APP_SUGKA/
-├── index.html              # Aplicación principal (entry point)
-├── README.md               # Este archivo
-│
-├── assets/
-│   ├── css/                # Estilos CSS adicionales (actualmente en index.html)
-│   ├── js/                 # Scripts JS adicionales (actualmente en index.html)
-│   └── img/                # Imágenes e íconos
-│
+├── app/
+│   └── api_server.py       # Backend Flask completo: API REST, auth, OCR, esquema de BD, sirve el frontend
+├── frontend/
+│   ├── index.html          # SPA completa (HTML + CSS + JS inline, sin build step)
+│   ├── sw.js                # Service worker (PWA)
+│   └── logo/
+├── scripts/                 # Utilidades de importación de datos, uso manual (no corren en producción)
+│   ├── import_simon_csv.py
+│   ├── import_infraestructura_csv.py
+│   └── import_informes_campo_csv.py
+├── tests/
+│   └── fixtures/             # Insumos para pruebas manuales (ej. fotos de ejemplo para el flujo de OCR)
+├── docs/
+│   └── referencia/           # Documentos de referencia (padrón, ficha oficial, extracciones) sin uso en código
 ├── data/
-│   ├── ies_imaza.json      # ← Datos procesados (usado por la app)
-│   └── raw/
-│       ├── tabla_01.csv                         # Padrón fuente ESCALE
-│       └── listado_iiee_georefeerenciadas.xls   # Listado georreferenciado
-│
-└── scripts/
-    └── process_data.py     # Script Python para regenerar ies_imaza.json
+│   ├── database/sugka_demo.db  # BD SQLite semilla (se copia al disco persistente en el primer deploy)
+│   └── raw/                    # CSV fuente para los scripts de importación
+├── render.yaml               # Configuración de despliegue en Render
+└── requirements.txt
 ```
 
----
-
-## 🚀 Cómo ejecutar
-
-Requiere un servidor HTTP local (por CORS al cargar el JSON):
+## Cómo ejecutar en local
 
 ```bash
-# Con Python (recomendado)
-python -m http.server 8080
-
-# Luego abrir en el navegador:
-http://localhost:8080
+pip install -r requirements.txt
+python app/api_server.py
 ```
 
----
+Por defecto sirve en `http://localhost:8000` usando la base de datos semilla (`data/database/sugka_demo.db`). Variables de entorno relevantes (ver `.env.example`): credenciales de OCR (`AZURE_DOCUMENT_INTELLIGENCE_*`, `GEMINI_API_KEY`, `OPENAI_API_KEY`), `SUGKA_DB_PATH` para apuntar a otra base de datos, `SEED_ADMIN_PASSWORD`/`SEED_ESPECIALISTA_PASSWORD` para los usuarios semilla.
 
-## 🔄 Regenerar los datos
+## Despliegue
 
-Si el CSV fuente cambia, regenerar el JSON con:
+Se despliega en Render (`render.yaml`, plan starter con disco persistente en `/var/data` para que la base SQLite sobreviva a los redeploys). El comando de arranque es `gunicorn app.api_server:app`.
+
+## Scripts de importación de datos
+
+Los scripts en `scripts/` son utilidades de un solo uso para cargar datos históricos (CSV de fichas SIMON, censo de infraestructura, features de informes de campo) hacia la base de datos. Se ejecutan manualmente, no forman parte del servicio en producción:
 
 ```bash
-cd scripts
-python process_data.py
+python scripts/import_simon_csv.py ruta/al/archivo.csv
+python scripts/import_infraestructura_csv.py ruta/al/archivo.csv
+python scripts/import_informes_campo_csv.py ruta/al/archivo.csv
 ```
-
----
-
-## 📚 Tecnologías
-
-| Librería | Versión | Uso |
-|---|---|---|
-| [Leaflet](https://leafletjs.com/) | 1.9.4 | Mapa interactivo |
-| [Leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster) | 1.5.3 | Agrupación de marcadores |
-| CartoDB / Esri | — | Capas de mapa base |
-
----
-
-## 📊 Datos
-
-- **Fuente:** ESCALE – Unidad de Estadística Educativa del MINEDU
-- **UGEL:** IBIR-IMAZA (código `10009`)
-- **Cobertura:** Distritos de Imaza, Aramango y Nieva (Provincia de Bagua, Amazonas)
-- **Total IEs:** 383 georreferenciadas

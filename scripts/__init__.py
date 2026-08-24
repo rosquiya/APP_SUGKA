@@ -1,1 +1,1 @@
-"""SUGKA app server package."""
+"""Scripts de importación de datos, ejecutados manualmente (no forman parte del servicio en producción)."""

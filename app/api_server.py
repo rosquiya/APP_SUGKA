@@ -11,7 +11,6 @@ import base64
 import hashlib
 import io
 import sqlite3
-import random
 import json
 import os
 import re
@@ -20,7 +19,6 @@ import shutil
 import subprocess
 import tempfile
 import unicodedata
-import urllib.error
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -428,6 +426,8 @@ def build_instrument_payload(conn, row, include_inactive=False):
     section_payload = []
     active_filter = '' if include_inactive else 'AND activo = 1'
     for section in sections:
+        if not include_inactive and not section['activo']:
+            continue
         questions = conn.execute(f'''
             SELECT *
             FROM app_instrumento_pregunta
@@ -439,6 +439,7 @@ def build_instrument_payload(conn, row, include_inactive=False):
             'clave': section['clave'],
             'nombre': section['nombre'],
             'orden': section['orden'],
+            'activo': section['activo'],
             'preguntas': [
                 {
                     'pregunta_id': question['pregunta_id'],
@@ -516,6 +517,7 @@ def dynamic_questions_payload(conn):
             'clave': section.get('clave'),
             'nombre': section.get('nombre'),
             'orden': section.get('orden'),
+            'activo': section.get('activo'),
         }
         for section in payload.get('secciones', [])
     ]
@@ -789,6 +791,11 @@ def ensure_db_schema():
     for name, column_type in FICHA_MONITOREO_COLUMNS.items():
         if name not in existing:
             conn.execute(f'ALTER TABLE fichas_monitoreo ADD COLUMN {name} {column_type}')
+
+    # Corrige filas creadas antes del fix de save_ficha_to_db (ver ahi el
+    # comentario): quedaron con estado_fila NULL en vez de 1 y por eso el
+    # panel de Registros las mostraba como "eliminadas" sin estarlo.
+    conn.execute('UPDATE fichas_monitoreo SET estado_fila = 1 WHERE estado_fila IS NULL')
 
     conn.execute('CREATE INDEX IF NOT EXISTS idx_fichas_monitoreo_codigo ON fichas_monitoreo(codigo_modular)')
 
@@ -1124,9 +1131,30 @@ def ensure_db_schema():
             clave TEXT NOT NULL,
             nombre TEXT NOT NULL,
             orden INTEGER NOT NULL DEFAULT 0,
+            activo INTEGER NOT NULL DEFAULT 1,
             FOREIGN KEY (instrumento_id) REFERENCES app_instrumento(instrumento_id)
         )
     ''')
+    seccion_existing = {
+        row['name'] for row in conn.execute('PRAGMA table_info(app_instrumento_seccion)').fetchall()
+    }
+    if 'activo' not in seccion_existing:
+        conn.execute('ALTER TABLE app_instrumento_seccion ADD COLUMN activo INTEGER NOT NULL DEFAULT 1')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS app_instrumento_pregunta_comentario (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pregunta_id INTEGER NOT NULL,
+            autor_id TEXT,
+            texto TEXT NOT NULL,
+            estado_fila INTEGER DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (pregunta_id) REFERENCES app_instrumento_pregunta(pregunta_id),
+            FOREIGN KEY (autor_id) REFERENCES app_user(user_id)
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_pregunta_comentario_pregunta ON app_instrumento_pregunta_comentario(pregunta_id)')
+
     conn.execute('''
         CREATE TABLE IF NOT EXISTS app_instrumento_pregunta (
             pregunta_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1265,6 +1293,42 @@ def canonical_codigo_modular(conn, value):
         if exists:
             return candidate
     return code
+
+def resolve_ficha_codigo_modular(conn, codigo_value, nombre_ie_value):
+    """Resuelve el codigo modular de una ficha SIMON contra dim_institucion,
+    igual de estricto que resolve_codigo_modular_strict (informes de campo):
+    solo confirma un codigo, nunca lo adivina. Primero prueba el codigo
+    (normalizado), y si no calza intenta por nombre de IE -- exacto primero,
+    y por contencion (LIKE) solo si el resultado es unico, para no
+    quedarnos con un match ambiguo entre varias IE con nombre parecido.
+    Devuelve (codigo_resuelto, nombre_iiee_bd); codigo_resuelto es '' si no
+    se pudo confirmar."""
+    code = re.sub(r'\D+', '', str(codigo_value or '').strip())
+    if code:
+        for candidate in (code, code.zfill(7), f'0{code}'):
+            row = conn.execute(
+                'SELECT codigo_modular, nombre_iiee FROM dim_institucion WHERE codigo_modular = ?',
+                (candidate,),
+            ).fetchone()
+            if row:
+                return row['codigo_modular'], row['nombre_iiee']
+
+    nombre = str(nombre_ie_value or '').strip()
+    if nombre:
+        row = conn.execute(
+            'SELECT codigo_modular, nombre_iiee FROM dim_institucion WHERE UPPER(nombre_iiee) = UPPER(?) LIMIT 1',
+            (nombre,),
+        ).fetchone()
+        if not row:
+            like_rows = conn.execute(
+                'SELECT codigo_modular, nombre_iiee FROM dim_institucion WHERE UPPER(nombre_iiee) LIKE UPPER(?) LIMIT 2',
+                (f'%{nombre}%',),
+            ).fetchall()
+            row = like_rows[0] if len(like_rows) == 1 else None
+        if row:
+            return row['codigo_modular'], row['nombre_iiee']
+
+    return '', ''
 
 def normalize_level(value):
     if value is None or value == '':
@@ -1486,6 +1550,12 @@ def save_ficha_to_db(conn, data):
     ficha = normalize_ficha(data, source=first_text(data, 'source') or 'manual')
     if getattr(g, 'current_user', None):
         ficha['creado_por'] = g.current_user['user_id']
+    # estado_fila esta en la lista explicita de columnas del INSERT (mas abajo),
+    # asi que si no se fija aqui se inserta NULL en vez de aplicar el DEFAULT 1
+    # de la columna (los defaults de SQL solo aplican cuando la columna se omite
+    # del INSERT, no cuando se manda explicitamente NULL) -- eso hacia que toda
+    # ficha nueva quedara marcada como "eliminada" para el panel de Registros.
+    ficha['estado_fila'] = 1
     columns = list(FICHA_MONITOREO_COLUMNS.keys())
     placeholders = ', '.join('?' for _ in columns)
     cur = conn.execute(
@@ -1911,16 +1981,27 @@ FIXED_SIMON_CODES = set(SIMON_CODE_TO_FIELD.keys())
 
 def get_dynamic_responses_for_fichas(conn, ficha_ids):
     """Respuestas de preguntas dinamicas (fuera de las 8 fijas A-01..B-05) registradas
-    para un conjunto de fichas, para que se muestren cuando los especialistas las llenan."""
+    para un conjunto de fichas, para que se muestren cuando los especialistas las llenan.
+
+    Trae tambien el texto de la pregunta (item) y su seccion, con el mismo
+    patron de JOIN que get_simon_question_labels: instrumento_codigo -> codigo
+    de app_instrumento -> instrumento_id, porque el codigo de una pregunta
+    solo es unico dentro de su instrumento (no globalmente)."""
     ficha_ids = [fid for fid in ficha_ids if fid]
     if not ficha_ids:
         return {}
     placeholders = ', '.join('?' for _ in ficha_ids)
     rows = conn.execute(f'''
-        SELECT ficha_id, instrumento_codigo, pregunta_codigo, nivel, respuesta_texto, observacion
-        FROM ficha_respuesta_instrumento
-        WHERE ficha_id IN ({placeholders})
-        ORDER BY ficha_id, pregunta_codigo
+        SELECT fri.ficha_id, fri.instrumento_codigo, fri.pregunta_codigo,
+               fri.nivel, fri.respuesta_texto, fri.observacion,
+               p.item, s.nombre AS seccion_nombre
+        FROM ficha_respuesta_instrumento fri
+        LEFT JOIN app_instrumento i ON i.codigo = fri.instrumento_codigo
+        LEFT JOIN app_instrumento_pregunta p
+               ON p.instrumento_id = i.instrumento_id AND p.codigo = fri.pregunta_codigo
+        LEFT JOIN app_instrumento_seccion s ON s.seccion_id = p.seccion_id
+        WHERE fri.ficha_id IN ({placeholders})
+        ORDER BY fri.ficha_id, fri.pregunta_codigo
     ''', ficha_ids).fetchall()
     out = {}
     for row in rows:
@@ -1933,6 +2014,8 @@ def get_dynamic_responses_for_fichas(conn, ficha_ids):
             'nivel': row['nivel'],
             'respuesta_texto': row['respuesta_texto'],
             'observacion': row['observacion'],
+            'item': row['item'],
+            'seccion_nombre': row['seccion_nombre'],
         })
     return out
 
@@ -3024,17 +3107,22 @@ def require_admin(fn):
 @app.route('/', methods=['GET'])
 @app.route('/index.html', methods=['GET'])
 def frontend_index():
-    return send_from_directory(str(ROOT), 'index.html')
+    return send_from_directory(str(ROOT / 'frontend'), 'index.html')
 
 
 @app.route('/sw.js', methods=['GET'])
 def service_worker():
-    return send_from_directory(str(ROOT), 'sw.js')
+    return send_from_directory(str(ROOT / 'frontend'), 'sw.js')
 
 
 @app.route('/logo/<path:filename>', methods=['GET'])
 def logo_assets(filename):
-    return send_from_directory(str(ROOT / 'logo'), filename)
+    return send_from_directory(str(ROOT / 'frontend' / 'logo'), filename)
+
+
+@app.route('/img/<path:filename>', methods=['GET'])
+def img_assets(filename):
+    return send_from_directory(str(ROOT / 'frontend' / 'img'), filename)
 
 
 @app.route('/api', methods=['GET'])
@@ -3418,6 +3506,181 @@ def pregunta_dinamica_detalle(pregunta_id):
     finally:
         conn.close()
 
+@app.route('/api/instrumentos/dinamico/secciones', methods=['GET', 'POST'])
+@require_admin
+def secciones_dinamicas():
+    conn = get_db()
+    try:
+        instrument = get_dynamic_instrument_row(conn)
+        if not instrument:
+            return jsonify({'error': 'No hay instrumento dinámico activo.'}), 404
+        instrumento_id = instrument['instrumento_id']
+
+        if request.method == 'GET':
+            return jsonify(dynamic_questions_payload(conn)['secciones'])
+
+        data = request.get_json() or {}
+        clave = normalize_question_code(data.get('clave'))
+        nombre = str(data.get('nombre') or '').strip()
+        if not clave or not nombre:
+            return jsonify({'error': 'Clave y nombre son obligatorios.'}), 400
+
+        exists = conn.execute('''
+            SELECT 1 FROM app_instrumento_seccion
+            WHERE instrumento_id = ? AND UPPER(clave) = UPPER(?)
+            LIMIT 1
+        ''', (instrumento_id, clave)).fetchone()
+        if exists:
+            return jsonify({'error': 'Ya existe una sección con esa clave.'}), 400
+
+        if data.get('orden') not in (None, ''):
+            orden = safe_int(data.get('orden'), 0)
+        else:
+            order_row = conn.execute('''
+                SELECT COALESCE(MAX(orden), 0) + 1 AS next_order
+                FROM app_instrumento_seccion WHERE instrumento_id = ?
+            ''', (instrumento_id,)).fetchone()
+            orden = safe_int(order_row['next_order'], 1) if order_row else 1
+
+        cursor = conn.execute('''
+            INSERT INTO app_instrumento_seccion (instrumento_id, clave, nombre, orden, activo)
+            VALUES (?, ?, ?, ?, 1)
+        ''', (instrumento_id, clave, nombre, orden))
+        sync_instrument_structure_json(conn, instrumento_id)
+        conn.commit()
+        secciones = dynamic_questions_payload(conn)['secciones']
+        seccion = next((s for s in secciones if s['seccion_id'] == cursor.lastrowid), None)
+        return jsonify({'success': True, 'seccion': seccion, 'secciones': secciones})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'No se pudo guardar la sección.'}), 400
+    finally:
+        conn.close()
+
+@app.route('/api/instrumentos/dinamico/secciones/<int:seccion_id>', methods=['PUT', 'DELETE'])
+@require_admin
+def seccion_dinamica_detalle(seccion_id):
+    conn = get_db()
+    try:
+        instrument = get_dynamic_instrument_row(conn)
+        if not instrument:
+            return jsonify({'error': 'No hay instrumento dinámico activo.'}), 404
+        instrumento_id = instrument['instrumento_id']
+
+        section = conn.execute('''
+            SELECT * FROM app_instrumento_seccion
+            WHERE seccion_id = ? AND instrumento_id = ?
+        ''', (seccion_id, instrumento_id)).fetchone()
+        if not section:
+            return jsonify({'error': 'Sección no encontrada.'}), 404
+
+        if request.method == 'DELETE':
+            preguntas_count = conn.execute(
+                'SELECT COUNT(*) FROM app_instrumento_pregunta WHERE seccion_id = ?', (seccion_id,)
+            ).fetchone()[0]
+            if preguntas_count:
+                return jsonify({
+                    'error': f'Esta sección tiene {preguntas_count} pregunta(s). '
+                             'Reasígnalas o elimínalas antes de borrar la sección.'
+                }), 400
+            conn.execute('DELETE FROM app_instrumento_seccion WHERE seccion_id = ?', (seccion_id,))
+            sync_instrument_structure_json(conn, instrumento_id)
+            conn.commit()
+            return jsonify({'success': True, 'deleted_id': seccion_id, 'secciones': dynamic_questions_payload(conn)['secciones']})
+
+        data = request.get_json() or {}
+        clave = normalize_question_code(data.get('clave', section['clave']))
+        nombre = str(data.get('nombre', section['nombre']) or '').strip()
+        orden = safe_int(data.get('orden', section['orden']), section['orden'])
+        activo = 1 if data.get('activo', section['activo']) else 0
+        if not clave or not nombre:
+            return jsonify({'error': 'Clave y nombre son obligatorios.'}), 400
+
+        exists = conn.execute('''
+            SELECT 1 FROM app_instrumento_seccion
+            WHERE instrumento_id = ? AND UPPER(clave) = UPPER(?) AND seccion_id != ?
+            LIMIT 1
+        ''', (instrumento_id, clave, seccion_id)).fetchone()
+        if exists:
+            return jsonify({'error': 'Ya existe una sección con esa clave.'}), 400
+
+        conn.execute('''
+            UPDATE app_instrumento_seccion
+            SET clave = ?, nombre = ?, orden = ?, activo = ?
+            WHERE seccion_id = ?
+        ''', (clave, nombre, orden, activo, seccion_id))
+        sync_instrument_structure_json(conn, instrumento_id)
+        conn.commit()
+        secciones = dynamic_questions_payload(conn)['secciones']
+        seccion = next((s for s in secciones if s['seccion_id'] == seccion_id), None)
+        return jsonify({'success': True, 'seccion': seccion, 'secciones': secciones})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'No se pudo actualizar la sección.'}), 400
+    finally:
+        conn.close()
+
+@app.route('/api/instrumentos/dinamico/preguntas/<int:pregunta_id>/comentarios', methods=['GET', 'POST'])
+@require_auth
+def pregunta_comentarios(pregunta_id):
+    conn = get_db()
+    try:
+        pregunta = conn.execute(
+            'SELECT pregunta_id FROM app_instrumento_pregunta WHERE pregunta_id = ?', (pregunta_id,)
+        ).fetchone()
+        if not pregunta:
+            return jsonify({'error': 'Pregunta no encontrada.'}), 404
+
+        if request.method == 'GET':
+            rows = conn.execute('''
+                SELECT c.*, u.nombre AS autor_nombre
+                FROM app_instrumento_pregunta_comentario c
+                LEFT JOIN app_user u ON u.user_id = c.autor_id
+                WHERE c.pregunta_id = ? AND c.estado_fila = 1
+                ORDER BY c.creado_en
+            ''', (pregunta_id,)).fetchall()
+            return jsonify(rows_to_list(rows))
+
+        data = request.get_json() or {}
+        texto = str(data.get('texto') or '').strip()
+        if not texto:
+            return jsonify({'error': 'El comentario no puede estar vacío.'}), 400
+        cur = conn.execute('''
+            INSERT INTO app_instrumento_pregunta_comentario (pregunta_id, autor_id, texto)
+            VALUES (?, ?, ?)
+        ''', (pregunta_id, g.current_user['user_id'], texto))
+        conn.commit()
+        row = conn.execute('''
+            SELECT c.*, u.nombre AS autor_nombre
+            FROM app_instrumento_pregunta_comentario c
+            LEFT JOIN app_user u ON u.user_id = c.autor_id
+            WHERE c.id = ?
+        ''', (cur.lastrowid,)).fetchone()
+        return jsonify({'success': True, 'comentario': dict(row)})
+    finally:
+        conn.close()
+
+@app.route('/api/instrumentos/dinamico/preguntas/<int:pregunta_id>/comentarios/<int:comentario_id>', methods=['DELETE'])
+@require_auth
+def pregunta_comentario_detalle(pregunta_id, comentario_id):
+    conn = get_db()
+    try:
+        comentario = conn.execute('''
+            SELECT * FROM app_instrumento_pregunta_comentario
+            WHERE id = ? AND pregunta_id = ?
+        ''', (comentario_id, pregunta_id)).fetchone()
+        if not comentario:
+            return jsonify({'error': 'Comentario no encontrado.'}), 404
+        if not can_edit_row(g.current_user, comentario['autor_id']):
+            return jsonify({'error': 'Solo puedes eliminar tus propios comentarios.'}), 403
+        conn.execute(
+            'UPDATE app_instrumento_pregunta_comentario SET estado_fila = 0 WHERE id = ?', (comentario_id,)
+        )
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
 @app.route('/api/archivos/<int:archivo_id>', methods=['GET'])
 @require_auth
 def archivo_original(archivo_id):
@@ -3663,12 +3926,33 @@ def get_instituciones():
     infra_lookup = {ie['codigo_modular']: ie['nivel'] for ie in build_infra_ranking(conn)['ies']}
     campo_lookup = {ie['codigo_modular']: ie['nivel'] for ie in build_campo_ranking(conn)['ies']}
 
+    # nivel_alerta (vista "Todas" del mapa) se recalcula aqui a partir de
+    # app_alerta_priorizada -- la MISMA tabla que cuenta Gestion -> Alertas --
+    # en vez del priority_score de institucion_resumen (que no incluye Campo
+    # ni Dinamica y capea el score a 22, y por eso daba un numero de IEs en
+    # alerta alta muy distinto al conteo real de alertas pendientes). Una IE
+    # queda en 'alta' si tiene al menos una alerta pendiente de severidad
+    # alta/critica, 'media' si tiene alguna de severidad media, y 'baja' si
+    # no tiene ninguna alerta pendiente.
+    alerta_rows = conn.execute('''
+        SELECT codigo_modular,
+               MAX(CASE WHEN severidad IN ('alta','critica') THEN 3
+                        WHEN severidad = 'media' THEN 2
+                        ELSE 1 END) AS sev_rank
+        FROM app_alerta_priorizada
+        WHERE estado = 'pendiente'
+        GROUP BY codigo_modular
+    ''').fetchall()
+    sev_rank_to_nivel = {3: 'alta', 2: 'media', 1: 'baja'}
+    alerta_lookup = {row['codigo_modular']: sev_rank_to_nivel.get(row['sev_rank'], 'baja') for row in alerta_rows}
+
     result = []
     for row in rows:
         item = dict(row)
         item['riesgo_simon'] = simon_lookup.get(item['codigo_modular'])
         item['riesgo_censo'] = infra_lookup.get(item['codigo_modular'])
         item['riesgo_campo'] = campo_lookup.get(item['codigo_modular'])
+        item['nivel_alerta'] = alerta_lookup.get(item['codigo_modular'], 'baja')
         result.append(item)
 
     conn.close()
@@ -4847,17 +5131,27 @@ def ocr_upload_advanced():
     extracted_data['raw_text'] = text
     extracted_data['extracted_json'] = json.dumps(raw_extracted, ensure_ascii=False)
 
-    # Buscar datos adicionales de la IE en la BD si existe el código modular
+    # Resolver el codigo modular contra dim_institucion -- primero por
+    # codigo, y si no calza por nombre de IE (igual de estricto que
+    # resolve_codigo_modular_strict para informes de campo: nunca se
+    # adivina, solo se confirma o se deja para revision manual).
     conn = get_db()
-    ie = conn.execute('SELECT nombre_iiee, nivel_modalidad, distrito FROM dim_institucion WHERE codigo_modular = ?',
-                     (extracted_data.get('codigo_modular',''),)).fetchone()
+    codigo_resuelto, nombre_bd = resolve_ficha_codigo_modular(
+        conn, extracted_data.get('codigo_modular'), extracted_data.get('nombre_ie')
+    )
+    if codigo_resuelto:
+        extracted_data['codigo_modular'] = codigo_resuelto
+        ie = conn.execute(
+            'SELECT nombre_iiee, nivel_modalidad, distrito FROM dim_institucion WHERE codigo_modular = ?',
+            (codigo_resuelto,),
+        ).fetchone()
+        if ie:
+            extracted_data['distrito'] = ie['distrito']
+            extracted_data['nivel_modalidad'] = ie['nivel_modalidad']
+            if not extracted_data.get('nombre_ie'):
+                extracted_data['nombre_ie'] = ie['nombre_iiee']
+    extracted_data['codigo_modular_resuelto'] = bool(codigo_resuelto)
     conn.close()
-
-    if ie:
-        extracted_data['distrito'] = dict(ie)['distrito']
-        extracted_data['nivel_modalidad'] = dict(ie)['nivel_modalidad']
-        if extracted_data.get('nombre_ie', '') == '':
-            extracted_data['nombre_ie'] = dict(ie)['nombre_iiee']
 
     # Se devuelve cada archivo original en base64 para que, si el especialista
     # confirma la ficha, el frontend lo reenvie y quede guardado en

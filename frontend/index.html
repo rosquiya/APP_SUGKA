@@ -162,7 +162,28 @@ input,select,textarea{font-family:inherit}
 /*──────────────────────────────────────────────────────────────────────────────
   MAIN APP & SIDEBAR
 ──────────────────────────────────────────────────────────────────────────────*/
-#screen-app{flex-direction:row}
+/* Fondo de toda la aplicacion (una vez dentro, no en el login): la
+   ilustracion se ve por detras de todas las vistas (atenuada con un velo
+   del color base para no competir con el contenido), excepto el Mapa, que
+   pinta su propio --bg opaco encima para no interferir visualmente con las
+   tiles de Leaflet. */
+/* attachment "scroll" (no "fixed"): #screen-app en si nunca hace scroll
+   (cada vista maneja su propio scroll interno via .scroll-view), asi que
+   visualmente da igual, pero evita un bug real de Chromium donde una capa
+   de fondo "fixed" deja de pintarse en vistas con layouts mas complejos
+   (grid + sticky header + backdrop-filter, como Gestion), mostrando solo
+   el velo semitransparente y perdiendo la imagen por completo. */
+#screen-app{
+  flex-direction:row;
+  background:
+    linear-gradient(rgba(245,248,251,.55), rgba(245,248,251,.55)),
+    url('img/sugka-lab-hero.png') center 25% / cover no-repeat scroll;
+}
+[data-theme="dark"] #screen-app{
+  background:
+    linear-gradient(rgba(7,19,31,.7), rgba(7,19,31,.7)),
+    url('img/sugka-lab-hero.png') center 25% / cover no-repeat scroll;
+}
 #sidebar{
   /* Fondo fijo (no usa --brand-navy): en tema claro esa variable es un azul
      más claro que hacía casi invisible el logo (líneas azul marino) sobre
@@ -308,7 +329,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
 /*──────────────────────────────────────────────────────────────────────────────
   MAP VIEW
 ──────────────────────────────────────────────────────────────────────────────*/
-#view-mapa{flex-direction:row}
+#view-mapa{flex-direction:row;background:var(--bg)}
 #map-panel{
   width:340px;background:rgba(255,255,255,.96);border-right:1px solid var(--border);
   display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;
@@ -385,7 +406,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .scroll-view{flex-direction:column;overflow-y:auto;padding:24px}
 .grid-container{max-width:900px;margin:0 auto;width:100%}
 #view-dashboard .grid-container{max-width:1180px}
-#view-dashboard.scroll-view{padding:0;background:var(--bg)}
+#view-dashboard.scroll-view{padding:0}
 .panel{background:rgba(255,255,255,.96);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px;box-shadow:var(--shadow)}
 [data-theme="dark"] .panel{background:rgba(13,27,42,.96)}
 .panel-title{font-size:15px;font-weight:800;color:var(--brand-navy);margin-bottom:20px;display:flex;align-items:center;gap:8px}
@@ -512,7 +533,6 @@ body.is-admin .view.admin-only.active{display:flex!important}
 /*──────────────────────────────────────────────────────────────────────────────
   ADMIN CONFIG
 ──────────────────────────────────────────────────────────────────────────────*/
-#view-config.scroll-view,#view-preguntas.scroll-view{background:var(--bg)}
 .config-shell{max-width:1180px;margin:0 auto;width:100%}
 .config-hero{
   display:flex;justify-content:space-between;gap:18px;align-items:flex-start;
@@ -568,6 +588,39 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .reg-card textarea, .reg-card input.form-input{margin-top:0}
 .reg-card-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .reg-card-fields .field-item{margin-bottom:0}
+.collapsible-panel{margin:12px 0}
+.collapsible-panel > summary{cursor:pointer;font-size:12px;font-weight:800;color:var(--brand-blue);padding:8px 0;list-style:none}
+.collapsible-panel > summary::-webkit-details-marker{display:none}
+.collapsible-panel > summary::before{content:'▸ ';display:inline-block}
+.collapsible-panel[open] > summary::before{content:'▾ '}
+.seccion-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.seccion-row:last-child{border-bottom:none}
+.seccion-row .seccion-row-name{flex:1;min-width:0}
+.seccion-row .seccion-row-name strong{display:block;font-size:12.5px}
+.seccion-row .seccion-row-name span{font-size:11px;color:var(--text-muted)}
+.reg-split{display:grid;grid-template-columns:minmax(320px,1fr) minmax(420px,1.5fr);gap:16px;align-items:start}
+.reg-split-list{margin-bottom:0}
+.reg-split-empty{margin-bottom:0;display:flex;align-items:center;justify-content:center;min-height:200px}
+.reg-split-detail{margin-bottom:0}
+.reg-table-scroll{max-height:72vh;overflow-y:auto}
+.user-table tr.selected td{background:rgba(15,159,110,.20);border-top-color:var(--success);border-bottom-color:var(--success)}
+.user-table tr.selected td:first-child{border-left:2px solid var(--success);border-radius:10px 0 0 10px}
+.user-table tr.selected td:last-child{border-right:2px solid var(--success);border-radius:0 10px 10px 0}
+[data-theme="dark"] .user-table tr.selected td{background:rgba(52,211,153,.26)}
+.user-table tr.reg-row-clickable{cursor:pointer}
+.user-table tr.reg-row-clickable:hover td{background:var(--surface2)}
+.reg-actions-cell{width:1%;white-space:nowrap;text-align:right}
+.reg-menu{position:relative;display:inline-block}
+.reg-menu-btn{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text-muted);font-weight:900;line-height:1;cursor:pointer}
+.reg-menu-btn:hover{border-color:var(--brand-blue);color:var(--brand-blue)}
+.reg-menu-dropdown{position:absolute;right:0;top:calc(100% + 4px);background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 26px -10px rgba(11,53,85,.35);min-width:140px;z-index:30;overflow:hidden}
+.reg-menu-dropdown button{display:block;width:100%;text-align:left;padding:8px 12px;font-size:12px;font-weight:700;background:none;border:none;cursor:pointer;color:var(--text)}
+.reg-menu-dropdown button:hover{background:var(--surface3)}
+.reg-menu-dropdown button.danger{color:var(--danger)}
+@media (max-width: 980px){
+  .reg-split{grid-template-columns:1fr}
+  .reg-table-scroll{max-height:50vh}
+}
 .question-admin-grid{display:grid;grid-template-columns:380px minmax(0,1fr);gap:18px;align-items:start}
 .question-level-editor{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .question-level-editor textarea{min-height:72px;resize:vertical}
@@ -635,7 +688,10 @@ body.is-admin .view.admin-only.active{display:flex!important}
   --dash-border:var(--border);--dash-border2:var(--border2);--dash-text:var(--text);--dash-muted:var(--text-muted);
   --dash-dim:var(--text-dim);--dash-blue:var(--brand-blue);--dash-green:var(--success);--dash-amber:var(--warning);
   --dash-red:var(--danger);--dash-purple:var(--purple);--dash-shadow:var(--shadow);
-  background:var(--dash-bg);
+  /* Sin background propio a proposito: deja ver la imagen de fondo de
+     #screen-app (sugka-lab-hero.png) entre las tarjetas, igual que en Inicio
+     y el resto de vistas. Cada tarjeta (.dash-kpi, .dash-card, etc.) ya tiene
+     su propio fondo solido, asi que la legibilidad del contenido no cambia. */
 }
 .dash-shell *{letter-spacing:0}
 .dash-header{height:68px;background:rgba(255,255,255,.95);border-bottom:1px solid var(--dash-border);display:flex;align-items:center;gap:24px;padding:0 24px;position:sticky;top:0;z-index:20;backdrop-filter:blur(12px)}
@@ -655,6 +711,17 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .dash-overview.is-hidden{display:none}
 .dash-alerts-overview.is-hidden{display:none}
 .dash-alerts-overview{margin-bottom:16px}
+.dash-alerts-summary{background:var(--dash-surface);border:1px solid var(--dash-border);border-radius:10px;padding:14px 18px;font-size:13px;font-weight:800;color:var(--dash-text);box-shadow:var(--dash-shadow)}
+.dash-alerts-summary .accent{color:var(--dash-red)}
+.dash-alerts-hint{font-size:11px;color:var(--dash-muted);padding:10px 16px;border-top:1px solid var(--dash-border)}
+.dash-grid-layout.mode-alerts.alerts-collapsed{grid-template-columns:1fr}
+.dash-grid-layout.mode-alerts.alerts-collapsed .dash-center,
+.dash-grid-layout.mode-alerts.alerts-collapsed .dash-right{display:none}
+/* Alerta seleccionada, detalle minimo (sin "ver ficha completa"): solo lista + tarjeta breve, dos columnas. */
+.dash-grid-layout.mode-alerts:not(.alerts-collapsed):not(.alerts-full-detail){grid-template-columns:340px minmax(0,1fr)}
+.dash-alert-legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:0 16px 14px;font-size:11px;color:var(--dash-muted)}
+.dash-alert-legend span{display:inline-flex;align-items:center;gap:5px}
+.dash-alert-legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
 .dash-kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px}
 .dash-kpi{background:var(--dash-surface);border:1px solid var(--dash-border);border-radius:10px;padding:18px 20px;border-top:3px solid var(--dash-blue);box-shadow:var(--dash-shadow)}
 .dash-kpi.red{border-top-color:var(--dash-red)}.dash-kpi.amber{border-top-color:var(--accent)}.dash-kpi.green{border-top-color:var(--dash-green)}
@@ -968,7 +1035,11 @@ body.is-admin .view.admin-only.active{display:flex!important}
       <rect x="536" y="348" width="20" height="20" fill="#bfe3ea" stroke="#3a2a20" stroke-width="2"/>
       <rect x="614" y="348" width="20" height="20" fill="#bfe3ea" stroke="#3a2a20" stroke-width="2"/>
       <line x1="585" y1="288" x2="585" y2="268" stroke="#3a2a20" stroke-width="3"/>
-      <path d="M585 268h20v12h-20Z" fill="#e2574c" stroke="#3a2a20" stroke-width="2"/>
+      <!-- Bandera del Peru -->
+      <rect x="585" y="268" width="6.67" height="12" fill="#D91023"/>
+      <rect x="591.67" y="268" width="6.67" height="12" fill="#ffffff"/>
+      <rect x="598.33" y="268" width="6.67" height="12" fill="#D91023"/>
+      <rect x="585" y="268" width="20" height="12" fill="none" stroke="#3a2a20" stroke-width="1.5"/>
     </g>
   </svg>
   <div class="login-card">
@@ -1203,6 +1274,14 @@ body.is-admin .view.admin-only.active{display:flex!important}
                 <rect x="554" y="296" width="18" height="18" fill="#bfe3ea" stroke="#3a2a20" stroke-width="2"/>
                 <rect x="628" y="296" width="18" height="18" fill="#bfe3ea" stroke="#3a2a20" stroke-width="2"/>
               </g>
+              <!-- Bandera del Peru, junto a la escuela -->
+              <g>
+                <rect x="497" y="206" width="4" height="76" fill="#7a5c3e" stroke="#3a2a20" stroke-width="1"/>
+                <rect x="501" y="208" width="13" height="22" fill="#D91023"/>
+                <rect x="514" y="208" width="13" height="22" fill="#ffffff"/>
+                <rect x="527" y="208" width="13" height="22" fill="#D91023"/>
+                <rect x="501" y="208" width="39" height="22" fill="none" stroke="#3a2a20" stroke-width="1.5"/>
+              </g>
               <g stroke="#5c3d2a" stroke-width="4" stroke-linecap="round">
                 <path d="M70 302v14"/><path d="M1070 304v14"/>
               </g>
@@ -1255,8 +1334,8 @@ body.is-admin .view.admin-only.active{display:flex!important}
 
           <div class="panel-section">
             <div class="panel-label" id="map-legend-title">Nivel de Alerta</div>
-            <div class="legend-row"><div class="leg-dot" style="background:var(--danger)"></div><span id="leg-alta-label">Alerta alta (≥15)</span><span class="leg-count" id="leg-alta">0</span></div>
-            <div class="legend-row"><div class="leg-dot" style="background:var(--warning)"></div><span id="leg-media-label">Alerta media (≥8)</span><span class="leg-count" id="leg-media">0</span></div>
+            <div class="legend-row"><div class="leg-dot" style="background:var(--danger)"></div><span id="leg-alta-label">Alerta alta</span><span class="leg-count" id="leg-alta">0</span></div>
+            <div class="legend-row"><div class="leg-dot" style="background:var(--warning)"></div><span id="leg-media-label">Alerta media</span><span class="leg-count" id="leg-media">0</span></div>
             <div class="legend-row"><div class="leg-dot" style="background:var(--accent)"></div><span id="leg-baja-label">Sin alerta crítica</span><span class="leg-count" id="leg-baja">0</span></div>
             <div class="legend-row" id="leg-sindatos-row" style="display:none"><div class="leg-dot" style="background:#9ca3af"></div><span>Sin datos de esta fuente</span><span class="leg-count" id="leg-sindatos">0</span></div>
           </div>
@@ -1373,7 +1452,12 @@ body.is-admin .view.admin-only.active{display:flex!important}
                 <div class="field-item"><label class="form-group label">N° Visita</label><input class="form-input" id="fo-visita"/></div>
                 <div class="field-item"><label class="form-group label">Región</label><input class="form-input" id="fo-region"/></div>
                 <div class="field-item"><label class="form-group label">UGEL</label><input class="form-input" id="fo-ugel"/></div>
-                <div class="field-item full"><label class="form-group label">IE / Código Modular</label><input class="form-input" id="fo-ie"/></div>
+                <div class="field-item">
+                  <label class="form-group label">Código modular</label>
+                  <input class="form-input" id="fo-codigo"/>
+                  <span id="fo-codigo-warning" class="ocr-review-badge" style="display:none;margin-top:4px">No se confirmó contra el padrón de IE — revisa el código.</span>
+                </div>
+                <div class="field-item full"><label class="form-group label">Nombre IE</label><input class="form-input" id="fo-nombre-ie"/></div>
                 <div class="field-item"><label class="form-group label">Nivel / Modalidad</label><input class="form-input" id="fo-nivel"/></div>
                 <div class="field-item"><label class="form-group label">Director(a)</label><input class="form-input" id="fo-director"/></div>
                 <div class="field-item"><label class="form-group label">Cel. Director</label><input class="form-input" id="fo-director-cel"/></div>
@@ -1461,7 +1545,29 @@ body.is-admin .view.admin-only.active{display:flex!important}
           </div>
 
           <div id="registros-panel-fichas" class="config-tab-panel active">
-            <form class="panel" id="reg-ficha-form" style="display:none">
+           <div class="reg-split">
+            <div class="panel reg-split-list">
+              <div class="panel-title">Fichas registradas</div>
+              <div class="config-filter-row">
+                <label><input type="checkbox" id="reg-ficha-show-deleted"/> Mostrar eliminadas</label>
+                <input class="form-input" id="reg-ficha-search" placeholder="Buscar por IE, código o docente..." style="max-width:280px"/>
+                <select class="form-input" id="reg-ficha-filter-autor" style="max-width:240px"><option value="">Todos los correos</option></select>
+              </div>
+              <div class="reg-table-scroll">
+                <table class="user-table">
+                  <thead>
+                    <tr><th>IE / código</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody id="reg-ficha-body"><tr><td colspan="3">Cargando fichas...</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="reg-ficha-empty" class="panel reg-split-empty">
+              <div class="dash-empty">Selecciona un registro de la lista para verlo o editarlo.</div>
+            </div>
+
+            <form class="panel reg-split-detail" id="reg-ficha-form" style="display:none">
               <div class="panel-title" id="reg-ficha-form-title">Editar ficha</div>
               <div class="config-selected" id="reg-ficha-meta"></div>
               <div id="reg-ficha-archivos" class="config-actions" style="margin-bottom:10px"></div>
@@ -1526,25 +1632,33 @@ body.is-admin .view.admin-only.active{display:flex!important}
                 <button class="mini-btn" type="button" id="reg-ficha-cancel">Cerrar</button>
               </div>
             </form>
-
-            <div class="panel">
-              <div class="panel-title">Fichas registradas</div>
-              <div class="config-filter-row">
-                <label><input type="checkbox" id="reg-ficha-show-deleted"/> Mostrar eliminadas</label>
-                <input class="form-input" id="reg-ficha-search" placeholder="Buscar por IE, código o docente..." style="max-width:280px"/>
-                <select class="form-input" id="reg-ficha-filter-autor" style="max-width:240px"><option value="">Todos los correos</option></select>
-              </div>
-              <table class="user-table">
-                <thead>
-                  <tr><th>Código</th><th>IE</th><th>Docente</th><th>Fecha</th><th>Origen</th><th>Promedio</th><th>Autor</th><th>Estado</th><th>Acciones</th></tr>
-                </thead>
-                <tbody id="reg-ficha-body"><tr><td colspan="9">Cargando fichas...</td></tr></tbody>
-              </table>
-            </div>
+           </div>
           </div>
 
           <div id="registros-panel-campo" class="config-tab-panel">
-            <form class="panel" id="reg-campo-form" style="display:none">
+           <div class="reg-split">
+            <div class="panel reg-split-list">
+              <div class="panel-title">Informes de campo registrados</div>
+              <div class="config-filter-row">
+                <label><input type="checkbox" id="reg-campo-show-deleted"/> Mostrar eliminados</label>
+                <input class="form-input" id="reg-campo-search" placeholder="Buscar por IE, código o especialista..." style="max-width:280px"/>
+                <select class="form-input" id="reg-campo-filter-autor" style="max-width:240px"><option value="">Todos los correos</option></select>
+              </div>
+              <div class="reg-table-scroll">
+                <table class="user-table">
+                  <thead>
+                    <tr><th>IE / código</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody id="reg-campo-body"><tr><td colspan="3">Cargando informes...</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="reg-campo-empty" class="panel reg-split-empty">
+              <div class="dash-empty">Selecciona un registro de la lista para verlo o editarlo.</div>
+            </div>
+
+            <form class="panel reg-split-detail" id="reg-campo-form" style="display:none">
               <div class="panel-title" id="reg-campo-form-title">Editar informe de campo</div>
               <div class="config-selected" id="reg-campo-meta"></div>
               <div id="reg-campo-archivos" class="config-actions" style="margin-bottom:10px"></div>
@@ -1574,21 +1688,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
                 <button class="mini-btn" type="button" id="reg-campo-cancel">Cerrar</button>
               </div>
             </form>
-
-            <div class="panel">
-              <div class="panel-title">Informes de campo registrados</div>
-              <div class="config-filter-row">
-                <label><input type="checkbox" id="reg-campo-show-deleted"/> Mostrar eliminados</label>
-                <input class="form-input" id="reg-campo-search" placeholder="Buscar por IE, código o especialista..." style="max-width:280px"/>
-                <select class="form-input" id="reg-campo-filter-autor" style="max-width:240px"><option value="">Todos los correos</option></select>
-              </div>
-              <table class="user-table">
-                <thead>
-                  <tr><th>Código</th><th>IE</th><th>Fecha visita</th><th>Especialista</th><th>Variables</th><th>Autor</th><th>Estado</th><th>Acciones</th></tr>
-                </thead>
-                <tbody id="reg-campo-body"><tr><td colspan="8">Cargando informes...</td></tr></tbody>
-              </table>
-            </div>
+           </div>
           </div>
         </div>
       </div>
@@ -1711,41 +1811,56 @@ body.is-admin .view.admin-only.active{display:flex!important}
             </div>
 
             <div class="dash-alerts-overview is-hidden" id="dash-alerts-overview">
-              <div class="dash-kpi-grid" id="dash-alerts-kpis"></div>
-              <div class="dash-card" id="dash-alerts-severity-card" style="margin-top:16px">
-                <div class="dash-card-header">Alertas por severidad y fuente</div>
-                <div class="dash-chart-body" id="dash-alerts-severity-chart"></div>
-              </div>
+              <div class="dash-alerts-summary" id="dash-alerts-summary"></div>
             </div>
 
             <div class="dash-grid-layout mode-panel" id="dash-main-grid">
               <div class="dash-left">
                 <div class="dash-card dash-alerts-card" id="dash-alerts-card">
-                  <div class="dash-card-header red">Alertas priorizadas <span id="dash-critical-count">0</span></div>
+                  <div class="dash-card-header red">Instituciones con alertas <span id="dash-critical-count">0</span></div>
                   <div class="dash-list" id="dash-alert-list"></div>
+                  <div class="dash-alerts-hint" id="dash-alerts-hint">Haz clic en una alerta para ver el detalle completo de esa institución.</div>
                 </div>
               </div>
 
               <div class="dash-center">
-                <div class="dash-card" id="dash-focus-card"></div>
+                <button type="button" class="mini-btn" id="dash-alert-detail-close" style="display:none;margin-bottom:12px">‹ Volver a la lista de alertas</button>
 
-                <div class="dash-tabs" id="dash-tabs" aria-label="Hojas de monitoreo">
-                  <button class="dash-tab active" type="button" data-sheet="docentes">Docentes</button>
-                  <button class="dash-tab" type="button" data-sheet="infraestructura">Infraestructura</button>
-                  <button class="dash-tab" type="button" data-sheet="alumnos">Alumnos</button>
-                  <button class="dash-tab" type="button" data-sheet="progreso">Progreso comparativo</button>
+                <div class="dash-card" id="dash-alert-mini-card" style="display:none">
+                  <div class="dash-card-header" id="dash-alert-mini-header"></div>
+                  <div style="padding:16px">
+                    <div id="dash-alert-mini-title" style="font-weight:800;font-size:14px;margin-bottom:4px;color:var(--dash-text)"></div>
+                    <div id="dash-alert-mini-meta" class="dash-item-meta" style="margin-bottom:10px"></div>
+                    <div id="dash-alert-mini-list" style="display:flex;flex-direction:column;gap:8px"></div>
+                  </div>
+                  <div class="dash-alert-legend" id="dash-alert-mini-legend"></div>
+                  <div style="padding:0 16px 16px">
+                    <button type="button" class="mini-btn" id="dash-alert-full-toggle">Ver ficha completa de la IE →</button>
+                  </div>
                 </div>
 
-                <div class="dash-card">
-                  <div class="dash-section">
-                    <div class="dash-section-title" id="dash-sheet-title">Hoja Docentes</div>
-                    <div class="dash-section-sub" id="dash-sheet-sub">Detalle por institución educativa seleccionada.</div>
-                    <div id="dash-sheet-panel"></div>
+                <div id="dash-alert-full-detail" style="display:none">
+                  <button type="button" class="mini-btn" id="dash-alert-mini-toggle" style="margin-bottom:12px">‹ Volver al resumen breve</button>
+                  <div class="dash-card" id="dash-focus-card"></div>
+
+                  <div class="dash-tabs" id="dash-tabs" aria-label="Hojas de monitoreo">
+                    <button class="dash-tab active" type="button" data-sheet="docentes">Docentes</button>
+                    <button class="dash-tab" type="button" data-sheet="infraestructura">Infraestructura</button>
+                    <button class="dash-tab" type="button" data-sheet="alumnos">Alumnos</button>
+                    <button class="dash-tab" type="button" data-sheet="progreso">Progreso comparativo</button>
+                  </div>
+
+                  <div class="dash-card">
+                    <div class="dash-section">
+                      <div class="dash-section-title" id="dash-sheet-title">Hoja Docentes</div>
+                      <div class="dash-section-sub" id="dash-sheet-sub">Detalle por institución educativa seleccionada.</div>
+                      <div id="dash-sheet-panel"></div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div class="dash-right">
+              <div class="dash-right" id="dash-right" style="display:none">
                 <div class="dash-card">
                   <div class="dash-side-block" id="dash-model"></div>
                   <div class="dash-side-block">
@@ -1967,6 +2082,40 @@ body.is-admin .view.admin-only.active{display:flex!important}
             <div class="config-badge">Solo dinámicas</div>
           </div>
 
+          <details class="collapsible-panel panel">
+            <summary>Gestionar secciones</summary>
+            <div class="question-admin-grid" style="margin-top:12px">
+              <form class="panel" id="seccion-form" style="margin-bottom:0">
+                <div class="panel-title" id="seccion-form-title">Nueva sección</div>
+                <input type="hidden" id="seccion-id"/>
+                <div class="form-group">
+                  <label>Clave</label>
+                  <input class="form-input" id="seccion-clave" required placeholder="infraestructura"/>
+                </div>
+                <div class="form-group">
+                  <label>Nombre</label>
+                  <input class="form-input" id="seccion-nombre" required placeholder="Infraestructura"/>
+                </div>
+                <div class="form-group">
+                  <label>Orden</label>
+                  <input class="form-input" id="seccion-orden" type="number"/>
+                </div>
+                <label class="question-active-row">
+                  <input id="seccion-activo" type="checkbox" checked/>
+                  Activa (visible en ficha, OCR y PDF)
+                </label>
+                <div class="question-form-actions">
+                  <button class="btn-primary" id="seccion-submit" type="submit">Guardar sección</button>
+                  <button class="mini-btn" id="seccion-reset" type="button">Limpiar</button>
+                </div>
+              </form>
+              <div class="panel" style="margin-bottom:0">
+                <div class="panel-title">Secciones del instrumento dinámico</div>
+                <div id="seccion-list"><div class="dash-empty">Cargando secciones...</div></div>
+              </div>
+            </div>
+          </details>
+
           <div class="question-admin-grid">
             <form class="panel" id="question-form">
               <div class="panel-title" id="question-form-title">Nueva pregunta dinámica</div>
@@ -2007,6 +2156,16 @@ body.is-admin .view.admin-only.active{display:flex!important}
                 <input id="question-active" type="checkbox" checked/>
                 Activa en ficha, OCR y PDF imprimible
               </label>
+
+              <div id="question-comments" style="display:none">
+                <div class="panel-label">Comentarios</div>
+                <div id="question-comments-list"></div>
+                <div class="form-group">
+                  <textarea class="form-input" id="question-comment-text" rows="2" placeholder="Escribe un comentario..."></textarea>
+                </div>
+                <button class="mini-btn" type="button" id="question-comment-add">Comentar</button>
+              </div>
+
               <div class="question-form-actions">
                 <button class="btn-primary" id="question-submit" type="submit">Guardar pregunta</button>
                 <button class="mini-btn" id="question-reset" type="button">Limpiar</button>
@@ -2170,14 +2329,6 @@ function setField(id, value='') {
 function getField(id) {
   const el = document.getElementById(id);
   return el ? el.value.trim() : '';
-}
-
-function parseIeField(value) {
-  const match = value.match(/^(\d{5,10})\s*-\s*(.*)$/);
-  return {
-    codigo_modular: match ? match[1] : '',
-    nombre_ie: match ? match[2] : value
-  };
 }
 
 let instrumentDefinitions = [];
@@ -2489,7 +2640,7 @@ function setInstrumentFinal(scope, field, value='') {
 }
 
 const OCR_FIELD_IDS = [
-  'fo-fecha','fo-visita','fo-region','fo-ugel','fo-ie','fo-nivel','fo-director',
+  'fo-fecha','fo-visita','fo-region','fo-ugel','fo-codigo','fo-nombre-ie','fo-nivel','fo-director',
   'fo-director-cel','fo-director-email','fo-director-situacion','fo-docente',
   'fo-docente-dni','fo-docente-cel','fo-docente-email','fo-docente-situacion',
   'fo-grado','fo-seccion','fo-estudiantes','fo-area','fo-competencia',
@@ -2503,6 +2654,7 @@ let lastOcrFiles = [];
 
 function clearOcrFields() {
   OCR_FIELD_IDS.forEach(id => setField(id, ''));
+  document.getElementById('fo-codigo-warning').style.display = 'none';
   clearInstrumentResponses('ocr');
   document.querySelectorAll('#ocr-instruments .question-card.needs-review').forEach(card => {
     card.classList.remove('needs-review');
@@ -2542,12 +2694,14 @@ function markOcrConfidence(questionId, level) {
 
 function populateOcrFields(ex) {
   lastOcrFicha = {...ex};
-  const ieLabel = [ex.codigo_modular, ex.nombre_ie].filter(Boolean).join(' - ');
   setField('fo-fecha', ex.fecha_ejecucion);
   setField('fo-visita', ex.n_visita);
   setField('fo-region', ex.region);
   setField('fo-ugel', ex.ugel);
-  setField('fo-ie', ieLabel || ex.nombre_ie || '');
+  setField('fo-codigo', ex.codigo_modular);
+  setField('fo-nombre-ie', ex.nombre_ie);
+  document.getElementById('fo-codigo-warning').style.display =
+    (ex.codigo_modular && !ex.codigo_modular_resuelto) ? 'inline-flex' : 'none';
   setField('fo-nivel', ex.nivel_modalidad);
   setField('fo-director', ex.director);
   setField('fo-director-cel', ex.director_cel);
@@ -2586,7 +2740,6 @@ function populateOcrFields(ex) {
 }
 
 function buildOcrFichaFromFields() {
-  const ie = parseIeField(getField('fo-ie'));
   return {
     ...(lastOcrFicha || {}),
     source: 'ocr',
@@ -2595,8 +2748,8 @@ function buildOcrFichaFromFields() {
     n_visita: getField('fo-visita'),
     region: getField('fo-region'),
     ugel: getField('fo-ugel'),
-    codigo_modular: ie.codigo_modular || (lastOcrFicha ? lastOcrFicha.codigo_modular : ''),
-    nombre_ie: ie.nombre_ie || (lastOcrFicha ? lastOcrFicha.nombre_ie : ''),
+    codigo_modular: getField('fo-codigo'),
+    nombre_ie: getField('fo-nombre-ie'),
     nivel_modalidad: getField('fo-nivel'),
     director: getField('fo-director'),
     director_cel: getField('fo-director-cel'),
@@ -3352,10 +3505,45 @@ SIMON_INDICATORS.forEach(([field]) => {
   });
 });
 
+function formatRegistroFecha(value) {
+  if(!value) return '';
+  const [fecha, hora] = String(value).split(' ');
+  const [y, m, d] = (fecha || '').split('-');
+  if(!y || !m || !d) return value;
+  return `${d}/${m}/${y}${hora ? ' ' + hora.slice(0, 5) : ''}`;
+}
+
 function canEditRegistro(row) {
   if(isAdminUser()) return true;
   return !!row.creado_por && !!currentUser && row.creado_por === currentUser.user_id;
 }
+
+/* Menu "..." de acciones por fila (Editar/Eliminar/Restaurar) + clic en la
+   fila entera para "Ver" -- evita que la tabla necesite scroll horizontal
+   para llegar a los botones cuando la columna de lista es angosta. */
+function wireRegistroRows(bodyId, rowAttr, onView) {
+  document.querySelectorAll(`#${bodyId} tr[${rowAttr}]`).forEach(tr => {
+    tr.addEventListener('click', e => {
+      if(e.target.closest('.reg-menu')) return;
+      onView(tr.getAttribute(rowAttr));
+    });
+  });
+  document.querySelectorAll(`#${bodyId} [data-menu-toggle]`).forEach(btn => {
+    btn.onclick = e => {
+      e.stopPropagation();
+      const dropdown = btn.nextElementSibling;
+      const wasOpen = !dropdown.hidden;
+      document.querySelectorAll(`#${bodyId} .reg-menu-dropdown`).forEach(d => d.hidden = true);
+      dropdown.hidden = wasOpen;
+    };
+  });
+  document.querySelectorAll(`#${bodyId} .reg-menu-dropdown`).forEach(d => {
+    d.addEventListener('click', e => e.stopPropagation());
+  });
+}
+document.addEventListener('click', () => {
+  document.querySelectorAll('.reg-menu-dropdown').forEach(d => d.hidden = true);
+});
 
 /* Abre en una pestaña nueva el archivo original (imagen/PDF) de un OCR.
    Se descarga como blob autenticado en vez de un <a href> directo porque
@@ -3410,7 +3598,7 @@ async function loadRegistrosFichas() {
     registrosFichas = await apiFetch(`/fichas${incluirEliminadas ? '?incluir_eliminadas=1' : ''}`);
     renderRegistrosFichas();
   } catch(e) {
-    body.innerHTML = `<tr><td colspan="9">${esc(e.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10">${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -3436,7 +3624,7 @@ function renderRegistrosFichas() {
     return [f.nombre_ie, f.codigo_modular, f.docente].some(v => (v || '').toLowerCase().includes(q));
   });
   if(!rows.length) {
-    body.innerHTML = '<tr><td colspan="9">No hay fichas que coincidan.</td></tr>';
+    body.innerHTML = '<tr><td colspan="3">No hay fichas que coincidan.</td></tr>';
     return;
   }
   body.innerHTML = rows.map(f => {
@@ -3444,62 +3632,80 @@ function renderRegistrosFichas() {
     const puedeEditar = canEditRegistro(f);
     const origen = (f.source && f.source !== 'manual') ? 'OCR' : 'Manual';
     return `
-      <tr>
-        <td>${esc(f.codigo_modular || '')}</td>
-        <td><strong>${esc(f.nombre_ie || '')}</strong></td>
-        <td>${esc(f.docente || '')}</td>
-        <td>${esc(f.fecha_ejecucion || '')}</td>
-        <td>${origen}</td>
-        <td>${f.promedio ?? ''}</td>
-        <td>${esc(f.creado_por_nombre || 'Sin autor')}${f.creado_por_email ? `<div class="dash-item-meta">${esc(f.creado_por_email)}</div>` : ''}</td>
-        <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminada' : 'Activa'}</span></td>
+      <tr data-ficha-row="${f.id}" class="reg-row-clickable">
         <td>
-          <div class="config-actions">
-            <button class="mini-btn" type="button" data-ficha-view="${f.id}">Ver</button>
-            ${puedeEditar
-              ? (deleted
-                  ? `<button class="mini-btn" type="button" data-ficha-restore="${f.id}">Restaurar</button>`
-                  : `<button class="mini-btn" type="button" data-ficha-edit="${f.id}">Editar</button>
-                     <button class="mini-btn danger" type="button" data-ficha-delete="${f.id}">Eliminar</button>`)
-              : ''}
-          </div>
+          <strong>${esc(f.nombre_ie || '')}</strong>
+          <div class="dash-item-meta">${esc(f.codigo_modular || '')} · ${esc(f.docente || '')}</div>
+          <div class="dash-item-meta">${esc(f.fecha_ejecucion || '')} · ${origen}${f.promedio ? ' · Prom. ' + f.promedio : ''}</div>
+        </td>
+        <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminada' : 'Activa'}</span></td>
+        <td class="reg-actions-cell">
+          ${puedeEditar ? `
+            <div class="reg-menu">
+              <button class="reg-menu-btn" type="button" data-menu-toggle>⋮</button>
+              <div class="reg-menu-dropdown" hidden>
+                ${deleted
+                  ? `<button type="button" data-ficha-restore="${f.id}">Restaurar</button>`
+                  : `<button type="button" data-ficha-edit="${f.id}">Editar</button>
+                     <button type="button" class="danger" data-ficha-delete="${f.id}">Eliminar</button>`}
+              </div>
+            </div>
+          ` : ''}
         </td>
       </tr>
     `;
   }).join('');
 
-  document.querySelectorAll('[data-ficha-view]').forEach(btn => btn.addEventListener('click', () => openFichaForm(btn.dataset.fichaView, false)));
   document.querySelectorAll('[data-ficha-edit]').forEach(btn => btn.addEventListener('click', () => openFichaForm(btn.dataset.fichaEdit, true)));
   document.querySelectorAll('[data-ficha-delete]').forEach(btn => btn.addEventListener('click', () => deleteFicha(btn.dataset.fichaDelete)));
   document.querySelectorAll('[data-ficha-restore]').forEach(btn => btn.addEventListener('click', () => restoreFicha(btn.dataset.fichaRestore)));
+  wireRegistroRows('reg-ficha-body', 'data-ficha-row', id => openFichaForm(id, false));
 }
 
 document.getElementById('reg-ficha-show-deleted').addEventListener('change', loadRegistrosFichas);
 document.getElementById('reg-ficha-search').addEventListener('input', renderRegistrosFichas);
 document.getElementById('reg-ficha-filter-autor').addEventListener('change', renderRegistrosFichas);
 
-function fichaDinamicaRowHtml(r, i, editable) {
+const NIVEL_TAG_STYLE = {
+  0: 'background:var(--surface3);color:var(--text-muted)',
+  1: 'background:rgba(220,38,38,.12);color:var(--danger)',
+  2: 'background:rgba(217,119,6,.14);color:var(--warning)',
+  3: 'background:rgba(21,95,131,.12);color:var(--brand-blue)',
+  4: 'background:rgba(15,159,110,.12);color:var(--success)',
+};
+
+function fichaDinamicaRowHtml(r, i, editable, forceOpen) {
   const nivel = Number(r.nivel) || 0;
+  const color = NIVEL_COLOR[nivel] || 'var(--border2)';
+  const label = r.item || r.pregunta_codigo || `Pregunta ${i + 1}`;
   return `
-    <div class="reg-card" data-dinamica-row="${i}" style="border-left-color:${NIVEL_COLOR[nivel] || 'var(--border2)'}">
-      <div class="reg-card-fields">
-        <div class="field-item">
-          <label class="form-group label">Código de pregunta</label>
-          <input class="form-input" data-din-field="pregunta_codigo" value="${esc(r.pregunta_codigo || '')}" ${editable ? '' : 'disabled'}/>
+    <details class="reg-card" data-dinamica-row="${i}" style="border-left-color:${color}" ${forceOpen ? 'open' : ''}>
+      <summary class="reg-card-label" style="cursor:pointer">
+        <span style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;display:inline-block"></span>
+        <span style="flex:1;min-width:0;font-weight:700">${esc(label)}</span>
+        <span class="reg-card-tag" style="${NIVEL_TAG_STYLE[nivel]}">${nivel === 0 ? 'Sin observar' : 'Nivel ' + nivel}</span>
+      </summary>
+      <div style="margin-top:10px">
+        ${r.seccion_nombre ? `<div class="config-selected" style="margin-bottom:8px">Sección: ${esc(r.seccion_nombre)}</div>` : ''}
+        <div class="reg-card-fields">
+          <div class="field-item">
+            <label class="form-group label">Código de pregunta</label>
+            <input class="form-input" data-din-field="pregunta_codigo" value="${esc(r.pregunta_codigo || '')}" ${editable ? '' : 'disabled'}/>
+          </div>
+          <div class="field-item">
+            <label class="form-group label">Nivel</label>
+            <select class="form-select" data-din-field="nivel" ${editable ? '' : 'disabled'}>
+              ${[0,1,2,3,4].map(n => `<option value="${n}" ${nivel===n?'selected':''}>${n===0?'Sin observar':'Nivel '+n}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field-item full">
+            <label class="form-group label">Observación</label>
+            <input class="form-input" data-din-field="observacion" value="${esc(r.observacion || '')}" ${editable ? '' : 'disabled'}/>
+          </div>
         </div>
-        <div class="field-item">
-          <label class="form-group label">Nivel</label>
-          <select class="form-select" data-din-field="nivel" ${editable ? '' : 'disabled'}>
-            ${[0,1,2,3,4].map(n => `<option value="${n}" ${nivel===n?'selected':''}>${n===0?'Sin observar':'Nivel '+n}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field-item full">
-          <label class="form-group label">Observación</label>
-          <input class="form-input" data-din-field="observacion" value="${esc(r.observacion || '')}" ${editable ? '' : 'disabled'}/>
-        </div>
+        ${editable ? `<button type="button" class="mini-btn danger" data-din-remove="${i}" style="margin-top:10px">Quitar</button>` : ''}
       </div>
-      ${editable ? `<button type="button" class="mini-btn danger" data-din-remove="${i}" style="margin-top:10px">Quitar</button>` : ''}
-    </div>
+    </details>
   `;
 }
 
@@ -3509,7 +3715,17 @@ function wireFichaDinamicaRemove() {
   });
   document.querySelectorAll('#reg-ficha-dinamicas [data-din-field="nivel"]').forEach(sel => {
     sel.onchange = () => {
-      sel.closest('.reg-card').style.borderLeftColor = NIVEL_COLOR[Number(sel.value)] || 'var(--border2)';
+      const nivel = Number(sel.value);
+      const color = NIVEL_COLOR[nivel] || 'var(--border2)';
+      const card = sel.closest('.reg-card');
+      card.style.borderLeftColor = color;
+      const dot = card.querySelector('summary span');
+      if(dot) dot.style.background = color;
+      const tag = card.querySelector('.reg-card-tag');
+      if(tag) {
+        tag.style.cssText = NIVEL_TAG_STYLE[nivel];
+        tag.textContent = nivel === 0 ? 'Sin observar' : 'Nivel ' + nivel;
+      }
     };
   });
 }
@@ -3518,7 +3734,7 @@ function renderFichaDinamicas(respuestas, editable) {
   const container = document.getElementById('reg-ficha-dinamicas');
   document.getElementById('reg-ficha-add-dinamica').style.display = editable ? 'inline-flex' : 'none';
   container.innerHTML = respuestas.length
-    ? respuestas.map((r, i) => fichaDinamicaRowHtml(r, i, editable)).join('')
+    ? respuestas.map((r, i) => fichaDinamicaRowHtml(r, i, editable, false)).join('')
     : `<div class="config-selected">Sin respuestas de preguntas dinámicas.</div>`;
   wireFichaDinamicaRemove();
 }
@@ -3527,7 +3743,7 @@ document.getElementById('reg-ficha-add-dinamica').addEventListener('click', () =
   const container = document.getElementById('reg-ficha-dinamicas');
   if(!container.querySelector('[data-dinamica-row]')) container.innerHTML = '';
   const idx = container.querySelectorAll('[data-dinamica-row]').length;
-  container.insertAdjacentHTML('beforeend', fichaDinamicaRowHtml({}, idx, true));
+  container.insertAdjacentHTML('beforeend', fichaDinamicaRowHtml({}, idx, true, true));
   wireFichaDinamicaRemove();
 });
 
@@ -3539,13 +3755,21 @@ function collectFichaDinamicas() {
   })).filter(r => r.pregunta_codigo);
 }
 
+function highlightRegistroRow(bodyId, rowSelector) {
+  document.querySelectorAll(`#${bodyId} tr.selected`).forEach(tr => tr.classList.remove('selected'));
+  const row = document.querySelector(rowSelector);
+  if(row) row.classList.add('selected');
+}
+
 async function openFichaForm(id, wantEdit) {
   try {
     const detalle = await apiFetch(`/fichas/${id}`);
     regFichaEditingId = detalle.ficha.id;
     const editable = wantEdit && detalle.puede_editar;
     const form = document.getElementById('reg-ficha-form');
+    document.getElementById('reg-ficha-empty').style.display = 'none';
     form.style.display = 'block';
+    highlightRegistroRow('reg-ficha-body', `[data-ficha-row="${detalle.ficha.id}"]`);
     FICHA_TEXT_FIELDS.forEach(name => {
       const el = form.elements[name];
       if(el) { el.value = detalle.ficha[name] ?? ''; el.disabled = !editable; }
@@ -3567,6 +3791,9 @@ async function openFichaForm(id, wantEdit) {
     document.getElementById('reg-ficha-form-title').textContent =
       `${editable ? 'Editar' : 'Ver'} ficha: ${detalle.ficha.nombre_ie || detalle.ficha.codigo_modular || ''}`;
     const metaParts = [`Autor: ${detalle.ficha.creado_por_nombre || 'Sin autor (registro histórico)'}`];
+    if(detalle.ficha.fecha_sincronizacion) {
+      metaParts.push(`Registrado: ${formatRegistroFecha(detalle.ficha.fecha_sincronizacion)}`);
+    }
     if(detalle.ficha.modificado_por_nombre) {
       metaParts.push(`Última edición: ${detalle.ficha.modificado_por_nombre} (${detalle.ficha.actualizado_en || ''})`);
     }
@@ -3583,6 +3810,8 @@ function closeFichaForm() {
   document.getElementById('reg-ficha-form').style.display = 'none';
   document.getElementById('reg-ficha-form').reset();
   document.getElementById('reg-ficha-archivos').innerHTML = '';
+  document.getElementById('reg-ficha-empty').style.display = 'flex';
+  document.querySelectorAll('#reg-ficha-body tr.selected').forEach(tr => tr.classList.remove('selected'));
 }
 document.getElementById('reg-ficha-cancel').addEventListener('click', closeFichaForm);
 
@@ -3644,7 +3873,7 @@ async function loadRegistrosCampo() {
     registrosCampo = await apiFetch(`/informes_campo${incluirEliminados ? '?incluir_eliminadas=1' : ''}`);
     renderRegistrosCampo();
   } catch(e) {
-    body.innerHTML = `<tr><td colspan="8">${esc(e.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="9">${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -3659,40 +3888,41 @@ function renderRegistrosCampo() {
     return [v.nombre_ie_detectado, v.codigo_modular, v.especialista_detectado].some(x => (x || '').toLowerCase().includes(q));
   });
   if(!rows.length) {
-    body.innerHTML = '<tr><td colspan="8">No hay informes que coincidan.</td></tr>';
+    body.innerHTML = '<tr><td colspan="3">No hay informes que coincidan.</td></tr>';
     return;
   }
   body.innerHTML = rows.map(v => {
     const deleted = Number(v.estado_fila) === 0;
     const puedeEditar = canEditRegistro(v);
     return `
-      <tr>
-        <td>${esc(v.codigo_modular || '')}</td>
-        <td><strong>${esc(v.nombre_ie_detectado || '')}</strong></td>
-        <td>${esc(v.fecha_visita || '')}</td>
-        <td>${esc(v.especialista_detectado || '')}</td>
-        <td>${v.n_variables_observadas ?? 0}</td>
-        <td>${esc(v.creado_por_nombre || 'Sin autor')}${v.creado_por_email ? `<div class="dash-item-meta">${esc(v.creado_por_email)}</div>` : ''}</td>
-        <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminado' : 'Activo'}</span></td>
+      <tr data-campo-row="${esc(v.visita_campo_id)}" class="reg-row-clickable">
         <td>
-          <div class="config-actions">
-            <button class="mini-btn" type="button" data-campo-view="${esc(v.visita_campo_id)}">Ver</button>
-            ${puedeEditar
-              ? (deleted
-                  ? `<button class="mini-btn" type="button" data-campo-restore="${esc(v.visita_campo_id)}">Restaurar</button>`
-                  : `<button class="mini-btn" type="button" data-campo-edit="${esc(v.visita_campo_id)}">Editar</button>
-                     <button class="mini-btn danger" type="button" data-campo-delete="${esc(v.visita_campo_id)}">Eliminar</button>`)
-              : ''}
-          </div>
+          <strong>${esc(v.nombre_ie_detectado || '')}</strong>
+          <div class="dash-item-meta">${esc(v.codigo_modular || '')} · ${esc(v.especialista_detectado || '')}</div>
+          <div class="dash-item-meta">${esc(v.fecha_visita || '')} · ${v.n_variables_observadas ?? 0} variable(s)</div>
+        </td>
+        <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminado' : 'Activo'}</span></td>
+        <td class="reg-actions-cell">
+          ${puedeEditar ? `
+            <div class="reg-menu">
+              <button class="reg-menu-btn" type="button" data-menu-toggle>⋮</button>
+              <div class="reg-menu-dropdown" hidden>
+                ${deleted
+                  ? `<button type="button" data-campo-restore="${esc(v.visita_campo_id)}">Restaurar</button>`
+                  : `<button type="button" data-campo-edit="${esc(v.visita_campo_id)}">Editar</button>
+                     <button type="button" class="danger" data-campo-delete="${esc(v.visita_campo_id)}">Eliminar</button>`}
+              </div>
+            </div>
+          ` : ''}
         </td>
       </tr>
     `;
   }).join('');
 
-  document.querySelectorAll('[data-campo-view]').forEach(btn => btn.addEventListener('click', () => openCampoForm(btn.dataset.campoView, false)));
   document.querySelectorAll('[data-campo-edit]').forEach(btn => btn.addEventListener('click', () => openCampoForm(btn.dataset.campoEdit, true)));
   document.querySelectorAll('[data-campo-delete]').forEach(btn => btn.addEventListener('click', () => deleteCampo(btn.dataset.campoDelete)));
   document.querySelectorAll('[data-campo-restore]').forEach(btn => btn.addEventListener('click', () => restoreCampo(btn.dataset.campoRestore)));
+  wireRegistroRows('reg-campo-body', 'data-campo-row', id => openCampoForm(id, false));
 }
 
 document.getElementById('reg-campo-show-deleted').addEventListener('change', loadRegistrosCampo);
@@ -3807,7 +4037,9 @@ async function openCampoForm(id, wantEdit) {
     regCampoVariablesMeta = detalle.variables_meta || {};
     const editable = wantEdit && detalle.puede_editar;
     const form = document.getElementById('reg-campo-form');
+    document.getElementById('reg-campo-empty').style.display = 'none';
     form.style.display = 'block';
+    highlightRegistroRow('reg-campo-body', `[data-campo-row="${detalle.visita.visita_campo_id}"]`);
     ['codigo_modular', 'nombre_ie_detectado', 'fecha_visita', 'especialista_detectado', 'motivo_revision'].forEach(name => {
       const el = form.elements[name];
       if(el) { el.value = detalle.visita[name] ?? ''; el.disabled = !editable; }
@@ -3822,6 +4054,9 @@ async function openCampoForm(id, wantEdit) {
     document.getElementById('reg-campo-form-title').textContent =
       `${editable ? 'Editar' : 'Ver'} informe: ${detalle.visita.nombre_ie_detectado || detalle.visita.codigo_modular || ''}`;
     const metaParts = [`Autor: ${detalle.visita.creado_por_nombre || 'Sin autor (registro histórico)'}`];
+    if(detalle.visita.creado_en) {
+      metaParts.push(`Registrado: ${formatRegistroFecha(detalle.visita.creado_en)}`);
+    }
     if(detalle.visita.modificado_por_nombre) {
       metaParts.push(`Última edición: ${detalle.visita.modificado_por_nombre} (${detalle.visita.actualizado_en || ''})`);
     }
@@ -3838,6 +4073,8 @@ function closeCampoForm() {
   document.getElementById('reg-campo-form').style.display = 'none';
   document.getElementById('reg-campo-form').reset();
   document.getElementById('reg-campo-archivos').innerHTML = '';
+  document.getElementById('reg-campo-empty').style.display = 'flex';
+  document.querySelectorAll('#reg-campo-body tr.selected').forEach(tr => tr.classList.remove('selected'));
 }
 document.getElementById('reg-campo-cancel').addEventListener('click', closeCampoForm);
 
@@ -3926,19 +4163,21 @@ function renderQuestionSectionOptions() {
   const select = document.getElementById('question-section');
   const current = select.value;
   select.innerHTML = '<option value="">Selecciona una sección</option>';
-  dynamicQuestionState.secciones.forEach(section => {
+  const visibleSections = dynamicQuestionState.secciones.filter(s => s.activo || String(s.seccion_id) === String(current));
+  visibleSections.forEach(section => {
     const opt = document.createElement('option');
     opt.value = section.seccion_id;
-    opt.textContent = section.nombre;
+    opt.textContent = section.nombre + (section.activo ? '' : ' (inactiva)');
     select.appendChild(opt);
   });
-  if(current && dynamicQuestionState.secciones.some(s => String(s.seccion_id) === String(current))) {
+  if(current && visibleSections.some(s => String(s.seccion_id) === String(current))) {
     select.value = current;
   }
 }
 
 function renderDynamicQuestionAdmin() {
   renderQuestionSectionOptions();
+  renderSeccionList();
   const instrument = dynamicQuestionState.instrumento || {};
   const activeCount = dynamicQuestionState.preguntas.filter(q => q.activo).length;
   document.getElementById('question-admin-meta').textContent =
@@ -3989,6 +4228,8 @@ function resetDynamicQuestionForm() {
   document.getElementById('question-id').value = '';
   document.getElementById('question-form').reset();
   document.getElementById('question-active').checked = true;
+  document.getElementById('question-comments').style.display = 'none';
+  document.getElementById('question-comments-list').innerHTML = '';
 }
 
 function editDynamicQuestion(id) {
@@ -4004,6 +4245,8 @@ function editDynamicQuestion(id) {
   QUESTION_LEVEL_FIELDS.forEach(([idField, label]) => setField(idField, (question.niveles || {})[label] || ''));
   document.getElementById('question-active').checked = !!question.activo;
   document.getElementById('question-code').focus();
+  document.getElementById('question-comments').style.display = 'block';
+  loadQuestionComments(question.pregunta_id);
 }
 
 function dynamicQuestionPayloadFromForm() {
@@ -4053,6 +4296,155 @@ async function deleteDynamicQuestion(id) {
     resetDynamicQuestionForm();
     await refreshInstrumentosAfterQuestionChange();
     await loadDynamicQuestions();
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+}
+
+/* --- Secciones del instrumento dinamico --- */
+let seccionEditingId = null;
+
+function renderSeccionList() {
+  const list = document.getElementById('seccion-list');
+  if(!dynamicQuestionState.secciones.length) {
+    list.innerHTML = '<div class="dash-empty">No hay secciones registradas.</div>';
+    return;
+  }
+  list.innerHTML = dynamicQuestionState.secciones.map(s => `
+    <div class="seccion-row">
+      <div class="seccion-row-name">
+        <strong>${esc(s.nombre)}</strong>
+        <span>${esc(s.clave)} · orden ${s.orden}</span>
+      </div>
+      <span class="status-chip ${s.activo ? 'on' : 'off'}">${s.activo ? 'Activa' : 'Inactiva'}</span>
+      <button class="mini-btn" type="button" data-seccion-edit="${s.seccion_id}">Editar</button>
+      <button class="mini-btn warn" type="button" data-seccion-delete="${s.seccion_id}">Eliminar</button>
+    </div>
+  `).join('');
+  document.querySelectorAll('[data-seccion-edit]').forEach(btn => {
+    btn.addEventListener('click', () => editDynamicSeccion(btn.dataset.seccionEdit));
+  });
+  document.querySelectorAll('[data-seccion-delete]').forEach(btn => {
+    btn.addEventListener('click', () => deleteDynamicSeccion(btn.dataset.seccionDelete));
+  });
+}
+
+function resetSeccionForm() {
+  seccionEditingId = null;
+  document.getElementById('seccion-form-title').textContent = 'Nueva sección';
+  document.getElementById('seccion-submit').textContent = 'Guardar sección';
+  document.getElementById('seccion-id').value = '';
+  document.getElementById('seccion-form').reset();
+  document.getElementById('seccion-activo').checked = true;
+}
+document.getElementById('seccion-reset').addEventListener('click', resetSeccionForm);
+
+function editDynamicSeccion(id) {
+  const seccion = dynamicQuestionState.secciones.find(s => String(s.seccion_id) === String(id));
+  if(!seccion) return;
+  seccionEditingId = seccion.seccion_id;
+  document.getElementById('seccion-form-title').textContent = `Editar ${seccion.nombre}`;
+  document.getElementById('seccion-submit').textContent = 'Actualizar sección';
+  setField('seccion-id', seccion.seccion_id);
+  setField('seccion-clave', seccion.clave);
+  setField('seccion-nombre', seccion.nombre);
+  setField('seccion-orden', seccion.orden);
+  document.getElementById('seccion-activo').checked = !!seccion.activo;
+}
+
+document.getElementById('seccion-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const payload = {
+    clave: getField('seccion-clave'),
+    nombre: getField('seccion-nombre'),
+    orden: getField('seccion-orden') ? Number(getField('seccion-orden')) : undefined,
+    activo: document.getElementById('seccion-activo').checked,
+  };
+  const path = seccionEditingId
+    ? `/instrumentos/dinamico/secciones/${encodeURIComponent(seccionEditingId)}`
+    : '/instrumentos/dinamico/secciones';
+  try {
+    await apiFetch(path, {method: seccionEditingId ? 'PUT' : 'POST', body: JSON.stringify(payload)});
+    showToast(seccionEditingId ? 'Sección actualizada.' : 'Sección creada.', 'success');
+    resetSeccionForm();
+    await refreshInstrumentosAfterQuestionChange();
+    await loadDynamicQuestions();
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+});
+
+async function deleteDynamicSeccion(id) {
+  const seccion = dynamicQuestionState.secciones.find(s => String(s.seccion_id) === String(id));
+  if(!seccion) return;
+  if(!confirm(`¿Eliminar la sección "${seccion.nombre}"?`)) return;
+  try {
+    await apiFetch(`/instrumentos/dinamico/secciones/${encodeURIComponent(id)}`, {method: 'DELETE'});
+    showToast('Sección eliminada.', 'success');
+    if(String(seccionEditingId) === String(id)) resetSeccionForm();
+    await refreshInstrumentosAfterQuestionChange();
+    await loadDynamicQuestions();
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+}
+
+/* --- Comentarios por pregunta dinamica --- */
+async function loadQuestionComments(preguntaId) {
+  const list = document.getElementById('question-comments-list');
+  list.innerHTML = '<div class="dash-empty">Cargando comentarios...</div>';
+  try {
+    const comentarios = await apiFetch(`/instrumentos/dinamico/preguntas/${encodeURIComponent(preguntaId)}/comentarios`);
+    renderQuestionComments(preguntaId, comentarios);
+  } catch(e) {
+    list.innerHTML = `<div class="dash-empty">${esc(e.message)}</div>`;
+  }
+}
+
+function renderQuestionComments(preguntaId, comentarios) {
+  const list = document.getElementById('question-comments-list');
+  if(!comentarios.length) {
+    list.innerHTML = '<div class="dash-empty">Sin comentarios todavía.</div>';
+  } else {
+    list.innerHTML = comentarios.map(c => `
+      <div class="seccion-row" style="align-items:flex-start">
+        <div class="seccion-row-name">
+          <strong>${esc(c.autor_nombre || 'Usuario')}</strong>
+          <span>${esc(formatRegistroFecha(c.creado_en))}</span>
+          <div style="font-size:12.5px;color:var(--text);margin-top:4px">${esc(c.texto)}</div>
+        </div>
+        ${(isAdminUser() || (currentUser && c.autor_id === currentUser.user_id))
+          ? `<button class="mini-btn warn" type="button" data-comment-delete="${c.id}">Eliminar</button>`
+          : ''}
+      </div>
+    `).join('');
+  }
+  document.querySelectorAll('[data-comment-delete]').forEach(btn => {
+    btn.addEventListener('click', () => deleteQuestionComment(preguntaId, btn.dataset.commentDelete));
+  });
+}
+
+document.getElementById('question-comment-add').addEventListener('click', async () => {
+  const preguntaId = dynamicQuestionState.editingId;
+  if(!preguntaId) return;
+  const texto = getField('question-comment-text');
+  if(!texto) return;
+  try {
+    await apiFetch(`/instrumentos/dinamico/preguntas/${encodeURIComponent(preguntaId)}/comentarios`, {
+      method: 'POST', body: JSON.stringify({texto}),
+    });
+    setField('question-comment-text', '');
+    await loadQuestionComments(preguntaId);
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+});
+
+async function deleteQuestionComment(preguntaId, comentarioId) {
+  if(!confirm('¿Eliminar este comentario?')) return;
+  try {
+    await apiFetch(`/instrumentos/dinamico/preguntas/${encodeURIComponent(preguntaId)}/comentarios/${encodeURIComponent(comentarioId)}`, {method: 'DELETE'});
+    await loadQuestionComments(preguntaId);
   } catch(err) {
     showToast(err.message, 'error');
   }
@@ -4180,7 +4572,7 @@ function mapEffectiveNivel(ie) {
 }
 
 const MAP_SOURCE_LEGEND = {
-  todas: {title: 'Nivel de alerta (modelo combinado)', alta: 'Alerta alta (≥15)', media: 'Alerta media (≥8)', baja: 'Sin alerta crítica', copy: 'Instituciones educativas monitoreadas por nivel, alerta y distrito.'},
+  todas: {title: 'Nivel de alerta (alertas activas)', alta: 'Alerta alta', media: 'Alerta media', baja: 'Sin alerta pendiente', copy: 'Color según las alertas activas de la IE (SIMON, Censo, Campo y preguntas dinámicas) — mismo dato que Gestión → Alertas.'},
   simon: {title: 'Riesgo SIMON', alta: 'Alto', media: 'Medio', baja: 'Bajo', copy: 'Color según riesgo_intervencion de SIMON. Los puntos grises no tienen fichas SIMON.'},
   censo: {title: 'Riesgo Censo de Infraestructura', alta: 'Crítico', media: 'Alerta', baja: 'Estable', copy: 'Color según risk_score_infra del Censo 2025.'},
   campo: {title: 'Riesgo Informes de Campo', alta: 'Alto', media: 'Medio', baja: 'Bajo', copy: 'Color según severidad de variables detectadas en informes de campo. Los puntos grises no tienen informes.'},
@@ -4710,7 +5102,11 @@ const dashboardState = {
   activeSheet: 'docentes',
   institutionPage: 1,
   alertPage: 1,
-  pageSize: 10
+  pageSize: 10,
+  alertDetailOpen: false,
+  fullDetailOpen: false,
+  selectedAlertGroup: null,
+  visibleAlertGroups: []
 };
 
 /* KPIs de fuentes sin logica dedicada todavia: SIMON ya calcula sus propios
@@ -4822,14 +5218,6 @@ function average(values) {
   return clean.length ? Math.round(clean.reduce((a, b) => a + Number(b), 0) / clean.length) : 0;
 }
 
-function sumBy(items, key) {
-  return (items || []).reduce((acc, item) => {
-    const label = item[key] || 'Sin dato';
-    acc[label] = (acc[label] || 0) + 1;
-    return acc;
-  }, {});
-}
-
 function dashMiniBar(label, value, max, color='var(--dash-blue)', note='') {
   const numeric = Number(value) || 0;
   const pct = max ? Math.max(2, Math.min(100, Math.round((numeric / max) * 100))) : 0;
@@ -4855,16 +5243,57 @@ function applyDashboardView() {
   const mainGrid = document.getElementById('dash-main-grid');
   if (overview) overview.classList.toggle('is-hidden', view !== 'panel');
   if (alertsOverview) alertsOverview.classList.toggle('is-hidden', view !== 'alerts');
+
+  const detailOpen = view === 'alerts' && dashboardState.alertDetailOpen;
+  const fullOpen = detailOpen && dashboardState.fullDetailOpen;
+  const miniOpen = detailOpen && !dashboardState.fullDetailOpen;
+
   if (mainGrid) {
-    mainGrid.classList.remove('mode-panel', 'mode-alerts');
+    mainGrid.classList.remove('mode-panel', 'mode-alerts', 'alerts-full-detail');
     mainGrid.classList.add(`mode-${view}`);
+    mainGrid.classList.toggle('alerts-collapsed', view === 'alerts' && !detailOpen);
+    mainGrid.classList.toggle('alerts-full-detail', fullOpen);
   }
+  const closeBtn = document.getElementById('dash-alert-detail-close');
+  if (closeBtn) closeBtn.style.display = detailOpen ? 'inline-flex' : 'none';
+  const hint = document.getElementById('dash-alerts-hint');
+  if (hint) hint.style.display = (view === 'alerts' && !detailOpen) ? 'block' : 'none';
+
+  const miniCard = document.getElementById('dash-alert-mini-card');
+  if (miniCard) miniCard.style.display = miniOpen ? 'block' : 'none';
+  if (miniOpen) renderAlertMiniCard();
+  const fullDetail = document.getElementById('dash-alert-full-detail');
+  if (fullDetail) fullDetail.style.display = fullOpen ? 'block' : 'none';
+  const rightCol = document.getElementById('dash-right');
+  if (rightCol) rightCol.style.display = fullOpen ? 'block' : 'none';
 }
 
 function selectDashboardView(view) {
   dashboardState.activeView = ['panel', 'alerts'].includes(view) ? view : 'panel';
+  if (dashboardState.activeView === 'alerts') {
+    dashboardState.alertDetailOpen = false;
+    dashboardState.fullDetailOpen = false;
+  }
   applyDashboardView();
 }
+
+document.getElementById('dash-alert-detail-close').addEventListener('click', () => {
+  dashboardState.alertDetailOpen = false;
+  dashboardState.fullDetailOpen = false;
+  applyDashboardView();
+});
+
+document.getElementById('dash-alert-full-toggle').addEventListener('click', () => {
+  dashboardState.fullDetailOpen = true;
+  applyDashboardView();
+  document.getElementById('dash-focus-card')?.scrollIntoView({behavior: 'smooth', block: 'start'});
+});
+
+document.getElementById('dash-alert-mini-toggle').addEventListener('click', () => {
+  dashboardState.fullDetailOpen = false;
+  applyDashboardView();
+  document.getElementById('dash-alert-mini-card')?.scrollIntoView({behavior: 'smooth', block: 'start'});
+});
 
 function clampDashboardPage(page, totalPages) {
   return Math.max(1, Math.min(Number(page) || 1, Math.max(1, totalPages)));
@@ -4899,7 +5328,74 @@ function dashPagerHtml(kind, page, totalPages, total, label) {
 
 function selectDashboardIE(code) {
   dashboardState.selectedCodigo = String(code);
+  if (dashboardState.activeView === 'alerts') {
+    dashboardState.alertDetailOpen = true;
+    dashboardState.fullDetailOpen = false;
+    dashboardState.selectedAlertGroup = (dashboardState.visibleAlertGroups || [])
+      .find(g => String(g.codigo_modular) === String(code)) || null;
+  }
   renderDashboard();
+  if (dashboardState.alertDetailOpen) {
+    const target = document.getElementById('dash-alert-mini-card') || document.getElementById('dash-focus-card');
+    target?.scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
+}
+
+const ALERT_SEVERITY_LEGEND = [
+  ['var(--dash-red)', 'Alta: requiere atención prioritaria'],
+  ['var(--dash-amber)', 'Media: seguimiento en la próxima visita'],
+  ['var(--dash-green)', 'Baja: contexto operativo, sin urgencia'],
+];
+
+function renderAlertMiniCard() {
+  const group = dashboardState.selectedAlertGroup;
+  const card = document.getElementById('dash-alert-mini-card');
+  if (!card) return;
+  if (!group) {
+    card.innerHTML = '<div class="dash-empty">Selecciona una institución de la lista.</div>';
+    return;
+  }
+  const sev = String(group.severidadMax || 'media').toLowerCase();
+  const cls = dashAlertSeverityClass(sev);
+  const count = group.alertas.length;
+  document.getElementById('dash-alert-mini-header').innerHTML =
+    `<span class="dash-status ${cls}" style="text-transform:capitalize">${esc(sev)}</span>`;
+  document.getElementById('dash-alert-mini-title').textContent = group.nombre_iiee || `IE ${group.codigo_modular}`;
+  document.getElementById('dash-alert-mini-meta').textContent =
+    `${group.distrito || 'Sin distrito'} · ${count} alerta${count === 1 ? '' : 's'} activa${count === 1 ? '' : 's'}`;
+  document.getElementById('dash-alert-mini-list').innerHTML = count
+    ? group.alertas.map((a, idx) => {
+        const aSev = String(a.severidad || 'media').toLowerCase();
+        const aCls = dashAlertSeverityClass(aSev);
+        const fullDesc = a.descripcion ? String(a.descripcion) : '';
+        const isLong = fullDesc.length > 130;
+        const shortDesc = isLong ? fullDesc.slice(0, 130) + '…' : fullDesc;
+        return `
+          <div style="border:1px solid var(--dash-border);border-radius:10px;padding:10px 12px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <span class="dash-status ${aCls}" style="text-transform:capitalize">${esc(aSev)}</span>
+              <span style="font-weight:700;font-size:12.5px;color:var(--dash-text)">${esc(a.titulo || a.cat_nombre || 'Alerta priorizada')}</span>
+            </div>
+            <div class="dash-item-meta">${esc(fuenteLabel(a.fuente))}</div>
+            ${fullDesc ? `
+              <div class="dash-alert-desc" data-full="${esc(fullDesc)}" data-short="${esc(shortDesc)}" style="font-size:12px;color:var(--dash-text);line-height:1.5;margin-top:4px">${esc(shortDesc)}</div>
+              ${isLong ? `<button type="button" class="dash-alert-desc-toggle" data-expanded="0" style="margin-top:4px;font-size:11px;font-weight:700;color:var(--dash-blue,var(--brand-blue));background:none;border:none;padding:0;cursor:pointer">Ver más</button>` : ''}
+            ` : ''}
+          </div>
+        `;
+      }).join('')
+    : '<div class="dash-empty">Sin alertas de detalle registradas.</div>';
+  document.getElementById('dash-alert-mini-legend').innerHTML = ALERT_SEVERITY_LEGEND
+    .map(([color, text]) => `<span><i style="background:${color}"></i>${esc(text)}</span>`).join('');
+  document.querySelectorAll('.dash-alert-desc-toggle').forEach(btn => {
+    btn.onclick = () => {
+      const desc = btn.previousElementSibling;
+      const expanded = btn.dataset.expanded === '1';
+      desc.textContent = expanded ? desc.dataset.short : desc.dataset.full;
+      btn.textContent = expanded ? 'Ver más' : 'Ver menos';
+      btn.dataset.expanded = expanded ? '0' : '1';
+    };
+  });
 }
 
 function selectDashboardSheet(sheet) {
@@ -4970,7 +5466,6 @@ function renderDashboard() {
     ? Math.max(alertasDetalle.length, d.alertas_pendientes || 0, criticalCount)
     : alertasDetalle.length;
   document.getElementById('dash-alert-count').textContent = alertasPendientes;
-  document.getElementById('dash-critical-count').textContent = `(${alertasPendientes})`;
 
   const isSimonFilter = dashboardState.sourceFilter === 'simon';
   const isCensoFilter = dashboardState.sourceFilter === 'censo';
@@ -5608,98 +6103,81 @@ function fuenteLabel(fuente) {
   return DASH_FUENTE_LABEL[fuente] || fuente || 'Sin fuente';
 }
 
-/* Dashboard de la vista "Alertas": KPIs + severidad/fuente, siempre sobre la
- * fuente elegida en el filtro compartido (misma logica que el Panel). */
+/* Dashboard de la vista "Alertas": un resumen minimo (nada de KPIs ni
+ * graficos por defecto -- el desglose por severidad/fuente y el detalle
+ * completo de cada IE solo aparecen al hacer clic en una alerta, para que
+ * la vista no abrume con informacion antes de que el usuario la pida). */
 function renderAlertsOverview() {
   const alertas = filteredDashboardAlertas();
   const total = alertas.length;
-  const porSeveridad = {alta: 0, media: 0, baja: 0};
+  const instituciones = new Set(alertas.map(a => a.codigo_modular)).size;
+  const institucionesAlta = new Set(
+    alertas.filter(a => ['alta', 'critica'].includes(String(a.severidad || '').toLowerCase())).map(a => a.codigo_modular)
+  ).size;
+
+  document.getElementById('dash-alerts-summary').innerHTML = instituciones
+    ? `<span class="accent">${instituciones} institución${instituciones === 1 ? '' : 'es'}</span> con alertas activas` +
+      (institucionesAlta ? ` · ${institucionesAlta} con severidad alta` : '') +
+      ` <span style="color:var(--dash-muted);font-weight:600">(${total} alerta${total === 1 ? '' : 's'} en total)</span>`
+    : 'No hay alertas activas para esta fuente.';
+}
+
+const ALERT_SEV_RANK = {alta: 3, critica: 3, media: 2, baja: 1};
+
+/* Agrupa las alertas (filas individuales, una por regla/variable detectada)
+ * por institucion, para que la lista priorice "que IE necesita atencion"
+ * en vez de mostrar 440 filas tecnicas sin poder decidir por donde empezar.
+ * El detalle de cada alerta individual sigue disponible al abrir la IE. */
+function groupAlertasByInstitucion(alertas) {
+  const map = new Map();
   alertas.forEach(a => {
-    const key = String(a.severidad || 'media').toLowerCase();
-    if (porSeveridad[key] === undefined) porSeveridad[key] = 0;
-    porSeveridad[key]++;
+    const code = a.codigo_modular || '';
+    if (!map.has(code)) {
+      map.set(code, {codigo_modular: code, nombre_iiee: a.nombre_iiee || `IE ${code}`, distrito: a.distrito || 'Sin distrito', alertas: [], sevRank: 0});
+    }
+    const g = map.get(code);
+    g.alertas.push(a);
+    const rank = ALERT_SEV_RANK[String(a.severidad || 'media').toLowerCase()] || 2;
+    if (rank > g.sevRank) g.sevRank = rank;
   });
-  const porFuente = sumBy(alertas, 'fuente');
-  const fuenteTop = Object.entries(porFuente).sort((a, b) => b[1] - a[1])[0];
-  const scores = alertas.map(a => Number(a.score) || 0).filter(v => v > 0);
-  const scorePromedio = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-
-  document.getElementById('dash-alerts-kpis').innerHTML = `
-    <div class="dash-kpi">
-      <div class="dash-kpi-label">Alertas activas</div>
-      <div class="dash-kpi-value">${total}</div>
-      <div class="dash-kpi-sub">Pendientes de atención</div>
-    </div>
-    <div class="dash-kpi red">
-      <div class="dash-kpi-label">Severidad alta</div>
-      <div class="dash-kpi-value">${porSeveridad.alta}</div>
-      <div class="dash-kpi-sub">${total ? Math.round(porSeveridad.alta / total * 100) : 0}% del total · requieren visita prioritaria</div>
-    </div>
-    <div class="dash-kpi amber">
-      <div class="dash-kpi-label">Fuente principal</div>
-      <div class="dash-kpi-value">${fuenteTop ? esc(fuenteLabel(fuenteTop[0])) : '—'}</div>
-      <div class="dash-kpi-sub">${fuenteTop ? `${fuenteTop[1]} alertas` : 'Sin alertas'}</div>
-    </div>
-    <div class="dash-kpi green">
-      <div class="dash-kpi-label">Score promedio de prioridad</div>
-      <div class="dash-kpi-value">${scorePromedio.toFixed(1)}</div>
-      <div class="dash-kpi-sub" title="Cada regla de alerta suma puntos editoriales segun su severidad (ver 'Reglas de alertas'); a mayor score, mayor urgencia.">Editorial, no es un porcentaje</div>
-    </div>
-  `;
-
-  const sevRows = [
-    ['Alta', porSeveridad.alta, 'var(--dash-red)'],
-    ['Media', porSeveridad.media, 'var(--dash-amber)'],
-    ['Baja', porSeveridad.baja, 'var(--dash-green)'],
-  ];
-  const sevMax = Math.max(1, ...sevRows.map(r => r[1]));
-  const fuenteRows = Object.entries(porFuente).sort((a, b) => b[1] - a[1]);
-  const fuenteMax = Math.max(1, ...fuenteRows.map(r => r[1]));
-  document.getElementById('dash-alerts-severity-chart').innerHTML = total ? `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
-      <div>
-        <div class="dash-hbar-note" style="margin-bottom:8px;font-weight:800;color:var(--dash-text)">Por severidad</div>
-        ${sevRows.map(r => dashMiniBar(r[0], r[1], sevMax, r[2])).join('')}
-      </div>
-      <div>
-        <div class="dash-hbar-note" style="margin-bottom:8px;font-weight:800;color:var(--dash-text)">Por fuente</div>
-        ${fuenteRows.map(([f, v]) => dashMiniBar(fuenteLabel(f), v, fuenteMax, 'var(--dash-blue)')).join('')}
-      </div>
-    </div>
-  ` : '<div class="dash-empty">No hay alertas para esta fuente.</div>';
+  const rankToSev = {3: 'alta', 2: 'media', 1: 'baja', 0: 'media'};
+  return Array.from(map.values())
+    .map(g => ({...g, severidadMax: rankToSev[g.sevRank]}))
+    .sort((a, b) => b.sevRank - a.sevRank || b.alertas.length - a.alertas.length);
 }
 
 function renderDashboardLists(instituciones) {
   const selected = String(dashboardState.selectedCodigo || '');
   const pageSize = dashboardState.pageSize || 10;
   const alertasDetalle = filteredDashboardAlertas();
-  const alertas = alertasDetalle.length
-    ? alertasDetalle
-    : (dashboardState.sourceFilter === 'todas' ? instituciones.filter(ie => ['Critico','Alto'].includes(ie.risk_level)) : []);
-  const alertPage = dashPaged(alertas, dashboardState.alertPage, pageSize);
+  const grupos = alertasDetalle.length
+    ? groupAlertasByInstitucion(alertasDetalle)
+    : (dashboardState.sourceFilter === 'todas'
+        ? instituciones.filter(ie => ['Critico', 'Alto'].includes(ie.risk_level)).map(ie => ({
+            codigo_modular: ie.codigo_modular, nombre_iiee: ie.nombre_iiee, distrito: ie.distrito,
+            severidadMax: ie.risk_level === 'Critico' ? 'alta' : 'media', alertas: [],
+          }))
+        : []);
+  const alertPage = dashPaged(grupos, dashboardState.alertPage, pageSize);
   dashboardState.alertPage = alertPage.page;
-  document.getElementById('dash-alert-list').innerHTML = alertPage.items.map(alerta => {
-    const isDbAlert = Boolean(alerta.alerta_id || alerta.alerta_codigo);
-    const code = alerta.codigo_modular || '';
-    const severidadCls = isDbAlert ? dashAlertSeverityClass(alerta.severidad) : dashRiskClass(alerta.risk_level);
-    const severidadLabel = isDbAlert ? (alerta.severidad || 'media') : (alerta.risk_level || 'Media');
-    const title = isDbAlert ? (alerta.titulo || alerta.cat_nombre || 'Alerta priorizada') : alerta.nombre_iiee;
-    const ieName = isDbAlert ? (alerta.nombre_iiee || `IE ${code}`) : alerta.nombre_iiee;
-    const meta = isDbAlert
-      ? `${esc(ieName)} · ${esc(alerta.distrito || 'Sin distrito')} · ${esc(fuenteLabel(alerta.fuente))}`
-      : `${esc(alerta.distrito || 'Sin distrito')} · ${esc(alerta.risk_level)}`;
-    const detail = isDbAlert && alerta.descripcion ? String(alerta.descripcion).slice(0, 130) : '';
+  dashboardState.visibleAlertGroups = alertPage.items;
+  document.getElementById('dash-critical-count').textContent = `(${grupos.length})`;
+  document.getElementById('dash-alert-list').innerHTML = alertPage.items.map(g => {
+    const code = g.codigo_modular || '';
+    const cls = dashAlertSeverityClass(g.severidadMax);
+    const count = g.alertas.length;
+    const fuentes = [...new Set(g.alertas.map(a => fuenteLabel(a.fuente)))].join(', ');
+    const selectedCls = selected === String(code) ? 'selected' : '';
     return `
-      <button class="dash-list-item selectable ${selected === String(code) ? 'selected' : ''}" type="button" data-dash-ie="${esc(code)}">
-        <span class="dash-status ${severidadCls}" style="flex-shrink:0;text-transform:capitalize">${esc(severidadLabel)}</span>
+      <button class="dash-list-item selectable ${selectedCls}" type="button" data-dash-ie="${esc(code)}">
+        <span class="dash-status ${cls}" style="flex-shrink:0;text-transform:capitalize">${esc(g.severidadMax)}</span>
         <div style="flex:1;min-width:0">
-          <div class="dash-item-title">${esc(title)}</div>
-          <div class="dash-item-meta">${meta}</div>
-          ${detail ? `<div class="dash-item-meta" title="Cómo se detectó esta alerta">${esc(detail)}${String(alerta.descripcion).length > 130 ? '…' : ''}</div>` : ''}
+          <div class="dash-item-title">${esc(g.nombre_iiee)}</div>
+          <div class="dash-item-meta">${esc(g.distrito)}${count ? ` · ${count} alerta${count === 1 ? '' : 's'}` : ''}${fuentes ? ' · ' + esc(fuentes) : ''}</div>
         </div>
       </button>
     `;
-  }).join('') + dashPagerHtml('alerts', alertPage.page, alertPage.totalPages, alertPage.total, 'Alertas') || '<div class="dash-empty">No hay alertas activas para esta fuente.</div>';
+  }).join('') + dashPagerHtml('alerts', alertPage.page, alertPage.totalPages, alertPage.total, 'Instituciones') || '<div class="dash-empty">No hay alertas activas para esta fuente.</div>';
 }
 
 function renderDashboardFocus(focus) {

@@ -17,7 +17,7 @@ import csv
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'app'))
 import api_server as api
 
 CAMPO_VARS = api.CAMPO_CONCRETE_VARIABLES
