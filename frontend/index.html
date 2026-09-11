@@ -336,6 +336,11 @@ body.is-admin .view.admin-only.active{display:flex!important}
 }
 [data-theme="dark"] #map-panel{background:rgba(13,27,42,.96)}
 #leaflet-map{flex:1;position:relative}
+/* OSM no ofrece tiles oscuras gratis sin API key -- se simula el tema oscuro
+   invirtiendo los colores de las mismas tiles claras (truco estandar de
+   Leaflet). Los marcadores/popups no estan dentro de tile-pane, asi que no
+   se ven afectados por el filtro. */
+[data-theme="dark"] #leaflet-map .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9)}
 .panel-section{padding:16px 18px;border-bottom:1px solid var(--border);flex-shrink:0}
 .panel-label{font-size:10px;font-weight:800;color:var(--brand-blue);text-transform:uppercase;letter-spacing:.9px;margin-bottom:9px}
 
@@ -551,6 +556,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
 .role-chip,.status-chip{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:10px;font-weight:900;border:1px solid var(--border);white-space:nowrap}
 .role-chip.admin{background:var(--brand-sky);color:var(--brand-blue);border-color:#c9dde8}
 .role-chip.specialist{background:var(--surface2);color:var(--text-muted)}
+.role-chip.supervisor{background:#efe9fb;color:#6b4fa0;border-color:#d9cdf2}
 .status-chip.on{background:#ecfdf5;color:#047857;border-color:#a7f3d0}
 .status-chip.off{background:#f8fafc;color:#64748b;border-color:#d9e4ee}
 [data-theme="dark"] .status-chip.on{background:rgba(52,211,153,.12);color:#a7f3d0;border-color:rgba(52,211,153,.28)}
@@ -858,7 +864,9 @@ body.is-admin .view.admin-only.active{display:flex!important}
  * arriba); el detalle de una IE puntual (docentes/infraestructura/alumnos +
  * modelo de clasificacion general) no esta filtrado por fuente y no
  * corresponde mezclarlo ahi -- solo vive en la vista "Instituciones". */
-.dash-grid-layout.mode-panel{display:none}
+.dash-grid-layout.mode-panel,
+.dash-grid-layout.mode-asistencias,
+.dash-grid-layout.mode-especialistas{display:none}
 .dash-card{background:var(--dash-surface);border:1px solid var(--dash-border);border-radius:10px;box-shadow:var(--dash-shadow);overflow:hidden}
 .dash-card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--dash-border);font-weight:800;color:var(--dash-text)}
 .dash-card-header.red{background:#fff1f2;color:#be123c;border-color:#fecdd3}
@@ -968,6 +976,28 @@ body.is-admin .view.admin-only.active{display:flex!important}
 #toast.success{border-color:var(--accent);color:var(--accent)}
 #toast.error{border-color:var(--danger);color:var(--danger)}
 #toast.warning{border-color:var(--warning);color:var(--warning)}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  BUSCADOR DE CATALOGO (IE, profesor, especialista)
+  Panel flotante anclado al input. Se monta en <body> para que no lo recorte el
+  overflow de .reg-card/.panel/.reg-split, por eso se posiciona con coordenadas
+  absolutas calculadas al abrir.
+──────────────────────────────────────────────────────────────────────────────*/
+.ss-panel{
+  position:absolute;z-index:9500;background:var(--surface);
+  border:1px solid var(--border2);border-radius:10px;box-shadow:var(--shadow-lg);
+  max-height:280px;overflow-y:auto;min-width:220px;
+}
+.ss-option{padding:8px 12px;font-size:12.5px;cursor:pointer;display:flex;flex-direction:column;gap:2px;border-bottom:1px solid var(--border)}
+.ss-option:last-child{border-bottom:none}
+.ss-option:hover,.ss-option.active{background:var(--brand-sky)}
+.ss-option .ss-label{font-weight:700;color:var(--text)}
+.ss-option .ss-sub{font-size:10.5px;color:var(--text-muted)}
+.ss-empty{padding:10px 12px;font-size:11.5px;color:var(--text-muted)}
+.ss-addnew{padding:9px 12px;font-size:12px;font-weight:800;color:var(--brand-blue);cursor:pointer;background:var(--surface2);position:sticky;bottom:0}
+.ss-addnew:hover{background:var(--brand-sky)}
+input.ss-picked{border-color:var(--success)}
+input.ss-unpicked{border-color:var(--warning)}
 
 </style>
 </head>
@@ -1123,6 +1153,9 @@ body.is-admin .view.admin-only.active{display:flex!important}
     </div>
     <div class="nav-item" data-view="campo" id="nav-campo" data-tooltip="Informes de campo" title="Informes de campo">
       <span class="nav-icon" data-icon="clipboardCheck"></span><span class="nav-label">Informes de Campo</span>
+    </div>
+    <div class="nav-item" data-view="talleres" id="nav-talleres" data-tooltip="Asistencia a talleres" title="Asistencia a talleres">
+      <span class="nav-icon" data-icon="teacher"></span><span class="nav-label">Asistencia Talleres</span>
     </div>
     <div class="nav-item" data-view="registros" id="nav-registros" data-tooltip="Registros" title="Registros">
       <span class="nav-icon" data-icon="archive"></span><span class="nav-label">Registros</span>
@@ -1528,6 +1561,55 @@ body.is-admin .view.admin-only.active{display:flex!important}
         </div>
       </div>
 
+      <!-- ASISTENCIA A TALLERES: OCR de listas de participantes -->
+      <div id="view-talleres" class="view scroll-view">
+        <div class="grid-container">
+          <div class="ocr-layout">
+            <div class="panel" style="margin-bottom:0">
+              <div class="panel-title">Subir lista de asistencia</div>
+              <div class="drop-zone" id="taller-drop-zone">
+                <div style="font-size:12px;font-weight:900;letter-spacing:.08em;color:var(--brand-blue);background:var(--brand-sky);padding:9px 12px;border-radius:8px">OCR + IA</div>
+                <div style="font-size:12px;color:var(--text-muted)">Foto o PDF de la planilla de participantes del taller.</div>
+                <button class="btn-primary" style="padding:8px;font-size:12px" onclick="document.getElementById('taller-file-input').click()">Examinar</button>
+              </div>
+              <input type="file" id="taller-file-input" style="display:none" accept=".pdf,image/*" multiple/>
+
+              <div class="ocr-progress" id="taller-progress">
+                <div class="progress-label" id="taller-status-text">Leyendo la planilla con IA...</div>
+                <div class="progress-bar-wrap"><div class="progress-bar"></div></div>
+              </div>
+
+              <div class="panel-label" style="margin-top:18px">Datos del taller</div>
+              <div class="fields-grid">
+                <div class="field-item full"><label class="form-group label">Nombre del evento</label><input class="form-input" id="tl-evento"/></div>
+                <div class="field-item full"><label class="form-group label">Compromiso / indicador</label><input class="form-input" id="tl-compromiso"/></div>
+                <div class="field-item"><label class="form-group label">DRE</label><input class="form-input" id="tl-dre"/></div>
+                <div class="field-item"><label class="form-group label">UGEL</label><input class="form-input" id="tl-ugel"/></div>
+                <div class="field-item"><label class="form-group label">Nivel educativo</label><input class="form-input" id="tl-nivel"/></div>
+                <div class="field-item full"><label class="form-group label">Especialista responsable <span style="color:var(--text-dim);font-weight:400">— a quién se le acredita el taller</span></label><input class="form-input" id="tl-especialista" placeholder="Busca al especialista..."/></div>
+                <div class="field-item"><label class="form-group label">Sede (localidad)</label><input class="form-input" id="tl-sede"/></div>
+                <div class="field-item full">
+                  <label class="form-group label">IE sede del taller</label>
+                  <input class="form-input" id="tl-ie-sede" placeholder="Busca la IE por nombre o código..."/>
+                  <div class="config-selected" style="margin:4px 0 0" id="tl-ie-sede-hint"></div>
+                </div>
+                <div class="field-item"><label class="form-group label">Fecha inicio</label><input class="form-input" type="date" id="tl-fecha-inicio"/></div>
+                <div class="field-item"><label class="form-group label">Fecha fin</label><input class="form-input" type="date" id="tl-fecha-fin"/></div>
+              </div>
+            </div>
+
+            <div class="panel" style="margin-bottom:0">
+              <div class="panel-title">Participantes detectados <span id="taller-conf" class="confidence-chip" style="display:none"></span></div>
+              <div class="config-selected" id="taller-resumen"></div>
+              <div id="taller-review">
+                <div class="campo-empty">Sube la foto de una lista de participantes para registrar la asistencia.</div>
+              </div>
+              <button class="btn-primary" id="btn-save-taller" disabled>Guardar asistencia</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- REGISTROS: edicion/eliminacion de fichas e informes de campo -->
       <div id="view-registros" class="view scroll-view">
         <div class="config-shell">
@@ -1542,6 +1624,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
           <div class="config-tabs">
             <button type="button" class="config-tab active" data-registros-tab="fichas">Fichas de monitoreo</button>
             <button type="button" class="config-tab" data-registros-tab="campo">Informes de campo</button>
+            <button type="button" class="config-tab" data-registros-tab="talleres">Asistencia a talleres</button>
           </div>
 
           <div id="registros-panel-fichas" class="config-tab-panel active">
@@ -1589,6 +1672,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
                 <div class="field-item"><label class="form-group label">Nivel / modalidad</label><input class="form-input" name="nivel_modalidad"/></div>
                 <div class="field-item"><label class="form-group label">Región</label><input class="form-input" name="region"/></div>
                 <div class="field-item"><label class="form-group label">UGEL</label><input class="form-input" name="ugel"/></div>
+                <div class="field-item full"><label class="form-group label">Especialista responsable</label><input class="form-input" name="especialista_responsable" placeholder="Busca al especialista..."/></div>
                 <div class="field-item"><label class="form-group label">N° visita</label><input class="form-input" name="n_visita"/></div>
               </div>
 
@@ -1653,6 +1737,13 @@ body.is-admin .view.admin-only.active{display:flex!important}
                 <label><input type="checkbox" id="reg-campo-show-deleted"/> Mostrar eliminados</label>
                 <input class="form-input" id="reg-campo-search" placeholder="Buscar por IE, código o especialista..." style="max-width:280px"/>
                 <select class="form-input" id="reg-campo-filter-autor" style="max-width:240px"><option value="">Todos los correos</option></select>
+                <select class="form-input" id="reg-campo-filter-revision" style="max-width:230px">
+                  <option value="">Todo estado de revisión</option>
+                  <option value="mios">Los que me toca revisar</option>
+                  <option value="pendiente">Pendientes de revisión</option>
+                  <option value="en_revision">En revisión</option>
+                  <option value="resuelto">Ya revisados</option>
+                </select>
               </div>
               <div class="config-filter-row">
                 <label class="dash-item-meta" style="display:flex;align-items:center;gap:6px">Registrado desde
@@ -1684,28 +1775,91 @@ body.is-admin .view.admin-only.active{display:flex!important}
               <div id="reg-campo-archivos" class="config-actions" style="margin-bottom:10px"></div>
 
               <div class="fields-grid">
-                <div class="field-item"><label class="form-group label">Código modular</label><input class="form-input" name="codigo_modular"/></div>
-                <div class="field-item full"><label class="form-group label">IE detectada</label><input class="form-input" name="nombre_ie_detectado"/></div>
+                <div class="field-item full"><label class="form-group label">Institución educativa <span style="color:var(--text-dim);font-weight:400">— búscala por nombre o código</span></label><input class="form-input" name="codigo_modular"/></div>
+                <div class="field-item full"><label class="form-group label">Nombre tal como lo leyó el OCR <span style="color:var(--text-dim);font-weight:400">— solo referencia</span></label><input class="form-input" name="nombre_ie_detectado"/></div>
                 <div class="field-item"><label class="form-group label">Fecha de visita</label><input class="form-input" type="date" name="fecha_visita"/></div>
                 <div class="field-item"><label class="form-group label">Especialista</label><input class="form-input" name="especialista_detectado"/></div>
               </div>
 
-              <div class="panel-label">Variables concretas observadas</div>
+              <div class="panel-label">Variables observadas y sus evidencias</div>
+              <div class="config-selected" style="margin-bottom:8px">
+                Cada variable muestra la cita textual del informe que la sustenta. Si el mismo
+                informe aporta varias citas para una variable, se listan todas.
+              </div>
               <div id="reg-campo-variables"></div>
-
-              <div class="panel-label">Hallazgos</div>
-              <div id="reg-campo-hallazgos"></div>
-              <button type="button" class="mini-btn" id="reg-campo-add-hallazgo">+ Agregar hallazgo</button>
+              <div id="reg-campo-hallazgos" style="display:none"></div>
+              <button type="button" class="mini-btn" id="reg-campo-add-hallazgo" style="display:none">+ Agregar hallazgo</button>
 
               <div class="panel-label">Revisión</div>
+              <div id="reg-campo-revision"></div>
               <div class="fields-grid">
-                <div class="field-item"><label class="form-group label"><input type="checkbox" name="requiere_revision"/> Requiere revisión</label></div>
-                <div class="field-item full"><label class="form-group label">Motivo de revisión</label><input class="form-input" name="motivo_revision"/></div>
+                <div class="field-item full"><label class="form-group label">Motivo de la revisión</label><input class="form-input" name="motivo_revision" placeholder="Qué hay que verificar"/></div>
+                <div class="field-item full"><label class="form-group label">Nota de quien revisó</label><input class="form-input" name="revision_nota" placeholder="Qué se verificó y con quién"/></div>
               </div>
+              <div class="config-actions" id="reg-campo-revision-acciones" style="margin-bottom:10px"></div>
 
               <div class="question-form-actions">
                 <button class="btn-primary" type="submit" id="reg-campo-submit">Guardar cambios</button>
                 <button class="mini-btn" type="button" id="reg-campo-cancel">Cerrar</button>
+              </div>
+            </form>
+           </div>
+          </div>
+
+          <div id="registros-panel-talleres" class="config-tab-panel">
+           <div class="reg-split">
+            <div class="panel reg-split-list">
+              <div class="panel-title">Talleres registrados</div>
+              <div class="config-filter-row">
+                <label><input type="checkbox" id="reg-taller-show-deleted"/> Mostrar eliminados</label>
+                <input class="form-input" id="reg-taller-search" placeholder="Buscar por evento, IE sede o indicador..." style="max-width:280px"/>
+                <select class="form-input" id="reg-taller-filter-autor" style="max-width:240px"><option value="">Todos los correos</option></select>
+              </div>
+              <div class="config-filter-row">
+                <label class="dash-item-meta" style="display:flex;align-items:center;gap:6px">Registrado desde
+                  <input class="form-input" type="date" id="reg-taller-filter-desde" style="max-width:150px"/>
+                </label>
+                <label class="dash-item-meta" style="display:flex;align-items:center;gap:6px">hasta
+                  <input class="form-input" type="date" id="reg-taller-filter-hasta" style="max-width:150px"/>
+                </label>
+                <button type="button" class="mini-btn" id="reg-taller-export-csv">Exportar CSV</button>
+                <button type="button" class="mini-btn" id="reg-taller-export-xlsx">Exportar Excel</button>
+              </div>
+              <div class="reg-table-scroll">
+                <table class="user-table">
+                  <thead>
+                    <tr><th>Taller / sede</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody id="reg-taller-body"><tr><td colspan="3">Cargando talleres...</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="reg-taller-empty" class="panel reg-split-empty">
+              <div class="dash-empty">Selecciona un taller de la lista para ver su asistencia.</div>
+            </div>
+
+            <form class="panel reg-split-detail" id="reg-taller-form" style="display:none">
+              <div class="panel-title" id="reg-taller-form-title">Editar taller</div>
+              <div class="config-selected" id="reg-taller-meta"></div>
+              <div id="reg-taller-archivos" class="config-actions" style="margin-bottom:10px"></div>
+
+              <div class="fields-grid">
+                <div class="field-item full"><label class="form-group label">Nombre del evento</label><input class="form-input" name="nombre_evento"/></div>
+                <div class="field-item full"><label class="form-group label">Compromiso / indicador</label><input class="form-input" name="compromiso_indicador"/></div>
+                <div class="field-item"><label class="form-group label">Nivel educativo</label><input class="form-input" name="nivel_educativo"/></div>
+                <div class="field-item"><label class="form-group label">UGEL</label><input class="form-input" name="ugel"/></div>
+                <div class="field-item full"><label class="form-group label">IE sede</label><input class="form-input" name="codigo_modular_sede" placeholder="Busca la IE por nombre o código..."/></div>
+                <div class="field-item"><label class="form-group label">Fecha inicio</label><input class="form-input" type="date" name="fecha_inicio"/></div>
+                <div class="field-item"><label class="form-group label">Fecha fin</label><input class="form-input" type="date" name="fecha_fin"/></div>
+              </div>
+
+              <div class="panel-label">Participantes</div>
+              <div id="reg-taller-asistentes"></div>
+
+              <div class="question-form-actions">
+                <button class="btn-primary" type="submit" id="reg-taller-submit">Guardar cambios</button>
+                <button class="mini-btn" type="button" id="reg-taller-cancel">Cerrar</button>
               </div>
             </form>
            </div>
@@ -1727,6 +1881,8 @@ body.is-admin .view.admin-only.active{display:flex!important}
             <div class="dash-nav">
               <button class="dash-nav-pill active" type="button" data-dash-view="panel">Panel</button>
               <button class="dash-nav-pill" type="button" data-dash-view="alerts">Alertas <span class="dash-red-dot" id="dash-alert-count">0</span></button>
+              <button class="dash-nav-pill" type="button" data-dash-view="asistencias">Capacitaciones</button>
+              <button class="dash-nav-pill" type="button" data-dash-view="especialistas">Especialistas</button>
             </div>
             <button class="dash-new-btn" type="button" onclick="switchView('ocr')">Nuevo monitoreo</button>
           </div>
@@ -1834,6 +1990,69 @@ body.is-admin .view.admin-only.active{display:flex!important}
               <div class="dash-alerts-summary" id="dash-alerts-summary"></div>
             </div>
 
+            <!-- Capacitaciones: seguimiento de asistencia a talleres -->
+            <div class="dash-overview is-hidden" id="dash-asistencias-overview">
+              <div class="dash-source-filter" id="dash-asis-filtros" style="margin-bottom:14px;flex-wrap:wrap">
+                <span class="dash-source-filter-label">Filtrar:</span>
+                <select class="form-input" data-dashf="anio" data-vista="asis" style="max-width:130px"><option value="">Todos los años</option></select>
+                <select class="form-input" data-dashf="mes" data-vista="asis" style="max-width:150px"><option value="">Todos los meses</option></select>
+                <input class="form-input" data-dashf="ie" data-vista="asis" placeholder="Toda institución — busca por nombre o código" style="max-width:340px"/>
+                <button type="button" class="mini-btn" data-dashf-clear="asis">Limpiar</button>
+              </div>
+              <div class="dash-kpi-grid" id="dash-asis-kpis"></div>
+              <div class="dash-chart-grid">
+                <div class="dash-card dash-chart-card">
+                  <div class="dash-card-header">Asistencias por mes</div>
+                  <div class="dash-chart-body" id="dash-asis-mes"></div>
+                </div>
+                <div class="dash-card dash-chart-card">
+                  <div class="dash-card-header">Participantes por cargo</div>
+                  <div class="dash-chart-body" id="dash-asis-cargo"></div>
+                </div>
+              </div>
+              <div class="dash-chart-grid">
+                <div class="dash-card dash-chart-card">
+                  <div class="dash-card-header">IE con más participantes</div>
+                  <div class="dash-chart-body" id="dash-asis-ies"></div>
+                </div>
+                <div class="dash-card dash-chart-card">
+                  <div class="dash-card-header">Talleres recientes</div>
+                  <div class="dash-chart-body" id="dash-asis-recientes"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Especialistas: monitoreo de productividad -->
+            <div class="dash-overview is-hidden" id="dash-especialistas-overview">
+              <div class="dash-source-filter" id="dash-esp-filtros" style="margin-bottom:14px;flex-wrap:wrap">
+                <span class="dash-source-filter-label">Filtrar:</span>
+                <select class="form-input" data-dashf="anio" data-vista="esp" style="max-width:130px"><option value="">Todos los años</option></select>
+                <select class="form-input" data-dashf="mes" data-vista="esp" style="max-width:150px"><option value="">Todos los meses</option></select>
+                <input class="form-input" data-dashf="ie" data-vista="esp" placeholder="Toda institución — busca por nombre o código" style="max-width:340px"/>
+                <button type="button" class="mini-btn" data-dashf-clear="esp">Limpiar</button>
+              </div>
+              <div class="dash-source-filter" style="margin-bottom:14px">
+                <span class="dash-source-filter-label">Especialista:</span>
+                <select class="form-input" id="dash-esp-filtro" style="max-width:280px"></select>
+                <span class="dash-item-meta" id="dash-esp-hint"></span>
+              </div>
+              <div class="dash-kpi-grid" id="dash-esp-kpis"></div>
+              <div class="dash-chart-grid">
+                <div class="dash-card dash-chart-card">
+                  <div class="dash-card-header">Registros por especialista</div>
+                  <div class="dash-chart-body" id="dash-esp-ranking"></div>
+                </div>
+                <div class="dash-card dash-chart-card">
+                  <div class="dash-card-header">Actividad por mes</div>
+                  <div class="dash-chart-body" id="dash-esp-mes"></div>
+                </div>
+              </div>
+              <div class="dash-card">
+                <div class="dash-card-header">Detalle por especialista</div>
+                <div style="padding:0 16px 16px" id="dash-esp-tabla"></div>
+              </div>
+            </div>
+
             <div class="dash-grid-layout mode-panel" id="dash-main-grid">
               <div class="dash-left">
                 <div class="dash-card dash-alerts-card" id="dash-alerts-card">
@@ -1926,6 +2145,8 @@ body.is-admin .view.admin-only.active{display:flex!important}
           <div class="config-tabs">
             <button type="button" class="config-tab active" data-config-tab="usuarios">Usuarios</button>
             <button type="button" class="config-tab" data-config-tab="instituciones">Instituciones educativas</button>
+            <button type="button" class="config-tab" data-config-tab="profesores">Profesores</button>
+            <button type="button" class="config-tab" data-config-tab="carga">Carga masiva</button>
           </div>
 
           <div id="config-panel-usuarios" class="config-tab-panel active">
@@ -1949,6 +2170,7 @@ body.is-admin .view.admin-only.active{display:flex!important}
                   <label>Perfil</label>
                   <select class="form-select" id="cfg-role">
                     <option value="especialista">Especialista</option>
+                    <option value="supervisor">Supervisor (jefe)</option>
                     <option value="administrador">Administrador</option>
                   </select>
                 </div>
@@ -2086,6 +2308,86 @@ body.is-admin .view.admin-only.active{display:flex!important}
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+          </div>
+
+          <div id="config-panel-profesores" class="config-tab-panel">
+          <div class="config-grid">
+            <div class="config-stack">
+              <form class="panel" id="cfg-prof-form">
+                <div class="panel-title" id="cfg-prof-form-title">Nuevo profesor</div>
+                <div class="config-selected" id="cfg-prof-selected">Registra docentes y directores del padrón.</div>
+                <div class="form-group">
+                  <label>Nombre completo *</label>
+                  <input class="form-input" id="cfg-prof-nombre" required placeholder="Apellidos y nombres"/>
+                </div>
+                <div class="fields-grid">
+                  <div class="field-item"><label class="form-group label">DNI</label><input class="form-input" id="cfg-prof-dni"/></div>
+                  <div class="field-item"><label class="form-group label">Cargo</label>
+                    <select class="form-select" id="cfg-prof-cargo">
+                      <option value="docente">Docente</option>
+                      <option value="director">Director(a)</option>
+                      <option value="otro">Otro</option>
+                    </select></div>
+                  <div class="field-item"><label class="form-group label">Celular</label><input class="form-input" id="cfg-prof-celular"/></div>
+                  <div class="field-item"><label class="form-group label">Correo</label><input class="form-input" id="cfg-prof-correo"/></div>
+                  <div class="field-item full"><label class="form-group label">Condición laboral</label><input class="form-input" id="cfg-prof-condicion" placeholder="Nombrado, contratado..."/></div>
+                  <div class="field-item full"><label class="form-group label">Institución educativa</label>
+                    <input class="form-input" id="cfg-prof-ie" placeholder="Busca la IE por nombre o código..."/></div>
+                </div>
+                <div class="question-form-actions">
+                  <button class="btn-primary" type="submit" id="cfg-prof-submit">Crear profesor</button>
+                  <button class="mini-btn" type="button" id="cfg-prof-cancel" style="display:none">Cancelar</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="panel">
+              <div class="panel-title">Profesores registrados</div>
+              <div class="config-filter-row">
+                <label><input type="checkbox" id="cfg-prof-show-inactive"/> Mostrar inactivos</label>
+                <input class="form-input" id="cfg-prof-search" placeholder="Buscar por nombre, DNI o IE..." style="max-width:280px"/>
+              </div>
+              <div class="reg-table-scroll">
+                <table class="user-table">
+                  <thead>
+                    <tr><th>Profesor</th><th>IE</th><th>Cargo</th><th>Estado</th><th>Acciones</th></tr>
+                  </thead>
+                  <tbody id="cfg-prof-body">
+                    <tr><td colspan="5">Cargando profesores...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          </div>
+
+          <div id="config-panel-carga" class="config-tab-panel">
+            <div class="panel">
+              <div class="panel-title">Carga masiva desde Excel o CSV</div>
+              <div class="config-selected">
+                Sube un archivo con varias filas de una vez. Primero se revisa y se te muestra qué entraría,
+                qué está repetido y qué tiene errores; nada se guarda hasta que confirmes.
+              </div>
+
+              <div class="config-filter-row">
+                <label class="dash-item-meta" style="display:flex;align-items:center;gap:6px">Qué vas a subir
+                  <select class="form-input" id="carga-destino" style="max-width:240px">
+                    <option value="profesores">Profesores y directores</option>
+                    <option value="instituciones">Instituciones educativas</option>
+                  </select>
+                </label>
+                <input type="file" id="carga-file" accept=".xlsx,.xlsm,.csv" style="display:none"/>
+                <button type="button" class="mini-btn" onclick="document.getElementById('carga-file').click()">Elegir archivo</button>
+                <button type="button" class="mini-btn" id="carga-plantilla">Descargar plantilla</button>
+                <span class="dash-item-meta" id="carga-file-nombre"></span>
+              </div>
+
+              <div class="panel-label">Columnas que debe tener el archivo</div>
+              <div id="carga-columnas" class="config-selected"></div>
+
+              <div id="carga-resultado"></div>
             </div>
           </div>
         </div>
@@ -2718,7 +3020,13 @@ function populateOcrFields(ex) {
   setField('fo-visita', ex.n_visita);
   setField('fo-region', ex.region);
   setField('fo-ugel', ex.ugel);
-  setField('fo-codigo', ex.codigo_modular);
+  // La IE se confirma contra el padron con el buscador: si el OCR la resolvio,
+  // queda marcada en verde; si no, el especialista la elige de la lista en vez
+  // de dejar escrito un codigo que no cruza con nada.
+  const foCodigo = document.getElementById('fo-codigo');
+  foCodigo.dataset.ssAttached = '';
+  attachIEPicker(foCodigo, {codigoInicial: ex.codigo_modular_resuelto ? ex.codigo_modular : ''});
+  if (!ex.codigo_modular_resuelto) setField('fo-codigo', ex.codigo_modular || '');
   setField('fo-nombre-ie', ex.nombre_ie);
   document.getElementById('fo-codigo-warning').style.display =
     (ex.codigo_modular && !ex.codigo_modular_resuelto) ? 'inline-flex' : 'none';
@@ -2768,7 +3076,9 @@ function buildOcrFichaFromFields() {
     n_visita: getField('fo-visita'),
     region: getField('fo-region'),
     ugel: getField('fo-ugel'),
-    codigo_modular: getField('fo-codigo'),
+    // Se guarda el codigo elegido del padron; si el usuario tecleo algo sin
+    // elegirlo de la lista, dataset.pickedId queda vacio y no se guarda basura.
+    codigo_modular: document.getElementById('fo-codigo').dataset.pickedId || '',
     nombre_ie: getField('fo-nombre-ie'),
     nivel_modalidad: getField('fo-nivel'),
     director: getField('fo-director'),
@@ -2848,6 +3158,18 @@ function suggestUserIdentity() {
 
 function isAdminUser(user=currentUser) {
   return String((user && user.rol) || '').toLowerCase() === 'administrador' || user?.is_admin === true;
+}
+
+/* Supervisor (jefe): ve todo y corrige el registro de cualquier especialista,
+   pero la administracion del sistema (Configuracion, Preguntas dinamicas)
+   sigue siendo solo de administrador. */
+function isSupervisorUser(user=currentUser) {
+  return String((user && user.rol) || '').toLowerCase() === 'supervisor' || user?.is_supervisor === true;
+}
+
+function puedeEditarTodo(user=currentUser) {
+  if (user?.puede_editar_todo === true) return true;
+  return isAdminUser(user) || isSupervisorUser(user);
 }
 
 async function initLogin() {
@@ -3009,6 +3331,9 @@ const HOME_CARDS = [
   { view:'campo', icon:ICON_SVGS.clipboardCheck, title:'Informes de Campo', admin:false,
     copy:'Hallazgos, visitas y evolución de cada institución a partir de los informes de campo.',
     stat:(d)=>{ const n=(d.campo_ranking&&d.campo_ranking.total_ie)||0; return n ? {value:n, label:'IE con informes'} : null; } },
+  { view:'talleres', icon:ICON_SVGS.teacher, title:'Asistencia Talleres', admin:false,
+    copy:'Registra la asistencia de docentes y directores a talleres y capacitaciones desde la foto de la planilla.',
+    stat:(d)=>{ const a=(d.asistencias_talleres)||{}; const n=a.total_asistencias||0; return n ? {value:n, label:'asistencias registradas'} : null; } },
   { view:'registros', icon:ICON_SVGS.archive, title:'Registros', admin:false,
     copy:'Historial completo de fichas, hojas e informes registrados en el sistema.', stat:null },
   { view:'config', icon:ICON_SVGS.gear, title:'Configuración', admin:true,
@@ -3130,7 +3455,7 @@ function renderConfigUsers() {
   }
 
   body.innerHTML = configUsers.map(user => {
-    const roleClass = user.rol === 'administrador' ? 'admin' : 'specialist';
+    const roleClass = user.rol === 'administrador' ? 'admin' : (user.rol === 'supervisor' ? 'supervisor' : 'specialist');
     const statusClass = user.activo ? 'on' : 'off';
     const statusText = user.activo ? 'Activo' : 'Inactivo';
     const toggleText = user.activo ? 'Desactivar' : 'Activar';
@@ -3331,7 +3656,311 @@ document.querySelectorAll('[data-config-tab]').forEach(tab => {
     document.querySelectorAll('.config-tab-panel').forEach(p => p.classList.remove('active'));
     document.getElementById(`config-panel-${tab.dataset.configTab}`).classList.add('active');
     if(tab.dataset.configTab === 'instituciones' && configInstituciones.length === 0) loadAdminInstituciones();
+    if(tab.dataset.configTab === 'profesores') {
+      attachIEPicker('cfg-prof-ie');
+      if(configProfesores.length === 0) loadAdminProfesores();
+    }
+    if(tab.dataset.configTab === 'carga') renderCargaColumnas();
   });
+});
+
+/*──────────────────────────────────────────────────────────────────────────────
+  Carga masiva (Excel/CSV) de instituciones y profesores
+  Dos pasos: preview (no escribe) -> confirmar. Los duplicados se muestran con
+  el motivo del choque para que la persona decida, en vez de importar a ciegas.
+──────────────────────────────────────────────────────────────────────────────*/
+let cargaEsquemas = null;
+let cargaPreview = null;
+
+async function ensureCargaEsquemas() {
+  if (cargaEsquemas) return cargaEsquemas;
+  try {
+    cargaEsquemas = await apiFetch('/admin/carga-masiva/esquemas');
+  } catch (e) {
+    cargaEsquemas = {};
+  }
+  return cargaEsquemas;
+}
+
+async function renderCargaColumnas() {
+  const esquemas = await ensureCargaEsquemas();
+  const destino = getField('carga-destino');
+  const esquema = esquemas[destino];
+  const cont = document.getElementById('carga-columnas');
+  if (!esquema) { cont.textContent = 'No se pudo cargar el esquema.'; return; }
+  cont.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">
+      ${esquema.campos.map(c => `
+        <span class="role-chip ${c.obligatorio ? 'admin' : 'specialist'}" title="${c.alias.length ? 'También acepta: ' + esc(c.alias.join(', ')) : ''}">
+          ${esc(c.etiqueta)}${c.obligatorio ? ' *' : ''}
+        </span>`).join('')}
+    </div>
+    <div style="margin-top:8px">Las marcadas con * son obligatorias. El orden no importa y los nombres admiten variantes (por ejemplo "Nombre" o "Apellidos y nombres").</div>`;
+}
+
+document.getElementById('carga-destino').addEventListener('change', () => {
+  cargaPreview = null;
+  document.getElementById('carga-resultado').innerHTML = '';
+  document.getElementById('carga-file-nombre').textContent = '';
+  renderCargaColumnas();
+});
+
+document.getElementById('carga-plantilla').addEventListener('click', async () => {
+  const esquemas = await ensureCargaEsquemas();
+  const destino = getField('carga-destino');
+  const esquema = esquemas[destino];
+  if (!esquema) return;
+  const columnas = esquema.campos.map(c => ({label: c.etiqueta, value: () => ''}));
+  exportRowsToCsv([{}], columnas, `plantilla_${destino}.csv`);
+});
+
+document.getElementById('carga-file').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const destino = getField('carga-destino');
+  document.getElementById('carga-file-nombre').textContent = file.name;
+  const cont = document.getElementById('carga-resultado');
+  cont.innerHTML = '<div class="config-selected">Revisando el archivo...</div>';
+  try {
+    const fd = new FormData();
+    fd.append('destino', destino);
+    fd.append('file', file);
+    const r = await fetch(API + '/admin/carga-masiva/preview', {method: 'POST', headers: authHeaders(), body: fd});
+    const data = await r.json();
+    if (!r.ok) {
+      cont.innerHTML = `<div class="campo-warning-banner">${esc(data.error || 'No se pudo leer el archivo.')}${
+        data.encabezados_detectados ? `<div style="margin-top:6px;font-weight:400">Encabezados encontrados: ${esc(data.encabezados_detectados.join(' · '))}</div>` : ''}</div>`;
+      return;
+    }
+    cargaPreview = data;
+    renderCargaPreview();
+  } catch (err) {
+    cont.innerHTML = `<div class="campo-warning-banner">${esc(err.message)}</div>`;
+  } finally {
+    e.target.value = '';
+  }
+});
+
+function renderCargaPreview() {
+  const cont = document.getElementById('carga-resultado');
+  if (!cargaPreview) { cont.innerHTML = ''; return; }
+  const {resumen, filas, destino} = cargaPreview;
+  const campoTitulo = destino === 'profesores' ? 'nombre_completo' : 'nombre_iiee';
+
+  cont.innerHTML = `
+    <div class="panel-label" style="margin-top:18px">Resultado de la revisión</div>
+    <div class="dash-kpi-grid" style="margin-bottom:12px">
+      ${dashKpiTile('Se van a crear', resumen.nuevos, 'filas nuevas', 'green')}
+      ${dashKpiTile('Ya existen', resumen.duplicados, 'decide qué hacer', resumen.duplicados ? 'amber' : '')}
+      ${dashKpiTile('Con errores', resumen.errores, 'no se importarán', resumen.errores ? 'red' : '')}
+    </div>
+
+    ${resumen.duplicados ? `
+      <div class="config-filter-row">
+        <label class="dash-item-meta" style="display:flex;align-items:center;gap:6px">Con los repetidos:
+          <select class="form-input" id="carga-politica" style="max-width:260px">
+            <option value="omitir">Omitirlos (dejar el registro actual)</option>
+            <option value="actualizar">Actualizar el registro existente</option>
+          </select>
+        </label>
+      </div>` : ''}
+
+    <div class="reg-table-scroll" style="max-height:360px">
+      <table class="user-table">
+        <thead><tr><th>Fila</th><th>Registro</th><th>Estado</th><th>Detalle</th></tr></thead>
+        <tbody>
+          ${filas.map(f => {
+            const chip = f.estado === 'nuevo' ? 'on' : (f.estado === 'duplicado' ? '' : 'deleted');
+            const etiqueta = f.estado === 'nuevo' ? 'Nuevo' : (f.estado === 'duplicado' ? 'Ya existe' : 'Error');
+            return `
+              <tr>
+                <td>${f.fila}</td>
+                <td>${esc(f.valores[campoTitulo] || '(vacío)')}
+                  <div class="dash-item-meta">${esc(destino === 'profesores'
+                    ? (f.valores.dni ? 'DNI ' + f.valores.dni : 'sin DNI')
+                    : ('Código ' + (f.valores.codigo_modular || '—')))}</div></td>
+                <td><span class="status-chip ${chip}" ${f.estado === 'duplicado' ? 'style="background:#fdf1ea;color:#c2661a"' : ''}>${etiqueta}</span></td>
+                <td class="dash-item-meta">${esc(f.motivo || '')}</td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="question-form-actions" style="margin-top:12px">
+      <button type="button" class="btn-primary" id="carga-confirmar" ${(resumen.nuevos + resumen.duplicados) ? '' : 'disabled'}>
+        Confirmar e importar
+      </button>
+      <button type="button" class="mini-btn" id="carga-cancelar">Descartar y corregir el archivo</button>
+    </div>`;
+
+  document.getElementById('carga-cancelar').addEventListener('click', () => {
+    cargaPreview = null;
+    document.getElementById('carga-resultado').innerHTML = '';
+    document.getElementById('carga-file-nombre').textContent = '';
+  });
+
+  document.getElementById('carga-confirmar').addEventListener('click', async () => {
+    const btn = document.getElementById('carga-confirmar');
+    btn.disabled = true;
+    const politicaEl = document.getElementById('carga-politica');
+    try {
+      const resp = await apiFetch('/admin/carga-masiva/commit', {
+        method: 'POST',
+        body: JSON.stringify({
+          destino: cargaPreview.destino,
+          politica_duplicados: politicaEl ? politicaEl.value : 'omitir',
+          filas: cargaPreview.filas,
+        }),
+      });
+      showToast(`${resp.creados} creado(s) · ${resp.actualizados} actualizado(s) · ${resp.omitidos} omitido(s).`, 'success');
+      const destinoImportado = cargaPreview.destino;
+      cargaPreview = null;
+      document.getElementById('carga-resultado').innerHTML = '';
+      document.getElementById('carga-file-nombre').textContent = '';
+      // Los catalogos en memoria quedaron viejos tras la importacion.
+      ieCatalogCache = null;
+      allIEs = [];
+      if (destinoImportado === 'profesores') await loadAdminProfesores();
+      else await loadAdminInstituciones();
+    } catch (err) {
+      showToast(err.message, 'error');
+      btn.disabled = false;
+    }
+  });
+}
+
+/* CRUD administrativo del padron de profesores/directores */
+let configProfesores = [];
+let cfgProfEditingId = null;
+
+async function loadAdminProfesores() {
+  const body = document.getElementById('cfg-prof-body');
+  try {
+    const incluirInactivos = document.getElementById('cfg-prof-show-inactive').checked;
+    configProfesores = await apiFetch(`/admin/profesores${incluirInactivos ? '?incluir_inactivos=1' : ''}`);
+    renderAdminProfesores();
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="5">${esc(e.message)}</td></tr>`;
+  }
+}
+
+function renderAdminProfesores() {
+  const body = document.getElementById('cfg-prof-body');
+  const q = (document.getElementById('cfg-prof-search').value || '').trim().toLowerCase();
+  const rows = configProfesores.filter(p => {
+    if(!q) return true;
+    return [p.nombre_completo, p.dni, p.ie_nombre, p.ie_centro_poblado].some(v => (v || '').toLowerCase().includes(q));
+  });
+  if(!rows.length) {
+    body.innerHTML = '<tr><td colspan="5">No hay profesores que coincidan.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.slice(0, 300).map(p => {
+    const inactivo = Number(p.estado_fila) === 0;
+    return `
+      <tr>
+        <td><strong>${esc(p.nombre_completo || '')}</strong>
+          <div class="dash-item-meta">${p.dni ? 'DNI ' + esc(p.dni) : 'Sin DNI'}${p.condicion_laboral ? ' · ' + esc(p.condicion_laboral) : ''}</div></td>
+        <td>${esc(p.ie_nombre || '—')}<div class="dash-item-meta">${esc(p.ie_centro_poblado || '')}</div></td>
+        <td><span class="role-chip">${esc(p.cargo || '')}</span></td>
+        <td><span class="status-chip ${inactivo ? 'deleted' : 'on'}">${inactivo ? 'Inactivo' : 'Activo'}</span></td>
+        <td>
+          <div class="config-actions">
+            ${inactivo
+              ? `<button class="mini-btn" type="button" data-prof-restore="${p.id}">Restaurar</button>`
+              : `<button class="mini-btn" type="button" data-prof-edit="${p.id}">Editar</button>
+                 <button class="mini-btn danger" type="button" data-prof-delete="${p.id}">Desactivar</button>`}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('') + (rows.length > 300 ? `<tr><td colspan="5">Mostrando 300 de ${rows.length}. Afina la búsqueda.</td></tr>` : '');
+
+  document.querySelectorAll('[data-prof-edit]').forEach(b => b.addEventListener('click', () => editProfesor(Number(b.dataset.profEdit))));
+  document.querySelectorAll('[data-prof-delete]').forEach(b => b.addEventListener('click', () => deleteProfesor(Number(b.dataset.profDelete))));
+  document.querySelectorAll('[data-prof-restore]').forEach(b => b.addEventListener('click', () => restoreProfesor(Number(b.dataset.profRestore))));
+}
+
+function resetProfesorForm() {
+  cfgProfEditingId = null;
+  ['cfg-prof-nombre','cfg-prof-dni','cfg-prof-celular','cfg-prof-correo','cfg-prof-condicion'].forEach(id => setField(id, ''));
+  setField('cfg-prof-cargo', 'docente');
+  const ie = document.getElementById('cfg-prof-ie');
+  if(ie._ssApi) ie._ssApi.clear();
+  document.getElementById('cfg-prof-form-title').textContent = 'Nuevo profesor';
+  document.getElementById('cfg-prof-submit').textContent = 'Crear profesor';
+  document.getElementById('cfg-prof-cancel').style.display = 'none';
+  document.getElementById('cfg-prof-selected').textContent = 'Registra docentes y directores del padrón.';
+}
+
+async function editProfesor(id) {
+  const p = configProfesores.find(x => Number(x.id) === id);
+  if(!p) return;
+  cfgProfEditingId = id;
+  setField('cfg-prof-nombre', p.nombre_completo || '');
+  setField('cfg-prof-dni', p.dni || '');
+  setField('cfg-prof-cargo', p.cargo || 'docente');
+  setField('cfg-prof-celular', p.celular || '');
+  setField('cfg-prof-correo', p.correo || '');
+  setField('cfg-prof-condicion', p.condicion_laboral || '');
+  const ieInput = document.getElementById('cfg-prof-ie');
+  ieInput.dataset.ssAttached = '';
+  await attachIEPicker(ieInput, {codigoInicial: p.codigo_modular_ie || ''});
+  document.getElementById('cfg-prof-form-title').textContent = 'Editar profesor';
+  document.getElementById('cfg-prof-submit').textContent = 'Guardar cambios';
+  document.getElementById('cfg-prof-cancel').style.display = 'inline-flex';
+  document.getElementById('cfg-prof-selected').textContent = `Editando: ${p.nombre_completo}`;
+  document.getElementById('cfg-prof-form').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+async function deleteProfesor(id) {
+  const p = configProfesores.find(x => Number(x.id) === id);
+  if(!confirm(`¿Desactivar a ${p ? p.nombre_completo : 'este profesor'}? Se puede restaurar después.`)) return;
+  try {
+    await apiFetch(`/admin/profesores/${id}`, {method: 'DELETE'});
+    showToast('Profesor desactivado.', 'success');
+    await loadAdminProfesores();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function restoreProfesor(id) {
+  try {
+    await apiFetch(`/admin/profesores/${id}`, {method: 'PUT', body: JSON.stringify({restaurar: true})});
+    showToast('Profesor restaurado.', 'success');
+    await loadAdminProfesores();
+  } catch(e) { showToast(e.message, 'error'); }
+}
+
+document.getElementById('cfg-prof-show-inactive').addEventListener('change', loadAdminProfesores);
+document.getElementById('cfg-prof-search').addEventListener('input', renderAdminProfesores);
+document.getElementById('cfg-prof-cancel').addEventListener('click', resetProfesorForm);
+
+document.getElementById('cfg-prof-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const payload = {
+    nombre_completo: getField('cfg-prof-nombre'),
+    dni: getField('cfg-prof-dni'),
+    cargo: getField('cfg-prof-cargo'),
+    celular: getField('cfg-prof-celular'),
+    correo: getField('cfg-prof-correo'),
+    condicion_laboral: getField('cfg-prof-condicion'),
+    codigo_modular_ie: document.getElementById('cfg-prof-ie').dataset.pickedId || '',
+  };
+  if(!payload.nombre_completo) { showToast('El nombre completo es obligatorio.', 'error'); return; }
+  try {
+    if(cfgProfEditingId) {
+      await apiFetch(`/admin/profesores/${cfgProfEditingId}`, {method: 'PUT', body: JSON.stringify(payload)});
+      showToast('Profesor actualizado.', 'success');
+    } else {
+      await apiFetch('/admin/profesores', {method: 'POST', body: JSON.stringify(payload)});
+      showToast('Profesor creado.', 'success');
+    }
+    resetProfesorForm();
+    await loadAdminProfesores();
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
 });
 
 /* CRUD administrativo de instituciones educativas (dim_institucion) */
@@ -3554,7 +4183,7 @@ function formatRegistroFecha(value) {
 }
 
 function canEditRegistro(row) {
-  if(isAdminUser()) return true;
+  if(puedeEditarTodo()) return true;
   return !!row.creado_por && !!currentUser && row.creado_por === currentUser.user_id;
 }
 
@@ -3614,8 +4243,9 @@ function renderArchivoLinks(containerId, items) {
 
 async function loadRegistrosData() {
   const badge = document.getElementById('reg-role-badge');
-  badge.textContent = isAdminUser() ? 'Perfil administrador' : 'Perfil especialista';
-  await Promise.all([loadRegistrosFichas(), loadRegistrosCampo()]);
+  badge.textContent = `Perfil ${(currentUser && currentUser.rol_label) || 'especialista'}`.toLowerCase().replace(/^p/, 'P');
+  ensureIECatalog();  // los listados muestran nombre y nivel de IE, no solo el codigo
+  await Promise.all([loadRegistrosFichas(), loadRegistrosCampo(), loadRegistrosTalleres()]);
 }
 
 document.querySelectorAll('[data-registros-tab]').forEach(tab => {
@@ -3803,6 +4433,260 @@ const NIVEL_TAG_STYLE = {
   4: 'background:rgba(15,159,110,.12);color:var(--success)',
 };
 
+/*──────────────────────────────────────────────────────────────────────────────
+  BUSCADOR DE CATALOGO REUTILIZABLE
+  Reemplaza los inputs de texto libre que referencian datos del core (IE,
+  profesor, especialista). La garantia anti-dato-sucio es mecanica: al elegir
+  una opcion se guarda su id en dataset.pickedId, y CUALQUIER tecleo posterior
+  lo borra. Quien guarda valida por dataset.pickedId, nunca por el texto visible,
+  asi que un nombre escrito a mano nunca puede colarse como si fuera del padron.
+──────────────────────────────────────────────────────────────────────────────*/
+let ssPanelAbierto = null;
+
+function ssCerrarPanel() {
+  if (ssPanelAbierto) { ssPanelAbierto.remove(); ssPanelAbierto = null; }
+}
+document.addEventListener('click', e => {
+  if (ssPanelAbierto && !ssPanelAbierto.contains(e.target) && e.target !== ssPanelAbierto._input) ssCerrarPanel();
+});
+window.addEventListener('resize', ssCerrarPanel);
+
+function createSearchableSelect(opts) {
+  const input = typeof opts.input === 'string' ? document.getElementById(opts.input) : opts.input;
+  if (!input) return null;
+  const minChars = opts.minChars ?? 1;
+  const debounceMs = opts.debounceMs ?? 180;
+  let timer = null;
+  let activeIdx = -1;
+  let opciones = [];
+
+  input.setAttribute('autocomplete', 'off');
+
+  function marcarSinElegir() {
+    input.dataset.pickedId = '';
+    input.classList.remove('ss-picked');
+    input.classList.toggle('ss-unpicked', !!input.value.trim());
+    if (opts.onSelect) opts.onSelect(null);
+  }
+
+  function elegir(op) {
+    input.value = op.label;
+    input.dataset.pickedId = String(op.id);
+    input.classList.add('ss-picked');
+    input.classList.remove('ss-unpicked');
+    ssCerrarPanel();
+    if (opts.onSelect) opts.onSelect(op);
+  }
+
+  function pintar() {
+    ssCerrarPanel();
+    const panel = document.createElement('div');
+    panel.className = 'ss-panel';
+    panel._input = input;
+    const r = input.getBoundingClientRect();
+    panel.style.left = `${r.left + window.scrollX}px`;
+    panel.style.top = `${r.bottom + window.scrollY + 4}px`;
+    panel.style.width = `${Math.max(r.width, 240)}px`;
+
+    if (!opciones.length) {
+      panel.innerHTML = `<div class="ss-empty">${esc(opts.emptyText || 'Sin coincidencias.')}</div>`;
+    } else {
+      panel.innerHTML = opciones.map((op, i) => `
+        <div class="ss-option ${i === activeIdx ? 'active' : ''}" data-ss-idx="${i}">
+          <span class="ss-label">${esc(op.label)}</span>
+          ${op.sublabel ? `<span class="ss-sub">${esc(op.sublabel)}</span>` : ''}
+        </div>
+      `).join('');
+    }
+    if (opts.onAddNew) {
+      panel.insertAdjacentHTML('beforeend', `<div class="ss-addnew" data-ss-addnew>+ ${esc(opts.addNewText || 'Agregar nuevo')}</div>`);
+    }
+    panel.querySelectorAll('[data-ss-idx]').forEach(el => {
+      el.addEventListener('mousedown', ev => { ev.preventDefault(); elegir(opciones[Number(el.dataset.ssIdx)]); });
+    });
+    const addBtn = panel.querySelector('[data-ss-addnew]');
+    if (addBtn) addBtn.addEventListener('mousedown', ev => { ev.preventDefault(); ssCerrarPanel(); opts.onAddNew(input.value.trim()); });
+
+    document.body.appendChild(panel);
+    ssPanelAbierto = panel;
+  }
+
+  async function buscar() {
+    const q = input.value.trim();
+    if (q.length < minChars) { ssCerrarPanel(); return; }
+    try {
+      opciones = (await opts.fetchOptions(q)) || [];
+    } catch (e) {
+      opciones = [];
+    }
+    activeIdx = -1;
+    pintar();
+  }
+
+  input.addEventListener('input', () => {
+    marcarSinElegir();
+    clearTimeout(timer);
+    timer = setTimeout(buscar, debounceMs);
+  });
+  input.addEventListener('focus', () => { if (input.value.trim().length >= minChars && !input.dataset.pickedId) buscar(); });
+  input.addEventListener('keydown', e => {
+    if (!ssPanelAbierto) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIdx = Math.max(0, Math.min(opciones.length - 1, activeIdx + (e.key === 'ArrowDown' ? 1 : -1)));
+      pintar();
+    } else if (e.key === 'Enter') {
+      if (activeIdx >= 0 && opciones[activeIdx]) { e.preventDefault(); elegir(opciones[activeIdx]); }
+    } else if (e.key === 'Escape') {
+      ssCerrarPanel();
+    }
+  });
+
+  return {
+    setValue(op) {
+      if (!op) { input.value = ''; marcarSinElegir(); input.classList.remove('ss-unpicked'); return; }
+      input.value = op.label;
+      input.dataset.pickedId = String(op.id);
+      input.classList.add('ss-picked');
+      input.classList.remove('ss-unpicked');
+    },
+    getPickedId() { return input.dataset.pickedId || ''; },
+    clear() { input.value = ''; marcarSinElegir(); input.classList.remove('ss-unpicked'); },
+  };
+}
+
+/* Catalogo de IEs: se reusa el listado completo que ya carga el Mapa
+   (GET /api/instituciones) y se filtra en el navegador, sin pegarle al
+   servidor en cada tecla. */
+let ieCatalogCache = null;
+async function ensureIECatalog() {
+  if (Array.isArray(allIEs) && allIEs.length) return allIEs;
+  if (ieCatalogCache) return ieCatalogCache;
+  try {
+    ieCatalogCache = await apiFetch('/instituciones');
+    if (!Array.isArray(allIEs) || !allIEs.length) allIEs = ieCatalogCache;
+  } catch (e) {
+    ieCatalogCache = [];
+  }
+  return ieCatalogCache;
+}
+
+function ieOptionLabel(ie) {
+  return `${ie.nombre_iiee || ''} (${ie.codigo_modular})`;
+}
+
+/* Descripcion legible de una IE a partir de su codigo modular. Casi nadie se
+   sabe los codigos de memoria, asi que donde antes se mostraba "1546241" ahora
+   se muestra el nombre y el nivel. Lee del catalogo ya cacheado; si todavia no
+   cargo, devuelve el codigo tal cual para no dejar el hueco vacio. */
+function ieDescripcion(codigoModular, {conCodigo = true} = {}) {
+  const codigo = String(codigoModular || '').trim();
+  if (!codigo) return '';
+  const catalogo = (Array.isArray(allIEs) && allIEs.length) ? allIEs : (ieCatalogCache || []);
+  const ie = catalogo.find(x => String(x.codigo_modular) === codigo);
+  if (!ie) return codigo;
+  const partes = [ie.nombre_iiee, ie.nivel_modalidad, ie.centro_poblado].filter(Boolean);
+  return conCodigo ? `${partes.join(' · ')} (${codigo})` : partes.join(' · ');
+}
+
+async function fetchIEOptions(q) {
+  const catalogo = await ensureIECatalog();
+  const term = (q || '').toLowerCase();
+  return catalogo
+    .filter(ie => [ie.nombre_iiee, ie.codigo_modular, ie.centro_poblado, ie.distrito]
+      .some(v => String(v || '').toLowerCase().includes(term)))
+    .slice(0, 30)
+    .map(ie => ({
+      id: ie.codigo_modular,
+      label: ieOptionLabel(ie),
+      sublabel: [ie.nivel_modalidad, ie.centro_poblado, ie.distrito].filter(Boolean).join(' · '),
+      raw: ie,
+    }));
+}
+
+/* Conecta un input de texto libre existente al buscador de IEs. Si el registro
+   ya traia un codigo modular guardado, lo deja marcado como elegido. */
+async function attachIEPicker(inputEl, {codigoInicial = '', onSelect = null} = {}) {
+  const el = typeof inputEl === 'string' ? document.getElementById(inputEl) : inputEl;
+  if (!el) return null;
+  if (el.dataset.ssAttached === '1') return el._ssApi || null;
+  el.dataset.ssAttached = '1';
+  el.placeholder = el.placeholder || 'Busca por nombre, código, centro poblado...';
+  const api = createSearchableSelect({
+    input: el,
+    fetchOptions: fetchIEOptions,
+    debounceMs: 0,
+    emptyText: 'Ninguna IE coincide. Revisa el nombre o el código.',
+    onSelect,
+  });
+  el._ssApi = api;
+  if (codigoInicial) {
+    const catalogo = await ensureIECatalog();
+    const ie = catalogo.find(x => String(x.codigo_modular) === String(codigoInicial));
+    if (ie) api.setValue({id: ie.codigo_modular, label: ieOptionLabel(ie), raw: ie});
+  }
+  return api;
+}
+
+/* Catalogo de profesores: no se precarga (puede crecer sin limite), se busca
+   contra el servidor, que ademas rankea por similitud de nombre. */
+async function fetchProfesorOptions(q, codigoIE = '') {
+  if ((q || '').trim().length < 2) return [];
+  const params = new URLSearchParams({q});
+  if (codigoIE) params.set('codigo_modular_ie', codigoIE);
+  try {
+    const rows = await apiFetch(`/profesores?${params.toString()}`);
+    return rows.map(p => ({
+      id: p.id,
+      label: p.nombre_completo,
+      sublabel: [p.dni ? `DNI ${p.dni}` : 'sin DNI', p.cargo, p.ie_nombre].filter(Boolean).join(' · '),
+      raw: p,
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
+/* Catalogo de especialistas (usuarios de la app) para los campos donde hoy se
+   escribe el nombre a mano. Aqui no hay "agregar nuevo": crear usuarios sigue
+   siendo trabajo de Configuracion -> Usuarios. */
+let especialistasCache = null;
+async function ensureEspecialistasCatalog() {
+  if (especialistasCache) return especialistasCache;
+  try {
+    especialistasCache = await apiFetch('/usuarios');
+  } catch (e) {
+    especialistasCache = [];
+  }
+  return especialistasCache;
+}
+
+async function fetchEspecialistaOptions(q) {
+  const usuarios = await ensureEspecialistasCatalog();
+  const term = (q || '').toLowerCase();
+  return usuarios
+    .filter(u => Number(u.activo) === 1)
+    .filter(u => [u.nombre, u.email, u.username].some(v => String(v || '').toLowerCase().includes(term)))
+    .slice(0, 25)
+    .map(u => ({id: u.nombre, label: u.nombre, sublabel: [u.rol_label, u.email].filter(Boolean).join(' · '), raw: u}));
+}
+
+async function attachEspecialistaPicker(inputEl, {valorInicial = ''} = {}) {
+  const el = typeof inputEl === 'string' ? document.getElementById(inputEl) : inputEl;
+  if (!el) return null;
+  if (el.dataset.ssAttached === '1') return el._ssApi || null;
+  el.dataset.ssAttached = '1';
+  const api = createSearchableSelect({
+    input: el,
+    fetchOptions: fetchEspecialistaOptions,
+    debounceMs: 0,
+    emptyText: 'Ningún especialista coincide.',
+  });
+  el._ssApi = api;
+  if (valorInicial) api.setValue({id: valorInicial, label: valorInicial});
+  return api;
+}
+
 // Catalogo de preguntas dinamicas (codigo -> item/descripcion), para mostrar
 // el texto completo de la pregunta al editar una ficha en Registros, igual
 // que las preguntas fijas de SIMON (que ya muestran su descripcion siempre,
@@ -3961,6 +4845,12 @@ async function openFichaForm(id, wantEdit) {
       const el = form.elements[name];
       if(el) { el.value = detalle.ficha[name] ?? ''; el.disabled = !editable; }
     });
+    // El codigo modular se edita con el buscador del padron, no a mano.
+    const fichaIeInput = form.elements['codigo_modular'];
+    if(fichaIeInput) {
+      fichaIeInput.dataset.ssAttached = '';
+      await attachIEPicker(fichaIeInput, {codigoInicial: detalle.ficha.codigo_modular || ''});
+    }
     SIMON_INDICATORS.forEach(([field]) => {
       const nivel = detalle.ficha[field] ?? 0;
       form.elements[field].value = nivel;
@@ -4008,6 +4898,12 @@ document.getElementById('reg-ficha-form').addEventListener('submit', async e => 
   const form = e.target;
   const payload = {};
   FICHA_TEXT_FIELDS.forEach(name => { payload[name] = form.elements[name].value.trim(); });
+  const fichaIePicked = form.elements['codigo_modular'] ? (form.elements['codigo_modular'].dataset.pickedId || '') : '';
+  if(!fichaIePicked) {
+    showToast('Elige la institución educativa de la lista para poder guardar.', 'error');
+    return;
+  }
+  payload.codigo_modular = fichaIePicked;
   payload.nro_estudiantes = payload.nro_estudiantes ? Number(payload.nro_estudiantes) : null;
   SIMON_INDICATORS.forEach(([field]) => {
     payload[field] = Number(form.elements[field].value) || 0;
@@ -4069,8 +4965,16 @@ function getFilteredRegistrosCampo() {
   const autorEmail = document.getElementById('reg-campo-filter-autor').value;
   const desde = getField('reg-campo-filter-desde');
   const hasta = getField('reg-campo-filter-hasta');
+  const revision = document.getElementById('reg-campo-filter-revision').value;
   return registrosCampo.filter(v => {
     if(autorEmail && v.creado_por_email !== autorEmail) return false;
+    if(revision) {
+      const estado = estadoRevision(v);
+      if(revision === 'mios') {
+        const mio = v.revision_asignado_a && currentUser && v.revision_asignado_a === currentUser.user_id;
+        if(!mio || !['pendiente','en_revision'].includes(estado)) return false;
+      } else if(estado !== revision) return false;
+    }
     if(!fechaRegistroEnRango(v.creado_en, desde, hasta)) return false;
     if(!q) return true;
     return [v.nombre_ie_detectado, v.codigo_modular, v.especialista_detectado].some(x => (x || '').toLowerCase().includes(q));
@@ -4095,7 +4999,10 @@ function renderRegistrosCampo() {
           <div class="dash-item-meta">${esc(v.codigo_modular || '')} · ${esc(v.especialista_detectado || '')}</div>
           <div class="dash-item-meta">${esc(v.fecha_visita || '')} · ${v.n_variables_observadas ?? 0} variable(s)</div>
         </td>
-        <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminado' : 'Activo'}</span></td>
+        <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminado' : 'Activo'}</span>
+          ${(() => { const e = estadoRevision(v); return e === 'ok' ? '' :
+            `<div style="margin-top:4px"><span class="status-chip ${REVISION_META[e].chip}" style="${e === 'en_revision' ? 'background:#fdf1ea;color:#c2661a' : ''}">${esc(REVISION_META[e].etiqueta)}</span></div>`; })()}
+        </td>
         <td class="reg-actions-cell">
           ${puedeEditar ? `
             <div class="reg-menu">
@@ -4122,6 +5029,7 @@ function renderRegistrosCampo() {
 document.getElementById('reg-campo-show-deleted').addEventListener('change', loadRegistrosCampo);
 document.getElementById('reg-campo-search').addEventListener('input', renderRegistrosCampo);
 document.getElementById('reg-campo-filter-autor').addEventListener('change', renderRegistrosCampo);
+document.getElementById('reg-campo-filter-revision').addEventListener('change', renderRegistrosCampo);
 document.getElementById('reg-campo-filter-desde').addEventListener('change', renderRegistrosCampo);
 document.getElementById('reg-campo-filter-hasta').addEventListener('change', renderRegistrosCampo);
 
@@ -4143,28 +5051,164 @@ document.getElementById('reg-campo-export-xlsx').addEventListener('click', () =>
   exportRowsToXlsx(getFilteredRegistrosCampo(), REG_CAMPO_EXPORT_COLUMNS, 'informes_campo.xlsx');
 });
 
+/* Bloque de revisión de un informe de campo.
+
+   Reglas: marcar puede cualquiera (quien nota el problema); resolver le toca al
+   especialista del propio registro -- o a un administrador/supervisor, que
+   existen para destrabar. Mientras está pendiente o en revisión, la visita no
+   alimenta las alertas (lo aplica el backend). */
+const REVISION_META = {
+  ok:          {etiqueta: 'Sin observaciones', color: 'var(--success)', chip: 'on'},
+  pendiente:   {etiqueta: 'Pendiente de revisión', color: 'var(--danger)', chip: 'deleted'},
+  en_revision: {etiqueta: 'En revisión', color: 'var(--warning)', chip: ''},
+  resuelto:    {etiqueta: 'Revisado', color: 'var(--brand-blue)', chip: 'on'},
+};
+
+function estadoRevision(visita) {
+  const estado = String(visita.revision_estado || (visita.requiere_revision ? 'pendiente' : 'ok'));
+  return REVISION_META[estado] ? estado : 'ok';
+}
+
+function renderCampoRevision(visita) {
+  const cont = document.getElementById('reg-campo-revision');
+  const acciones = document.getElementById('reg-campo-revision-acciones');
+  if (!cont) return;
+  const estado = estadoRevision(visita);
+  const meta = REVISION_META[estado];
+  const asignadoNombre = visita.revision_asignado_nombre || visita.especialista_detectado || '';
+  const esMio = visita.revision_asignado_a && currentUser && visita.revision_asignado_a === currentUser.user_id;
+  const puedoResolver = esMio || puedeEditarTodo() || !visita.revision_asignado_a;
+
+  const detalles = [];
+  if (estado !== 'ok') {
+    if (asignadoNombre) {
+      detalles.push(`Le toca revisar a <strong>${esc(asignadoNombre)}</strong>${esMio ? ' (tú)' : ''}` +
+        (visita.revision_asignado_a ? '' : ' — ese nombre no coincide con ningún usuario registrado'));
+    }
+    if (visita.revision_solicitada_en) {
+      detalles.push(`Marcado el ${esc(formatRegistroFecha(visita.revision_solicitada_en))}`);
+    }
+  }
+  if (estado === 'resuelto' && visita.revision_resuelto_en) {
+    detalles.push(`Resuelto el ${esc(formatRegistroFecha(visita.revision_resuelto_en))}`);
+  }
+
+  cont.innerHTML = `
+    <div class="reg-card" style="border-left-color:${meta.color}">
+      <div class="reg-card-label" style="justify-content:space-between">
+        <span><span class="status-chip ${meta.chip}">${esc(meta.etiqueta)}</span></span>
+        ${estado === 'pendiente' || estado === 'en_revision'
+          ? '<span class="dash-item-meta">No cuenta para alertas hasta resolverse</span>' : ''}
+      </div>
+      ${detalles.length ? `<div class="dash-item-meta" style="margin-top:6px">${detalles.join(' · ')}</div>` : ''}
+    </div>`;
+
+  if (!acciones) return;
+  const botones = [];
+  if (estado === 'ok' || estado === 'resuelto') {
+    botones.push('<button type="button" class="mini-btn" data-revision="pendiente">Marcar para revisión</button>');
+  } else {
+    if (estado === 'pendiente') {
+      botones.push('<button type="button" class="mini-btn" data-revision="en_revision">Tomar la revisión</button>');
+    }
+    if (puedoResolver) {
+      botones.push('<button type="button" class="mini-btn" data-revision="resuelto">Marcar como revisado</button>');
+    } else {
+      botones.push(`<span class="dash-item-meta">Solo ${esc(asignadoNombre || 'el especialista asignado')} o un administrador puede cerrarla.</span>`);
+    }
+    botones.push('<button type="button" class="mini-btn" data-revision="ok">Descartar la observación</button>');
+  }
+  acciones.innerHTML = botones.join(' ');
+  acciones.querySelectorAll('[data-revision]').forEach(btn => {
+    btn.addEventListener('click', () => cambiarRevision(btn.dataset.revision));
+  });
+}
+
+async function cambiarRevision(nuevoEstado) {
+  if (!regCampoEditingId) return;
+  const form = document.getElementById('reg-campo-form');
+  try {
+    await apiFetch(`/informes_campo/${encodeURIComponent(regCampoEditingId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        revision_estado: nuevoEstado,
+        motivo_revision: form.elements['motivo_revision'].value.trim(),
+        revision_nota: form.elements['revision_nota'].value.trim(),
+      }),
+    });
+    const mensajes = {
+      pendiente: 'Marcado para revisión. Deja de contar para las alertas hasta resolverse.',
+      en_revision: 'Tomaste la revisión.',
+      resuelto: 'Revisión cerrada. El dato vuelve a contar para las alertas.',
+      ok: 'Observación descartada.',
+    };
+    showToast(mensajes[nuevoEstado] || 'Actualizado.', 'success');
+    await loadRegistrosCampo();
+    await openCampoForm(regCampoEditingId, false);
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
 const SEVERIDAD_COLOR = {alta: 'var(--danger)', media: 'var(--warning)', baja: 'var(--brand-blue)'};
 
-function renderCampoVariables(visita, meta, editable) {
+/* Vista fusionada de variables + hallazgos.
+
+   Antes eran dos secciones que mostraban lo mismo: la visita guarda una marca
+   y UNA cita por variable, y la tabla de hallazgos guardaba otra vez esa misma
+   cita (sus campos tema/descripcion nunca se llenaron). Ahora hay una sola
+   lista por variable que muestra TODAS sus citas: la de la visita mas las que
+   haya en hallazgos, sin repetir. Si algun dia la IA devuelve varias citas
+   para una misma variable, se ven todas aqui sin cambiar nada. */
+function citasDeVariable(visita, hallazgos, variable) {
+  const citas = [];
+  const vistas = new Set();
+  const agregar = (texto, origen) => {
+    const limpio = String(texto || '').trim();
+    if (!limpio) return;
+    const clave = limpio.toLowerCase().replace(/\s+/g, ' ');
+    if (vistas.has(clave)) return;
+    vistas.add(clave);
+    citas.push({texto: limpio, origen});
+  };
+  agregar(visita[`span_${variable}`], 'visita');
+  (hallazgos || [])
+    .filter(h => h.variable_detectada === variable)
+    .forEach(h => agregar(h.evidencia_textual, 'hallazgo'));
+  return citas;
+}
+
+function renderCampoVariables(visita, meta, editable, hallazgos) {
   const container = document.getElementById('reg-campo-variables');
   const vars = Object.keys(meta || {});
   if(!vars.length) {
     container.innerHTML = '<div class="config-selected">No hay catálogo de variables disponible.</div>';
     return;
   }
-  container.innerHTML = vars.map(v => {
+  // Primero las observadas: es lo que la persona viene a revisar.
+  const ordenadas = vars.slice().sort((a, b) => (visita[b] ? 1 : 0) - (visita[a] ? 1 : 0));
+  container.innerHTML = ordenadas.map(v => {
     const info = meta[v] || {};
     const sev = info.severidad || '';
     const color = SEVERIDAD_COLOR[sev] || 'var(--border2)';
     const checked = !!visita[v];
+    const citas = citasDeVariable(visita, hallazgos, v);
+    const extra = citas.slice(1);
     return `
       <div class="reg-card${checked ? ' checked' : ''}" style="border-left-color:${color}">
         <label class="reg-card-label">
           <input type="checkbox" data-campo-var="${v}" ${checked ? 'checked' : ''} ${editable ? '' : 'disabled'}/>
           ${esc(info.label || v)}
           ${sev ? `<span class="reg-card-tag sev-${sev}">${esc(sev)}</span>` : ''}
+          ${citas.length > 1 ? `<span class="reg-card-tag" style="background:var(--surface3);color:var(--text-muted)">${citas.length} citas</span>` : ''}
         </label>
-        <textarea class="form-input" data-campo-span="${v}" rows="1" placeholder="Evidencia textual" ${editable ? '' : 'disabled'}>${esc(visita[`span_${v}`] || '')}</textarea>
+        <textarea class="form-input" data-campo-span="${v}" rows="2" placeholder="Evidencia textual citada del informe" ${editable ? '' : 'disabled'}>${esc(citas.length ? citas[0].texto : '')}</textarea>
+        ${extra.length ? `
+          <div style="margin-top:8px">
+            <div class="dash-item-meta" style="margin-bottom:4px">Otras citas del mismo informe para esta variable:</div>
+            ${extra.map(c => `<div class="config-selected" style="margin:0 0 6px">“${esc(c.texto)}”</div>`).join('')}
+          </div>` : ''}
+        ${info.importancia ? `<div class="dash-item-meta" style="margin-top:6px"><strong>Por qué importa:</strong> ${esc(info.importancia)}</div>` : ''}
       </div>
     `;
   }).join('');
@@ -4258,9 +5302,22 @@ async function openCampoForm(id, wantEdit) {
       const el = form.elements[name];
       if(el) { el.value = detalle.visita[name] ?? ''; el.disabled = !editable; }
     });
-    form.elements['requiere_revision'].checked = !!detalle.visita.requiere_revision;
-    form.elements['requiere_revision'].disabled = !editable;
-    renderCampoVariables(detalle.visita, regCampoVariablesMeta, editable);
+    // IE y especialista se eligen de sus catalogos, no se escriben a mano.
+    const campoIeInput = form.elements['codigo_modular'];
+    if(campoIeInput) {
+      campoIeInput.dataset.ssAttached = '';
+      await attachIEPicker(campoIeInput, {codigoInicial: detalle.visita.codigo_modular || ''});
+    }
+    const campoEspInput = form.elements['especialista_detectado'];
+    if(campoEspInput) {
+      campoEspInput.dataset.ssAttached = '';
+      await attachEspecialistaPicker(campoEspInput, {valorInicial: detalle.visita.especialista_detectado || ''});
+    }
+    renderCampoRevision(detalle.visita);
+    if (form.elements['revision_nota']) {
+      form.elements['revision_nota'].value = detalle.visita.revision_nota || '';
+    }
+    renderCampoVariables(detalle.visita, regCampoVariablesMeta, editable, detalle.hallazgos || []);
     renderCampoHallazgos(detalle.hallazgos || [], editable);
     renderArchivoLinks('reg-campo-archivos', detalle.visita.archivo_subido_id
       ? [{id: detalle.visita.archivo_subido_id, label: 'Ver documento original'}]
@@ -4300,7 +5357,12 @@ document.getElementById('reg-campo-form').addEventListener('submit', async e => 
   ['codigo_modular', 'nombre_ie_detectado', 'fecha_visita', 'especialista_detectado', 'motivo_revision'].forEach(name => {
     payload[name] = form.elements[name].value.trim();
   });
-  payload.requiere_revision = form.elements['requiere_revision'].checked;
+  const campoIePicked = form.elements['codigo_modular'] ? (form.elements['codigo_modular'].dataset.pickedId || '') : '';
+  if(!campoIePicked) {
+    showToast('Elige la institución educativa de la lista para poder guardar.', 'error');
+    return;
+  }
+  payload.codigo_modular = campoIePicked;
   Object.assign(payload, collectCampoVariables());
   payload.hallazgos = collectCampoHallazgos();
   try {
@@ -4336,6 +5398,239 @@ async function restoreCampo(id) {
     showToast(e.message, 'error');
   }
 }
+
+/* --- Registros: asistencia a talleres --- */
+let registrosTalleres = [];
+let regTallerEditingId = null;
+let regTallerAsistentes = [];
+let regTallerEliminados = [];
+
+async function loadRegistrosTalleres() {
+  const body = document.getElementById('reg-taller-body');
+  try {
+    const incluirEliminados = document.getElementById('reg-taller-show-deleted').checked;
+    registrosTalleres = await apiFetch(`/talleres_capacitacion${incluirEliminados ? '?incluir_eliminados=1' : ''}`);
+    renderRegistrosTalleres();
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="3">${esc(e.message)}</td></tr>`;
+  }
+}
+
+function getFilteredRegistrosTalleres() {
+  const q = getField('reg-taller-search').toLowerCase();
+  const autorEmail = document.getElementById('reg-taller-filter-autor').value;
+  const desde = getField('reg-taller-filter-desde');
+  const hasta = getField('reg-taller-filter-hasta');
+  return registrosTalleres.filter(t => {
+    if(autorEmail && t.creado_por_email !== autorEmail) return false;
+    if(!fechaRegistroEnRango(t.creado_en, desde, hasta)) return false;
+    if(!q) return true;
+    return [t.nombre_evento, t.compromiso_indicador, t.sede_nombre, t.nivel_educativo]
+      .some(v => (v || '').toLowerCase().includes(q));
+  });
+}
+
+function renderRegistrosTalleres() {
+  const body = document.getElementById('reg-taller-body');
+  populateRegistrosAutorFilter('reg-taller-filter-autor', registrosTalleres);
+  const rows = getFilteredRegistrosTalleres();
+  if(!rows.length) {
+    body.innerHTML = '<tr><td colspan="3">No hay talleres que coincidan.</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(t => {
+    const deleted = Number(t.estado_fila) === 0;
+    const puedeEditar = canEditRegistro(t);
+    const fechas = [t.fecha_inicio, t.fecha_fin].filter(Boolean).join(' → ');
+    return `
+      <tr data-taller-row="${t.id}" class="reg-row-clickable">
+        <td>
+          <strong>${esc(t.nombre_evento || 'Taller sin nombre')}</strong>
+          <div class="dash-item-meta">${esc(t.sede_nombre || 'Sede sin resolver')}${t.sede_nivel ? ' · ' + esc(t.sede_nivel) : ''}</div>
+          <div class="dash-item-meta">${esc(fechas || 'Sin fecha')} · ${t.total_asistentes || 0} participante(s)</div>
+        </td>
+        <td><span class="status-chip ${deleted ? 'deleted' : 'on'}">${deleted ? 'Eliminado' : 'Activo'}</span></td>
+        <td class="reg-actions-cell">
+          ${puedeEditar ? `
+            <div class="reg-menu">
+              <button class="reg-menu-btn" type="button" data-menu-toggle>⋮</button>
+              <div class="reg-menu-dropdown" hidden>
+                ${deleted
+                  ? `<button type="button" data-taller-restore="${t.id}">Restaurar</button>`
+                  : `<button type="button" data-taller-edit="${t.id}">Editar</button>
+                     <button type="button" class="danger" data-taller-delete="${t.id}">Eliminar</button>`}
+              </div>
+            </div>
+          ` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  document.querySelectorAll('[data-taller-edit]').forEach(b => b.addEventListener('click', () => openTallerForm(Number(b.dataset.tallerEdit), true)));
+  document.querySelectorAll('[data-taller-delete]').forEach(b => b.addEventListener('click', () => deleteTaller(Number(b.dataset.tallerDelete))));
+  document.querySelectorAll('[data-taller-restore]').forEach(b => b.addEventListener('click', () => restoreTaller(Number(b.dataset.tallerRestore))));
+  wireRegistroRows('reg-taller-body', 'data-taller-row', id => openTallerForm(Number(id), false));
+}
+
+async function openTallerForm(id, wantEdit) {
+  try {
+    const detalle = await apiFetch(`/talleres_capacitacion/${id}`);
+    regTallerEditingId = detalle.taller.id;
+    regTallerAsistentes = detalle.asistentes || [];
+    regTallerEliminados = [];
+    const editable = wantEdit && detalle.puede_editar;
+    const form = document.getElementById('reg-taller-form');
+    document.getElementById('reg-taller-empty').style.display = 'none';
+    form.style.display = 'block';
+    highlightRegistroRow('reg-taller-body', `[data-taller-row="${detalle.taller.id}"]`);
+
+    ['nombre_evento','compromiso_indicador','nivel_educativo','ugel','fecha_inicio','fecha_fin','especialista_responsable'].forEach(name => {
+      const el = form.elements[name];
+      if(el) { el.value = detalle.taller[name] ?? ''; el.disabled = !editable; }
+    });
+    const espInput = form.elements['especialista_responsable'];
+    if (espInput) {
+      espInput.dataset.ssAttached = '';
+      await attachEspecialistaPicker(espInput, {valorInicial: detalle.taller.especialista_responsable || ''});
+      espInput.disabled = !editable;
+    }
+    const sedeInput = form.elements['codigo_modular_sede'];
+    if(sedeInput) {
+      sedeInput.dataset.ssAttached = '';
+      await attachIEPicker(sedeInput, {codigoInicial: detalle.taller.codigo_modular_sede || ''});
+      sedeInput.disabled = !editable;
+    }
+
+    renderTallerAsistentes(editable);
+    renderArchivoLinks('reg-taller-archivos', (detalle.archivos || []).map((a, i) => ({
+      id: a.id,
+      label: (detalle.archivos.length > 1) ? `Ver planilla ${i + 1}` : 'Ver planilla original',
+    })));
+
+    document.getElementById('reg-taller-form-title').textContent =
+      `${editable ? 'Editar' : 'Ver'} taller: ${detalle.taller.nombre_evento || ''}`;
+    const metaParts = [`Autor: ${detalle.taller.creado_por_nombre || 'Sin autor'}`];
+    if(detalle.taller.creado_en) metaParts.push(`Registrado: ${formatRegistroFecha(detalle.taller.creado_en)}`);
+    if(detalle.taller.modificado_por_nombre) {
+      metaParts.push(`Última edición: ${detalle.taller.modificado_por_nombre} (${formatRegistroFecha(detalle.taller.actualizado_en)})`);
+    }
+    document.getElementById('reg-taller-meta').textContent = metaParts.join(' · ');
+    document.getElementById('reg-taller-submit').style.display = editable ? 'inline-flex' : 'none';
+    form.scrollIntoView({behavior: 'smooth', block: 'start'});
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+function renderTallerAsistentes(editable) {
+  const cont = document.getElementById('reg-taller-asistentes');
+  const vivos = regTallerAsistentes.filter(a => !regTallerEliminados.includes(a.id));
+  if(!vivos.length) {
+    cont.innerHTML = '<div class="config-selected">Este taller ya no tiene participantes registrados.</div>';
+    return;
+  }
+  cont.innerHTML = vivos.map(a => `
+    <div class="reg-card" style="border-left-color:var(--success)">
+      <div class="reg-card-label" style="justify-content:space-between">
+        <span style="font-weight:800">${esc(a.profesor_nombre || a.nombre_detectado || 'Sin nombre')}</span>
+        ${editable ? `<button type="button" class="mini-btn danger" data-taller-quitar="${a.id}">Quitar</button>` : ''}
+      </div>
+      <div class="dash-item-meta">${a.profesor_dni ? 'DNI ' + esc(a.profesor_dni) : 'sin DNI'}${a.profesor_cargo ? ' · ' + esc(a.profesor_cargo) : ''}${a.ie_nombre ? ' · ' + esc(a.ie_nombre) : ''}${a.ie_nivel ? ' (' + esc(a.ie_nivel) + ')' : ''}</div>
+      ${a.area || a.grado_a_cargo ? `<div class="dash-item-meta">${esc([a.area, a.grado_a_cargo].filter(Boolean).join(' · '))}</div>` : ''}
+    </div>
+  `).join('');
+
+  cont.querySelectorAll('[data-taller-quitar]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      regTallerEliminados.push(Number(btn.dataset.tallerQuitar));
+      renderTallerAsistentes(editable);
+      showToast('Se quitará al guardar los cambios.', 'warning');
+    });
+  });
+}
+
+function closeTallerForm() {
+  regTallerEditingId = null;
+  regTallerAsistentes = [];
+  regTallerEliminados = [];
+  document.getElementById('reg-taller-form').style.display = 'none';
+  document.getElementById('reg-taller-form').reset();
+  document.getElementById('reg-taller-archivos').innerHTML = '';
+  document.getElementById('reg-taller-asistentes').innerHTML = '';
+  document.getElementById('reg-taller-empty').style.display = 'flex';
+  document.querySelectorAll('#reg-taller-body tr.selected').forEach(tr => tr.classList.remove('selected'));
+}
+document.getElementById('reg-taller-cancel').addEventListener('click', closeTallerForm);
+
+document.getElementById('reg-taller-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  if(!regTallerEditingId) return;
+  const form = e.target;
+  const payload = {
+    asistentes_eliminados: regTallerEliminados,
+    codigo_modular_sede: form.elements['codigo_modular_sede'].dataset.pickedId || '',
+  };
+  ['nombre_evento','compromiso_indicador','nivel_educativo','ugel','fecha_inicio','fecha_fin','especialista_responsable'].forEach(name => {
+    payload[name] = form.elements[name].value.trim();
+  });
+  try {
+    await apiFetch(`/talleres_capacitacion/${regTallerEditingId}`, {method: 'PUT', body: JSON.stringify(payload)});
+    showToast('Taller actualizado.', 'success');
+    closeTallerForm();
+    await loadRegistrosTalleres();
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+});
+
+async function deleteTaller(id) {
+  const t = registrosTalleres.find(x => Number(x.id) === id);
+  if(!confirm(`¿Eliminar el taller "${t ? (t.nombre_evento || 'sin nombre') : ''}" y su lista de asistencia? Se puede restaurar después.`)) return;
+  try {
+    await apiFetch(`/talleres_capacitacion/${id}`, {method: 'DELETE'});
+    showToast('Taller eliminado.', 'success');
+    if(regTallerEditingId === id) closeTallerForm();
+    await loadRegistrosTalleres();
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function restoreTaller(id) {
+  try {
+    await apiFetch(`/talleres_capacitacion/${id}`, {method: 'PUT', body: JSON.stringify({restaurar: true})});
+    showToast('Taller restaurado.', 'success');
+    await loadRegistrosTalleres();
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+document.getElementById('reg-taller-show-deleted').addEventListener('change', loadRegistrosTalleres);
+document.getElementById('reg-taller-search').addEventListener('input', renderRegistrosTalleres);
+document.getElementById('reg-taller-filter-autor').addEventListener('change', renderRegistrosTalleres);
+document.getElementById('reg-taller-filter-desde').addEventListener('change', renderRegistrosTalleres);
+document.getElementById('reg-taller-filter-hasta').addEventListener('change', renderRegistrosTalleres);
+
+const REG_TALLER_EXPORT_COLUMNS = [
+  {label: 'Evento', value: t => t.nombre_evento || ''},
+  {label: 'Compromiso / indicador', value: t => t.compromiso_indicador || ''},
+  {label: 'IE sede', value: t => t.sede_nombre || ''},
+  {label: 'Nivel', value: t => t.nivel_educativo || ''},
+  {label: 'Fecha inicio', value: t => t.fecha_inicio || ''},
+  {label: 'Fecha fin', value: t => t.fecha_fin || ''},
+  {label: 'Participantes', value: t => t.total_asistentes ?? 0},
+  {label: 'Fecha de registro', value: t => formatRegistroFecha(t.creado_en || '')},
+  {label: 'Autor', value: t => t.creado_por_nombre || 'Sin autor'},
+  {label: 'Estado', value: t => Number(t.estado_fila) === 0 ? 'Eliminado' : 'Activo'},
+];
+document.getElementById('reg-taller-export-csv').addEventListener('click', () => {
+  exportRowsToCsv(getFilteredRegistrosTalleres(), REG_TALLER_EXPORT_COLUMNS, 'talleres_asistencia.csv');
+});
+document.getElementById('reg-taller-export-xlsx').addEventListener('click', () => {
+  exportRowsToXlsx(getFilteredRegistrosTalleres(), REG_TALLER_EXPORT_COLUMNS, 'talleres_asistencia.xlsx');
+});
 
 /* Preguntas dinamicas */
 const QUESTION_LEVEL_FIELDS = [
@@ -4671,6 +5966,7 @@ const VIEW_TITLES = {
   form: ['Ficha de monitoreo','Registro offline'],
   ocr: ['OCR de ficha','Azure Document Intelligence'],
   campo: ['Informes de campo','OCR + IA · Gemini / OpenAI'],
+  talleres: ['Asistencia a talleres','Listas de participantes · OCR + IA'],
   registros: ['Registros','Fichas e informes de campo'],
   dashboard: ['Gestión educativa','Indicadores y alertas'],
   config: ['Configuración','Usuarios y accesos'],
@@ -4702,10 +5998,16 @@ function switchView(id) {
   if(nav) nav.classList.add('active');
   document.getElementById('topbar-title').textContent = VIEW_TITLES[id][0];
   document.getElementById('topbar-sub').textContent = VIEW_TITLES[id][1];
-  if(id==='mapa' && map) setTimeout(()=>map.invalidateSize(), 10);
+  if(id==='mapa') {
+    // initMap es idempotente (sale solo si el mapa ya existe); esto cubre el
+    // caso de que la carga inicial fallara y el mapa quedara vacio.
+    initMap().then(() => cargarInstitucionesMapa());
+    if (map) setTimeout(()=>map.invalidateSize(), 10);
+  }
   if(id==='config') loadConfigData();
   if(id==='preguntas') loadDynamicQuestions();
   if(id==='campo') prepareCampoView();
+  if(id==='talleres') prepareTalleresView();
   if(id==='registros') loadRegistrosData();
 }
 document.querySelectorAll('.nav-item[data-view]').forEach(el => el.addEventListener('click', () => {
@@ -4756,9 +6058,15 @@ let currentMarkers = {};
 let selectedIECode = null;
 let mapSourceFilter = 'todas';
 
+/* CARTO retiro el acceso anonimo a basemaps.cartocdn.com (empezo a devolver
+ * tiles con el texto "API KEY REQUIRED" en produccion) -- usamos OpenStreetMap
+ * estandar en su lugar, que no exige key. OSM no tiene una variante oscura
+ * gratuita propia, asi que el tema oscuro se logra con un filtro CSS sobre
+ * las mismas tiles (ver [data-theme="dark"] .leaflet-tile-pane). */
+const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const TILE_URLS = {
-  light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+  light: OSM_TILE_URL,
+  dark: OSM_TILE_URL
 };
 
 const ALERTA_CFG = {
@@ -4824,8 +6132,26 @@ async function initMap() {
     });
   });
 
+  await cargarInstitucionesMapa();
+}
+
+/* Carga (o recarga) el padron de IEs del mapa.
+
+   Va aparte de initMap a proposito: initMap solo corre una vez al entrar, y si
+   ese primer fetch fallaba (servidor reiniciando, corte de red, sesion que
+   acababa de renovarse) el mapa se quedaba vacio para siempre -- abrirlo de
+   nuevo no reintentaba nada y mostraba 0 IEs sin explicar por que. Ahora
+   cualquier entrada al mapa puede reintentar. */
+let cargandoInstituciones = false;
+async function cargarInstitucionesMapa({forzar = false} = {}) {
+  if (cargandoInstituciones) return;
+  if (!forzar && Array.isArray(allIEs) && allIEs.length) return;
+  cargandoInstituciones = true;
+  const lista = document.getElementById('ie-list');
+  if (lista && !allIEs.length) lista.innerHTML = '<div class="dash-empty">Cargando instituciones...</div>';
   try {
     allIEs = await apiFetch('/instituciones');
+    ieCatalogCache = allIEs;
     populateDistricts();
     populateLevels();
     applyMapFilters();
@@ -4833,8 +6159,16 @@ async function initMap() {
   } catch(e) {
     console.error('Error cargando IEs:', e);
     if (e.message !== 'Sesión expirada.') {
-      showToast('No se pudieron cargar las instituciones. Intenta recargar la página.', 'error');
+      showToast('No se pudieron cargar las instituciones. Toca "Reintentar" en el listado.', 'error');
+      if (lista) {
+        lista.innerHTML = '<div class="dash-empty">No se pudieron cargar las instituciones.'
+          + '<br/><button type="button" class="mini-btn" id="map-retry" style="margin-top:8px">Reintentar</button></div>';
+        const boton = document.getElementById('map-retry');
+        if (boton) boton.addEventListener('click', () => cargarInstitucionesMapa({forzar: true}));
+      }
     }
+  } finally {
+    cargandoInstituciones = false;
   }
 }
 
@@ -4843,9 +6177,9 @@ function updateMapTiles() {
   if(mapTileLayer) map.removeLayer(mapTileLayer);
   const url = TILE_URLS[currentTheme] || TILE_URLS.light;
   mapTileLayer = L.tileLayer(url, {
-    attribution: '&copy; OpenStreetMap &copy; CARTO',
-    subdomains: 'abcd',
-    maxZoom: 20
+    attribution: '&copy; OpenStreetMap contributors',
+    subdomains: 'abc',
+    maxZoom: 19
   }).addTo(map);
 }
 
@@ -5037,12 +6371,22 @@ window.closeIEDetail = function() {
 }
 
 /* Formularios Manual */
+// La IE se elige del padron, nunca se escribe: asi no entran codigos mal
+// tipeados que despues no cruzan con nada (mismo criterio en OCR y Registros).
+attachIEPicker('fm-codigo');
+attachEspecialistaPicker('campo-especialista', {valorInicial: ''});
+
 document.getElementById('manual-form').addEventListener('submit', (e) => {
   e.preventDefault();
+  const codigoIE = document.getElementById('fm-codigo').dataset.pickedId || '';
+  if(!codigoIE) {
+    showToast('Elige la institución educativa de la lista para poder guardar.', 'error');
+    return;
+  }
   if(!confirmSaveWithValidation('manual')) return;
   const ficha = {
     source: 'manual',
-    codigo_modular: document.getElementById('fm-codigo').value,
+    codigo_modular: codigoIE,
     docente: document.getElementById('fm-docente').value,
     fecha_ejecucion: document.getElementById('fm-fecha').value,
     monitor: document.getElementById('fm-monitor').value,
@@ -5050,6 +6394,10 @@ document.getElementById('manual-form').addEventListener('submit', (e) => {
   };
   saveFichaOffline(ficha);
   e.target.reset();
+  // reset() borra el texto visible pero no el id elegido: hay que limpiarlo a
+  // mano o la siguiente ficha se guardaria con la IE de la anterior.
+  const fmCodigo = document.getElementById('fm-codigo');
+  if(fmCodigo._ssApi) fmCodigo._ssApi.clear();
   clearInstrumentResponses('manual');
   document.getElementById('fm-monitor').value = currentUser.nombre;
 });
@@ -5101,6 +6449,10 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
 });
 
 document.getElementById('btn-save-ocr').addEventListener('click', async () => {
+  if(!document.getElementById('fo-codigo').dataset.pickedId) {
+    showToast('Confirma la institución educativa eligiéndola de la lista antes de guardar.', 'error');
+    return;
+  }
   if(!confirmSaveWithValidation('ocr')) return;
   const ficha = buildOcrFichaFromFields();
   saveFichaOffline(ficha);
@@ -5114,8 +6466,11 @@ const CAMPO_SEV_CLASS = {alta: 'danger', media: 'warning', baja: 'info'};
 const CAMPO_SEV_LABEL = {alta: 'Alta', media: 'Media', baja: 'Baja'};
 
 function prepareCampoView() {
+  ensureIECatalog();  // para poder mostrar nombre y nivel de cada IE, no solo el codigo
   const el = document.getElementById('campo-especialista');
-  if(el && !el.value && currentUser) el.value = currentUser.nombre;
+  if(el && !el.value && currentUser && el._ssApi) {
+    el._ssApi.setValue({id: currentUser.nombre, label: currentUser.nombre});
+  }
 }
 
 function clearCampoView() {
@@ -5165,8 +6520,8 @@ function renderCampoReview() {
       <div class="campo-visita-card">
         <div class="campo-visita-head">
           <div class="campo-visita-ie">
-            ${esc(v.codigo_modular)} ${v.nombre_ie_detectado ? '· ' + esc(v.nombre_ie_detectado) : ''}
-            <div class="sub">${included} hallazgo(s) seleccionado(s) para guardar</div>
+            ${esc(ieDescripcion(v.codigo_modular, {conCodigo: false}) || v.codigo_modular)}
+            <div class="sub">Código ${esc(v.codigo_modular)}${v.nombre_ie_detectado ? ' · detectado: ' + esc(v.nombre_ie_detectado) : ''} · ${included} hallazgo(s) seleccionado(s) para guardar</div>
           </div>
           <input type="date" class="form-input" style="width:150px" data-campo-fecha data-visita="${vIdx}" value="${esc(v.fecha_visita || '')}" title="Fecha de la visita (opcional)"/>
         </div>
@@ -5177,14 +6532,48 @@ function renderCampoReview() {
   });
 
   if(campoState.sinCodigo.length > 0) {
-    parts.push(`<div class="campo-warning-banner">⚠ ${campoState.sinCodigo.length} hallazgo(s) no se pudieron asociar a un código modular oficial y requieren revisión manual (no se guardarán).</div>`);
-    campoState.sinCodigo.forEach(h => {
+    parts.push(`<div class="campo-warning-banner">⚠ ${campoState.sinCodigo.length} hallazgo(s) sin IE reconocida. Elige la institución de cada uno para poder guardarlos.</div>`);
+    campoState.sinCodigo.forEach((h, sIdx) => {
       const meta = campoState.meta[h.variable_detectada] || {};
-      parts.push(`<div class="campo-sincodigo-card"><b>${esc(meta.label || h.variable_detectada)}</b>: "${esc(h.evidencia_textual || '')}"</div>`);
+      parts.push(`
+        <div class="campo-sincodigo-card">
+          <b>${esc(meta.label || h.variable_detectada)}</b>: "${esc(h.evidencia_textual || '')}"
+          ${h.nombre_ie || h.centro_poblado ? `<div class="sub" style="font-size:11px;color:var(--text-muted);margin-top:4px">Detectado: ${esc([h.nombre_ie, h.centro_poblado].filter(Boolean).join(' · '))}</div>` : ''}
+          <input class="form-input" style="margin-top:8px" data-campo-sincodigo-ie="${sIdx}" placeholder="Busca la IE para asociar este hallazgo..."/>
+        </div>`);
     });
   }
 
   box.innerHTML = parts.join('');
+
+  // Buscador de IE para los hallazgos que la IA no pudo asociar: al elegir una,
+  // el hallazgo pasa a la lista guardable en vez de perderse.
+  box.querySelectorAll('[data-campo-sincodigo-ie]').forEach(el => {
+    const sIdx = Number(el.dataset.campoSincodigoIe);
+    attachIEPicker(el, {
+      onSelect: op => {
+        if(!op) return;
+        const hallazgo = campoState.sinCodigo[sIdx];
+        if(!hallazgo) return;
+        hallazgo._incluir = true;
+        const existente = campoState.visitas.find(v => String(v.codigo_modular) === String(op.id));
+        if(existente) {
+          existente.hallazgos.push(hallazgo);
+        } else {
+          campoState.visitas.push({
+            codigo_modular: op.id,
+            nombre_ie_detectado: hallazgo.nombre_ie || op.label,
+            fecha_visita: '',
+            hallazgos: [hallazgo],
+          });
+        }
+        campoState.sinCodigo.splice(sIdx, 1);
+        renderCampoReview();
+        document.getElementById('btn-save-campo').disabled = false;
+        showToast('Hallazgo asociado a la IE. Ya se guardará con el informe.', 'success');
+      },
+    });
+  });
 }
 
 document.getElementById('campo-review').addEventListener('change', (e) => {
@@ -5299,8 +6688,393 @@ document.getElementById('btn-save-campo').addEventListener('click', async () => 
     const resp = await apiFetch('/informes_campo', {method: 'POST', body: JSON.stringify(payload)});
     showToast(`${resp.visitas_guardadas} visita(s) guardada(s) con sus hallazgos.`, 'success');
     clearCampoView();
-    document.getElementById('campo-especialista').value = currentUser ? currentUser.nombre : '';
+    const espEl = document.getElementById('campo-especialista');
+    if(espEl._ssApi && currentUser) espEl._ssApi.setValue({id: currentUser.nombre, label: currentUser.nombre});
   } catch(err) {
+    showToast('Error al guardar: ' + err.message, 'error');
+    btn.disabled = false;
+  }
+});
+
+/* Asistencia a talleres (OCR de listas de participantes) ------------------- */
+let talleresState = {doc: {}, asistentes: [], files: [], provider: '', method: ''};
+
+function prepareTalleresView() {
+  ensureIECatalog();
+  attachIEPicker('tl-ie-sede');
+  // El taller se le acredita a quien lo dicto, no a quien sube la foto: por eso
+  // arranca con el usuario actual pero se puede cambiar.
+  attachEspecialistaPicker('tl-especialista', {valorInicial: (currentUser && currentUser.nombre) || ''});
+  if (!getField('tl-dre')) setField('tl-dre', 'Amazonas');
+  if (!getField('tl-ugel')) setField('tl-ugel', 'IBIR Imaza');
+}
+
+function clearTalleresView() {
+  talleresState = {doc: {}, asistentes: [], files: [], provider: '', method: ''};
+  document.getElementById('taller-review').innerHTML =
+    '<div class="campo-empty">Sube la foto de una lista de participantes para registrar la asistencia.</div>';
+  document.getElementById('taller-resumen').textContent = '';
+  document.getElementById('btn-save-taller').disabled = true;
+  document.getElementById('taller-conf').style.display = 'none';
+  ['tl-evento','tl-compromiso','tl-nivel','tl-sede','tl-fecha-inicio','tl-fecha-fin','tl-especialista'].forEach(id => setField(id, ''));
+  const sede = document.getElementById('tl-ie-sede');
+  if (sede && sede._ssApi) sede._ssApi.clear();
+  document.getElementById('tl-ie-sede-hint').textContent = '';
+}
+
+/* Estados posibles de un asistente:
+   - 'match'    : el DNI coincide con alguien del padron (verde)
+   - 'elegido'  : la persona eligio manualmente a quien corresponde (verde)
+   - 'nuevo'    : se va a crear un profesor nuevo con los datos capturados (azul)
+   - 'sin'      : todavia no tiene identidad confirmada (rojo, bloquea el guardado)
+   - 'excluido' : fila ilegible/no aplica, no se guarda (gris) */
+function tallerEstadoAsistente(a) {
+  if (a._excluido) return 'excluido';
+  if (a._nuevoProfesor) return 'nuevo';
+  if (a._profesorId) return a.profesor_match && String(a.profesor_match.id) === String(a._profesorId) ? 'match' : 'elegido';
+  return 'sin';
+}
+
+const TALLER_ESTADO_META = {
+  match:    {color: 'var(--success)', chip: 'Identificado por DNI', clase: 'ok'},
+  elegido:  {color: 'var(--success)', chip: 'Vinculado manualmente', clase: 'ok'},
+  nuevo:    {color: 'var(--brand-blue)', chip: 'Se creará como nuevo', clase: 'info'},
+  sin:      {color: 'var(--danger)', chip: 'No está en el padrón', clase: 'danger'},
+  excluido: {color: 'var(--border2)', chip: 'Excluido', clase: 'info'},
+};
+
+function renderTalleresReview() {
+  const cont = document.getElementById('taller-review');
+  if (!talleresState.asistentes.length) {
+    cont.innerHTML = '<div class="campo-empty">No se detectaron participantes en la planilla.</div>';
+    document.getElementById('btn-save-taller').disabled = true;
+    return;
+  }
+
+  cont.innerHTML = talleresState.asistentes.map((a, i) => {
+    const estado = tallerEstadoAsistente(a);
+    const meta = TALLER_ESTADO_META[estado];
+    const cands = a.candidatos_profesor || [];
+    return `
+      <div class="reg-card" data-taller-row="${i}" style="border-left-color:${meta.color}">
+        <div class="reg-card-label" style="justify-content:space-between">
+          <span style="font-weight:800">${a.fila_num ? a.fila_num + '. ' : ''}${esc(a.nombre_detectado || 'Sin nombre')}</span>
+          <span class="reg-card-tag sev-${meta.clase === 'danger' ? 'alta' : meta.clase === 'ok' ? 'baja' : 'media'}">${esc(meta.chip)}</span>
+        </div>
+
+        ${estado === 'excluido' ? '' : `
+        <div class="reg-card-fields" style="margin-top:8px">
+          <div class="field-item"><label class="form-group label">DNI</label>
+            <input class="form-input" data-tl-field="dni_detectado" data-idx="${i}" value="${esc(a.dni_detectado || '')}"/></div>
+          <div class="field-item"><label class="form-group label">Grado a cargo</label>
+            <input class="form-input" data-tl-field="grado_a_cargo" data-idx="${i}" value="${esc(a.grado_a_cargo || '')}"/></div>
+          <div class="field-item"><label class="form-group label">Área</label>
+            <input class="form-input" data-tl-field="area" data-idx="${i}" value="${esc(a.area || '')}"/></div>
+          <div class="field-item"><label class="form-group label">Celular</label>
+            <input class="form-input" data-tl-field="celular_detectado" data-idx="${i}" value="${esc(a.celular_detectado || '')}"/></div>
+          <div class="field-item full"><label class="form-group label">Correo</label>
+            <input class="form-input" data-tl-field="correo_detectado" data-idx="${i}" value="${esc(a.correo_detectado || '')}"/></div>
+          <div class="field-item full">
+            <label class="form-group label">IE del participante${a.institucion_educativa_texto ? ` <span style="color:var(--text-dim);font-weight:400">— escrito: "${esc(a.institucion_educativa_texto)}"</span>` : ''}</label>
+            <input class="form-input" data-tl-ie="${i}" placeholder="Busca por nombre o código modular..."/>
+            ${a._codigoIE ? `<div class="config-selected" style="margin:4px 0 0">${esc(ieDescripcion(a._codigoIE, {conCodigo: false}))}</div>` : ''}
+            ${talleresState.doc.codigo_modular_sede_sugerido ? `<button type="button" class="mini-btn" data-tl-usar-sede="${i}" style="margin-top:6px">Usar la IE sede del taller</button>` : ''}
+          </div>
+        </div>
+
+        <div class="panel-label" style="margin-top:12px">Identidad en el padrón</div>
+        ${a._profesorId && !a._nuevoProfesor ? `
+          <div class="config-selected" style="margin-bottom:6px">Vinculado a: <strong>${esc(a._profesorNombre || '')}</strong></div>
+          <button type="button" class="mini-btn" data-tl-desvincular="${i}">Cambiar</button>
+        ` : a._nuevoProfesor ? `
+          <div class="config-selected" style="margin-bottom:6px">Se creará: <strong>${esc(a._nuevoProfesor.nombre_completo)}</strong>${a._nuevoProfesor.dni ? ` · DNI ${esc(a._nuevoProfesor.dni)}` : ''} · ${esc(a._nuevoProfesor.cargo)}</div>
+          <button type="button" class="mini-btn danger" data-tl-cancelar-nuevo="${i}">Descartar</button>
+        ` : `
+          ${cands.length ? `<div class="config-selected" style="margin-bottom:6px">Parecidos en el padrón:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+              ${cands.map(c => `<button type="button" class="mini-btn" data-tl-cand="${i}" data-cand-id="${c.id}" data-cand-nombre="${esc(c.nombre_completo)}">${esc(c.nombre_completo)} <span style="color:var(--text-dim)">(${Math.round(c.match_score || 0)}%)</span></button>`).join('')}
+            </div>` : ''}
+          <input class="form-input" data-tl-profesor="${i}" placeholder="Buscar profesor por nombre o DNI..."/>
+          <button type="button" class="mini-btn" data-tl-nuevo="${i}" style="margin-top:8px">+ Agregar nuevo profesor</button>
+          <div data-tl-form-nuevo="${i}" style="display:none;margin-top:10px;border-top:1px dashed var(--border2);padding-top:10px">
+            <div class="reg-card-fields">
+              <div class="field-item full"><label class="form-group label">Nombre completo *</label>
+                <input class="form-input" data-np="nombre_completo" data-idx="${i}" value="${esc(a.nombre_detectado || '')}"/></div>
+              <div class="field-item"><label class="form-group label">DNI</label>
+                <input class="form-input" data-np="dni" data-idx="${i}" value="${esc(a.dni_detectado || '')}"/></div>
+              <div class="field-item"><label class="form-group label">Cargo</label>
+                <select class="form-select" data-np="cargo" data-idx="${i}">
+                  <option value="docente">Docente</option>
+                  <option value="director">Director(a)</option>
+                  <option value="otro">Otro</option>
+                </select></div>
+              <div class="field-item"><label class="form-group label">Celular</label>
+                <input class="form-input" data-np="celular" data-idx="${i}" value="${esc(a.celular_detectado || '')}"/></div>
+              <div class="field-item"><label class="form-group label">Correo</label>
+                <input class="form-input" data-np="correo" data-idx="${i}" value="${esc(a.correo_detectado || '')}"/></div>
+              <div class="field-item full"><label class="form-group label">Condición laboral</label>
+                <input class="form-input" data-np="condicion_laboral" data-idx="${i}" placeholder="Nombrado, contratado..."/></div>
+            </div>
+            <button type="button" class="btn-primary" style="padding:8px 14px;font-size:12px" data-tl-guardar-nuevo="${i}">Usar estos datos</button>
+          </div>
+        `}
+        `}
+
+        <div style="margin-top:10px">
+          <button type="button" class="mini-btn ${a._excluido ? '' : 'danger'}" data-tl-excluir="${i}">
+            ${a._excluido ? 'Incluir de nuevo' : 'Excluir esta fila'}
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  wireTalleresReview();
+  actualizarResumenTalleres();
+}
+
+function actualizarResumenTalleres() {
+  const activos = talleresState.asistentes.filter(a => !a._excluido);
+  const pendientes = activos.filter(a => tallerEstadoAsistente(a) === 'sin');
+  const nuevos = activos.filter(a => a._nuevoProfesor).length;
+  document.getElementById('taller-resumen').innerHTML =
+    `${activos.length} participante(s) a guardar · ${nuevos} profesor(es) nuevo(s)` +
+    (pendientes.length ? ` · <span style="color:var(--danger);font-weight:700">${pendientes.length} sin identificar</span>` : '');
+  document.getElementById('btn-save-taller').disabled = !activos.length || pendientes.length > 0;
+}
+
+function wireTalleresReview() {
+  const rerender = () => renderTalleresReview();
+
+  document.querySelectorAll('[data-tl-field]').forEach(el => {
+    el.addEventListener('input', () => {
+      talleresState.asistentes[Number(el.dataset.idx)][el.dataset.tlField] = el.value;
+    });
+  });
+
+  document.querySelectorAll('[data-tl-ie]').forEach(el => {
+    const i = Number(el.dataset.tlIe);
+    const a = talleresState.asistentes[i];
+    attachIEPicker(el, {
+      codigoInicial: a._codigoIE || a.codigo_modular_ie_sugerido || '',
+      onSelect: op => { a._codigoIE = op ? op.id : ''; },
+    });
+  });
+
+  document.querySelectorAll('[data-tl-usar-sede]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i = Number(btn.dataset.tlUsarSede);
+      talleresState.asistentes[i]._codigoIE = talleresState.doc.codigo_modular_sede_sugerido;
+      rerender();
+    });
+  });
+
+  document.querySelectorAll('[data-tl-profesor]').forEach(el => {
+    const i = Number(el.dataset.tlProfesor);
+    createSearchableSelect({
+      input: el,
+      minChars: 2,
+      // Sin filtrar por la IE del participante: a un taller asisten docentes de
+      // muchas IEs, y la IE de la fila puede estar mal leida. El subtitulo de
+      // cada resultado ya muestra su IE para poder distinguir homonimos.
+      fetchOptions: q => fetchProfesorOptions(q),
+      emptyText: 'Nadie coincide. Puedes agregarlo como nuevo.',
+      onSelect: op => {
+        const a = talleresState.asistentes[i];
+        if (!op) return;
+        a._profesorId = op.id;
+        a._profesorNombre = op.label;
+        a._nuevoProfesor = null;
+        a.match_metodo = 'busqueda_manual';
+        rerender();
+      },
+    });
+  });
+
+  document.querySelectorAll('[data-tl-cand]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.tlCand);
+      const a = talleresState.asistentes[i];
+      a._profesorId = Number(btn.dataset.candId);
+      a._profesorNombre = btn.dataset.candNombre;
+      a._nuevoProfesor = null;
+      a.match_metodo = 'sugerencia_nombre';
+      rerender();
+    });
+  });
+
+  document.querySelectorAll('[data-tl-desvincular]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const a = talleresState.asistentes[Number(btn.dataset.tlDesvincular)];
+      a._profesorId = null; a._profesorNombre = ''; a.match_metodo = '';
+      rerender();
+    });
+  });
+
+  document.querySelectorAll('[data-tl-nuevo]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const form = document.querySelector(`[data-tl-form-nuevo="${btn.dataset.tlNuevo}"]`);
+      if (form) form.style.display = form.style.display === 'none' ? 'block' : 'none';
+    });
+  });
+
+  document.querySelectorAll('[data-tl-guardar-nuevo]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.tlGuardarNuevo);
+      const a = talleresState.asistentes[i];
+      const val = campo => {
+        const el = document.querySelector(`[data-np="${campo}"][data-idx="${i}"]`);
+        return el ? el.value.trim() : '';
+      };
+      const nombre = val('nombre_completo');
+      if (!nombre) { showToast('El nombre completo es obligatorio.', 'error'); return; }
+      // La IE es opcional a proposito: lo importante es que la persona quede en
+      // el padron. Si no se sabe su IE ahora, se puede completar despues desde
+      // Configuracion -> Profesores en vez de bloquear el alta aqui.
+      if (!a._codigoIE) showToast('Se registrará sin IE asignada; puedes completarla luego en Configuración → Profesores.', 'warning');
+      a._nuevoProfesor = {
+        nombre_completo: nombre,
+        dni: val('dni'),
+        cargo: val('cargo') || 'docente',
+        celular: val('celular'),
+        correo: val('correo'),
+        condicion_laboral: val('condicion_laboral'),
+        codigo_modular_ie: a._codigoIE,
+      };
+      a._profesorId = null;
+      a.match_metodo = 'nuevo_profesor';
+      rerender();
+    });
+  });
+
+  document.querySelectorAll('[data-tl-cancelar-nuevo]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      talleresState.asistentes[Number(btn.dataset.tlCancelarNuevo)]._nuevoProfesor = null;
+      rerender();
+    });
+  });
+
+  document.querySelectorAll('[data-tl-excluir]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const a = talleresState.asistentes[Number(btn.dataset.tlExcluir)];
+      a._excluido = !a._excluido;
+      rerender();
+    });
+  });
+}
+
+document.getElementById('taller-file-input').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  const prog = document.getElementById('taller-progress');
+  prog.classList.add('visible');
+  try {
+    const fd = new FormData();
+    files.forEach(f => fd.append('files', f));
+    const r = await fetch(API + '/ocr/taller_asistencia/upload', {method: 'POST', headers: authHeaders(), body: fd});
+    if (r.status === 401) { forceLogout('Tu sesión expiró. Vuelve a iniciar sesión.'); return; }
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'No se pudo procesar la planilla');
+
+    const doc = data.documento || {};
+    talleresState = {
+      doc,
+      provider: data.provider || '',
+      method: data.method || '',
+      files: data.files_meta || [],
+      asistentes: (data.asistentes || []).map(a => ({
+        ...a,
+        _profesorId: a.profesor_match ? a.profesor_match.id : null,
+        _profesorNombre: a.profesor_match ? a.profesor_match.nombre_completo : '',
+        _codigoIE: a.codigo_modular_ie_sugerido || '',
+        _nuevoProfesor: null,
+        _excluido: false,
+        match_metodo: a.profesor_match ? 'dni_exacto' : '',
+      })),
+    };
+
+    setField('tl-evento', doc.nombre_evento || '');
+    setField('tl-compromiso', doc.compromiso_indicador || '');
+    setField('tl-dre', doc.dre || 'Amazonas');
+    setField('tl-ugel', doc.ugel || 'IBIR Imaza');
+    setField('tl-nivel', doc.nivel_educativo || '');
+    setField('tl-sede', doc.sede || '');
+    setField('tl-fecha-inicio', doc.fecha_inicio || '');
+    setField('tl-fecha-fin', doc.fecha_fin || '');
+
+    // Se limpia lo que hubiera antes: si la planilla nueva no resuelve su sede,
+    // no debe quedar en pantalla la IE de una carga anterior como si fuera esta.
+    const sedeInput = document.getElementById('tl-ie-sede');
+    if (sedeInput._ssApi) sedeInput._ssApi.clear();
+    sedeInput.dataset.ssAttached = '';
+    await attachIEPicker(sedeInput, {codigoInicial: doc.codigo_modular_sede_sugerido || ''});
+    document.getElementById('tl-ie-sede-hint').textContent = doc.codigo_modular_sede_sugerido
+      ? `Detectado: ${doc.nombre_ie_sede || ''}`
+      : `La IE sede "${doc.nombre_ie_sede || ''}" no se pudo resolver: elígela manualmente.`;
+
+    const chip = document.getElementById('taller-conf');
+    chip.style.display = 'inline-flex';
+    chip.className = 'confidence-chip conf-high';
+    chip.textContent = `${talleresState.asistentes.length} participante(s) | ${data.provider}`;
+
+    renderTalleresReview();
+    showToast('Planilla procesada. Revisa cada participante antes de guardar.', 'success');
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  } finally {
+    prog.classList.remove('visible');
+    e.target.value = '';
+  }
+});
+
+document.getElementById('btn-save-taller').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-save-taller');
+  btn.disabled = true;
+  try {
+    const activos = talleresState.asistentes.filter(a => !a._excluido);
+    if (!activos.length) { showToast('No hay participantes para guardar.', 'error'); btn.disabled = false; return; }
+
+    const sedeInput = document.getElementById('tl-ie-sede');
+    const payload = {
+      provider: talleresState.provider,
+      method: talleresState.method,
+      files: talleresState.files,
+      documento: {
+        nombre_evento: getField('tl-evento'),
+        compromiso_indicador: getField('tl-compromiso'),
+        nivel_educativo: getField('tl-nivel'),
+        especialista_responsable: getField('tl-especialista'),
+        dre: getField('tl-dre'),
+        ugel: getField('tl-ugel'),
+        sede: getField('tl-sede'),
+        nombre_ie_sede: talleresState.doc.nombre_ie_sede || '',
+        codigo_modular_sede: sedeInput.dataset.pickedId || '',
+        fecha_inicio: getField('tl-fecha-inicio'),
+        fecha_fin: getField('tl-fecha-fin'),
+      },
+      asistentes: activos.map(a => ({
+        profesor_id: a._profesorId || null,
+        nuevo_profesor: a._nuevoProfesor || null,
+        nombre_detectado: a.nombre_detectado,
+        dni_detectado: a.dni_detectado,
+        grado_a_cargo: a.grado_a_cargo,
+        area: a.area,
+        celular_detectado: a.celular_detectado,
+        correo_detectado: a.correo_detectado,
+        codigo_modular_ie_detectado: a._codigoIE || '',
+        institucion_educativa_texto: a.institucion_educativa_texto,
+        match_metodo: a.match_metodo,
+        match_score: (a.candidatos_profesor || []).find(c => String(c.id) === String(a._profesorId))?.match_score || null,
+      })),
+    };
+
+    const resp = await apiFetch('/talleres_capacitacion', {method: 'POST', body: JSON.stringify(payload)});
+    let msg = `${resp.asistentes_guardados} asistencia(s) guardada(s)`;
+    if (resp.profesores_creados) msg += ` · ${resp.profesores_creados} profesor(es) nuevo(s) en el padrón`;
+    showToast(msg, 'success');
+    if ((resp.omitidos || []).length) showToast(`${resp.omitidos.length} fila(s) omitida(s): ${resp.omitidos[0]}`, 'warning');
+    clearTalleresView();
+  } catch (err) {
     showToast('Error al guardar: ' + err.message, 'error');
     btn.disabled = false;
   }
@@ -5386,6 +7160,264 @@ function excelDashboard() {
   return (dashboardState.data && dashboardState.data.excel_dashboard) || {instituciones: [], semaforo: []};
 }
 
+/*──────────────────────────────────────────────────────────────────────────────
+  Gestion -> Capacitaciones: seguimiento de asistencia a talleres
+──────────────────────────────────────────────────────────────────────────────*/
+const MESES_CORTOS = ['ene','feb','mar','abr','may','jun','jul','ago','set','oct','nov','dic'];
+
+function etiquetaMes(mes) {
+  const [anio, m] = String(mes || '').split('-');
+  const idx = Number(m) - 1;
+  return (idx >= 0 && idx < 12) ? `${MESES_CORTOS[idx]} ${anio}` : (mes || '—');
+}
+
+function dashKpiTile(label, value, sub = '', tono = '') {
+  return `
+    <div class="dash-kpi ${tono}">
+      <div class="dash-kpi-label">${esc(label)}</div>
+      <div class="dash-kpi-value">${esc(String(value))}</div>
+      ${sub ? `<div class="dash-kpi-sub">${esc(sub)}</div>` : ''}
+    </div>`;
+}
+
+/* Filtros de periodo e institución para Capacitaciones y Especialistas.
+
+   Los dos dashboards se recalculan en el servidor (/api/dashboard/asistencias y
+   /api/dashboard/especialistas) en vez de filtrar en el navegador, porque lo que
+   llega en /api/dashboard ya viene agregado y no se puede desagregar después. */
+const MESES_NOMBRE = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const dashFiltros = {
+  asis: {anio: '', mes: '', ie: ''},
+  esp:  {anio: '', mes: '', ie: ''},
+};
+let dashAniosDisponibles = null;
+
+async function prepararFiltrosDashboard(vista) {
+  if (!dashAniosDisponibles) {
+    try {
+      const r = await apiFetch('/dashboard/periodos');
+      dashAniosDisponibles = r.anios || [];
+    } catch (e) {
+      dashAniosDisponibles = [];
+    }
+  }
+  const selAnio = document.querySelector(`[data-dashf="anio"][data-vista="${vista}"]`);
+  if (selAnio && selAnio.options.length <= 1) {
+    selAnio.innerHTML = '<option value="">Todos los años</option>'
+      + dashAniosDisponibles.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join('');
+  }
+  const selMes = document.querySelector(`[data-dashf="mes"][data-vista="${vista}"]`);
+  if (selMes && selMes.options.length <= 1) {
+    selMes.innerHTML = '<option value="">Todos los meses</option>'
+      + MESES_NOMBRE.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+  }
+  const inputIE = document.querySelector(`[data-dashf="ie"][data-vista="${vista}"]`);
+  if (inputIE && inputIE.dataset.ssAttached !== '1') {
+    await attachIEPicker(inputIE, {
+      onSelect: opcion => {
+        dashFiltros[vista].ie = opcion ? opcion.id : '';
+        recargarDashboardFiltrado(vista);
+      },
+    });
+  }
+}
+
+function paramsFiltro(vista) {
+  const f = dashFiltros[vista];
+  const qs = new URLSearchParams();
+  if (f.anio) qs.set('anio', f.anio);
+  if (f.mes) qs.set('mes', f.mes);
+  if (f.ie) qs.set('codigo_modular', f.ie);
+  const texto = qs.toString();
+  return texto ? '?' + texto : '';
+}
+
+async function recargarDashboardFiltrado(vista) {
+  try {
+    if (vista === 'asis') {
+      const datos = await apiFetch('/dashboard/asistencias' + paramsFiltro('asis'));
+      dashboardState.data.asistencias_talleres = datos;
+      renderAsistenciasDashboard();
+    } else {
+      const datos = await apiFetch('/dashboard/especialistas' + paramsFiltro('esp'));
+      dashboardState.data.especialistas_monitoreo = datos;
+      renderEspecialistasDashboard();
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+document.querySelectorAll('[data-dashf]').forEach(el => {
+  if (el.dataset.dashf === 'ie') return;   // lo maneja el buscador de IE
+  el.addEventListener('change', () => {
+    dashFiltros[el.dataset.vista][el.dataset.dashf] = el.value;
+    recargarDashboardFiltrado(el.dataset.vista);
+  });
+});
+
+document.querySelectorAll('[data-dashf-clear]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const vista = btn.dataset.dashfClear;
+    dashFiltros[vista] = {anio: '', mes: '', ie: ''};
+    document.querySelectorAll(`[data-dashf][data-vista="${vista}"]`).forEach(el => {
+      el.value = '';
+      if (el.dataset.dashf === 'ie') { el.dataset.pickedId = ''; el.classList.remove('searchable-select-picked'); }
+    });
+    recargarDashboardFiltrado(vista);
+  });
+});
+
+function resumenFiltros(vista) {
+  const f = dashFiltros[vista];
+  const partes = [];
+  if (f.anio) partes.push(f.mes ? `${MESES_NOMBRE[Number(f.mes) - 1]} ${f.anio}` : `año ${f.anio}`);
+  else if (f.mes) partes.push(MESES_NOMBRE[Number(f.mes) - 1]);
+  if (f.ie) partes.push(ieDescripcion(f.ie, {conCodigo: false}));
+  return partes.length ? partes.join(' · ') : '';
+}
+
+function renderAsistenciasDashboard() {
+  const a = (dashboardState.data && dashboardState.data.asistencias_talleres) || null;
+  if (!a) return;
+
+  const filtroTexto = resumenFiltros('asis');
+  document.getElementById('dash-asis-kpis').innerHTML = [
+    ...(filtroTexto ? [`<div class="dash-kpi" style="grid-column:1/-1;border-top-color:var(--brand-blue)"><div class="dash-kpi-label">Filtro aplicado</div><div class="dash-kpi-sub" style="margin-top:4px">${esc(filtroTexto)}</div></div>`] : []),
+    dashKpiTile('Talleres registrados', a.total_talleres, 'listas de asistencia cargadas'),
+    dashKpiTile('Participaciones', a.total_asistencias, `promedio ${a.promedio_por_taller} por taller`),
+    dashKpiTile('Docentes capacitados', a.profesores_capacitados, `de ${a.profesores_padron} en el padrón`, 'green'),
+    dashKpiTile('Cobertura del padrón', `${a.pct_cobertura}%`, 'personas distintas alcanzadas', a.pct_cobertura < 25 ? 'amber' : 'green'),
+  ].join('');
+
+  const maxMes = Math.max(1, ...(a.por_mes || []).map(m => m.asistencias || 0));
+  document.getElementById('dash-asis-mes').innerHTML = (a.por_mes || []).length
+    ? a.por_mes.map(m => dashMiniBar(etiquetaMes(m.mes), m.asistencias, maxMes, 'var(--dash-blue)',
+        `${m.talleres} taller(es)`)).join('')
+    : '<div class="dash-empty">Todavía no hay asistencias registradas.</div>';
+
+  const maxCargo = Math.max(1, ...(a.por_cargo || []).map(c => c.asistencias || 0));
+  document.getElementById('dash-asis-cargo').innerHTML = (a.por_cargo || []).length
+    ? a.por_cargo.map(c => dashMiniBar(
+        c.cargo === 'director' ? 'Directores' : (c.cargo === 'docente' ? 'Docentes' : c.cargo),
+        c.asistencias, maxCargo,
+        c.cargo === 'director' ? 'var(--dash-purple, #6b4fa0)' : 'var(--dash-green)',
+        `${c.profesores} persona(s) distinta(s)`)).join('')
+    : '<div class="dash-empty">Sin datos por cargo.</div>';
+
+  const maxIE = Math.max(1, ...(a.top_ies || []).map(i => i.asistencias || 0));
+  document.getElementById('dash-asis-ies').innerHTML = (a.top_ies || []).length
+    ? a.top_ies.map(i => dashMiniBar(i.ie, i.asistencias, maxIE, 'var(--dash-amber)',
+        [i.nivel, `${i.profesores} docente(s)`].filter(Boolean).join(' · '))).join('')
+    : '<div class="dash-empty">Sin instituciones con participantes.</div>';
+
+  document.getElementById('dash-asis-recientes').innerHTML = (a.recientes || []).length
+    ? a.recientes.map(t => `
+        <div class="dash-dim-row">
+          <div>
+            <div class="dash-dim-label">${esc(t.nombre_evento || 'Taller sin nombre')}</div>
+            <div class="dash-dim-sub">${esc([t.sede_nombre, t.nivel_educativo, t.fecha_inicio].filter(Boolean).join(' · ') || 'Sin sede')}</div>
+          </div>
+          <div class="dash-dim-val">${t.asistentes || 0}</div>
+        </div>`).join('')
+    : '<div class="dash-empty">Aún no se ha registrado ningún taller.</div>';
+}
+
+/*──────────────────────────────────────────────────────────────────────────────
+  Gestion -> Especialistas: monitoreo de productividad
+──────────────────────────────────────────────────────────────────────────────*/
+let dashEspFiltro = null;   // user_id elegido; arranca en "Yo"
+
+function renderEspecialistasDashboard() {
+  const data = (dashboardState.data && dashboardState.data.especialistas_monitoreo) || null;
+  if (!data) return;
+  const filas = data.especialistas || [];
+
+  // El filtro arranca en "Yo" para todos los roles; admin y supervisor pueden
+  // cambiarlo a cualquier colega o ver el consolidado.
+  // Se identifica a cada persona por `clave` (su nombre normalizado) y no por
+  // user_id: los especialistas que aparecen en los registros pero no tienen
+  // cuenta en la app traen user_id vacio, igual que la opcion "Todo el equipo",
+  // y elegir "todo" terminaba seleccionando al primero sin cuenta.
+  const select = document.getElementById('dash-esp-filtro');
+  const miFila = filas.find(f => f.user_id && currentUser && f.user_id === currentUser.user_id);
+  if (dashEspFiltro === null) dashEspFiltro = miFila ? miFila.clave : '';
+  if (dashEspFiltro && !filas.some(f => f.clave === dashEspFiltro)) dashEspFiltro = '';
+  select.innerHTML = [
+    `<option value="">Todo el equipo (${filas.length})</option>`,
+    ...filas.map(f => {
+      const yo = miFila && f.clave === miFila.clave;
+      const etiqueta = f.rol_label || (f.vinculado ? '' : 'sin cuenta en la app');
+      return `<option value="${esc(f.clave)}" ${dashEspFiltro === f.clave ? 'selected' : ''}>${yo ? '(Yo) ' : ''}${esc(f.nombre)}${etiqueta ? ' — ' + esc(etiqueta) : ''}</option>`;
+    }),
+  ].join('');
+  select.value = dashEspFiltro;
+
+  const seleccionada = filas.find(f => f.clave === dashEspFiltro) || null;
+  const universo = seleccionada ? [seleccionada] : filas;
+  const suma = campo => universo.reduce((t, f) => t + (f[campo] || 0), 0);
+
+  document.getElementById('dash-esp-hint').textContent = seleccionada
+    ? `Última actividad: ${seleccionada.ultima_actividad ? formatRegistroFecha(seleccionada.ultima_actividad) : 'sin registros aún'}`
+    : `${data.con_actividad} con actividad · ${data.sin_actividad} sin registros`;
+
+  document.getElementById('dash-esp-kpis').innerHTML = [
+    dashKpiTile('Fichas SIMON', suma('fichas_simon'), seleccionada ? 'registradas por esta persona' : 'de todo el equipo'),
+    dashKpiTile('Informes de campo', suma('informes_campo'), 'visitas cargadas'),
+    dashKpiTile('Talleres dictados', suma('talleres'), `${suma('asistentes_capacitados')} participante(s)`),
+    dashKpiTile('Total de registros', suma('total_registros'), seleccionada ? '' : 'suma del equipo', 'green'),
+  ].join('');
+
+  const ranking = filas.filter(f => f.total_registros > 0).slice(0, 12);
+  const maxTotal = Math.max(1, ...ranking.map(f => f.total_registros));
+  document.getElementById('dash-esp-ranking').innerHTML = ranking.length
+    ? ranking.map(f => dashMiniBar(
+        `${miFila && f.clave === miFila.clave ? '(Yo) ' : ''}${f.nombre}`,
+        f.total_registros, maxTotal,
+        f.clave === dashEspFiltro ? 'var(--dash-green)' : 'var(--dash-blue)',
+        `${f.fichas_simon} fichas · ${f.informes_campo} campo · ${f.talleres} talleres`)).join('')
+    : '<div class="dash-empty">Todavía nadie ha registrado datos desde la aplicación.</div>';
+
+  const meses = {};
+  universo.forEach(f => (f.por_mes || []).forEach(m => {
+    meses[m.mes] = (meses[m.mes] || 0) + (m.registros || 0);
+  }));
+  const mesesOrdenados = Object.keys(meses).sort();
+  const maxMes = Math.max(1, ...mesesOrdenados.map(m => meses[m]));
+  document.getElementById('dash-esp-mes').innerHTML = mesesOrdenados.length
+    ? mesesOrdenados.map(m => dashMiniBar(etiquetaMes(m), meses[m], maxMes, 'var(--dash-blue)')).join('')
+    : '<div class="dash-empty">Sin actividad mensual registrada.</div>';
+
+  document.getElementById('dash-esp-tabla').innerHTML = `
+    <div class="reg-table-scroll" style="max-height:340px">
+      <table class="user-table">
+        <thead><tr><th>Especialista</th><th>Fichas</th><th>Campo</th><th>Talleres</th><th>Último registro</th></tr></thead>
+        <tbody>
+          ${filas.map(f => {
+            const yo = miFila && f.clave === miFila.clave;
+            return `
+            <tr${yo ? ' class="selected"' : ''}>
+              <td><strong>${yo ? '(Yo) ' : ''}${esc(f.nombre)}</strong>
+                <div class="dash-item-meta">${f.vinculado ? esc(f.rol_label || '') : 'Sin cuenta en la app'}</div></td>
+              <td>${f.fichas_simon}</td>
+              <td>${f.informes_campo}</td>
+              <td>${f.talleres}</td>
+              <td>${f.ultima_actividad ? esc(formatRegistroFecha(f.ultima_actividad)) : '<span class="dash-item-meta">sin registros</span>'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="dash-item-meta" style="margin-top:8px">
+      Solo cuenta lo registrado desde la aplicación: los datos históricos importados no tienen autor asociado.
+    </div>`;
+}
+
+document.getElementById('dash-esp-filtro').addEventListener('change', e => {
+  dashEspFiltro = e.target.value;
+  renderEspecialistasDashboard();
+});
+
 function selectedDashboardIE() {
   const instituciones = excelDashboard().instituciones || [];
   return instituciones.find(ie => String(ie.codigo_modular) === String(dashboardState.selectedCodigo)) || instituciones[0] || null;
@@ -5457,6 +7489,15 @@ function applyDashboardView() {
   const mainGrid = document.getElementById('dash-main-grid');
   if (overview) overview.classList.toggle('is-hidden', view !== 'panel');
   if (alertsOverview) alertsOverview.classList.toggle('is-hidden', view !== 'alerts');
+  const asisOverview = document.getElementById('dash-asistencias-overview');
+  const espOverview = document.getElementById('dash-especialistas-overview');
+  if (asisOverview) asisOverview.classList.toggle('is-hidden', view !== 'asistencias');
+  if (espOverview) espOverview.classList.toggle('is-hidden', view !== 'especialistas');
+  // El filtro de fuente (SIMON/Censo/Campo) solo aplica a Panel y Alertas.
+  const sourceFilter = document.getElementById('dash-source-filter');
+  if (sourceFilter) sourceFilter.style.display = ['panel', 'alerts'].includes(view) ? '' : 'none';
+  if (view === 'asistencias') { prepararFiltrosDashboard('asis'); renderAsistenciasDashboard(); }
+  if (view === 'especialistas') { prepararFiltrosDashboard('esp'); renderEspecialistasDashboard(); }
 
   const detailOpen = view === 'alerts' && dashboardState.alertDetailOpen;
   const fullOpen = detailOpen && dashboardState.fullDetailOpen;
@@ -5483,7 +7524,7 @@ function applyDashboardView() {
 }
 
 function selectDashboardView(view) {
-  dashboardState.activeView = ['panel', 'alerts'].includes(view) ? view : 'panel';
+  dashboardState.activeView = ['panel', 'alerts', 'asistencias', 'especialistas'].includes(view) ? view : 'panel';
   if (dashboardState.activeView === 'alerts') {
     dashboardState.alertDetailOpen = false;
     dashboardState.fullDetailOpen = false;

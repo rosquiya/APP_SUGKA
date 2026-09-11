@@ -8,6 +8,7 @@ from flask import Flask, request, jsonify, send_file, send_from_directory, g
 from flask_cors import CORS
 from functools import wraps
 import base64
+import csv
 import hashlib
 import io
 import sqlite3
@@ -22,6 +23,7 @@ import unicodedata
 import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
+from rapidfuzz import fuzz as rapidfuzz_fuzz, process as rapidfuzz_process
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20MB por request (protege /api/ocr/upload_advanced)
@@ -237,14 +239,29 @@ def close_db_connection(_exception=None):
 def rows_to_list(rows):
     return [dict(r) for r in rows]
 
+# Roles del sistema. 'supervisor' (jefe) ve todo y puede corregir el registro de
+# cualquier especialista, pero la administracion del sistema (usuarios,
+# instituciones, preguntas dinamicas) sigue siendo exclusiva de administrador.
+ROLES = ('administrador', 'supervisor', 'especialista')
+ROLES_QUE_EDITAN_TODO = ('administrador', 'supervisor')
+# Estados del flujo de revision de un informe de campo.
+REVISION_ESTADOS = ('ok', 'pendiente', 'en_revision', 'resuelto')
+ROLE_LABELS = {
+    'administrador': 'Administrador',
+    'supervisor': 'Supervisor',
+    'especialista': 'Especialista',
+}
+
 def normalize_role(value='especialista'):
     role = str(value or 'especialista').strip().lower()
     if role in ('admin', 'administrador'):
         return 'administrador'
+    if role in ('supervisor', 'jefe'):
+        return 'supervisor'
     return 'especialista'
 
 def role_label(role):
-    return 'Administrador' if normalize_role(role) == 'administrador' else 'Especialista'
+    return ROLE_LABELS.get(normalize_role(role), 'Especialista')
 
 PBKDF2_ITERATIONS = 260_000
 
@@ -298,8 +315,14 @@ def public_user(row):
     user = dict(row)
     user.pop('password_hash', None)
     user.pop('password_salt', None)
-    user['rol_label'] = role_label(user.get('rol'))
-    user['is_admin'] = normalize_role(user.get('rol')) == 'administrador'
+    rol = normalize_role(user.get('rol'))
+    user['rol'] = rol
+    user['rol_label'] = role_label(rol)
+    user['is_admin'] = rol == 'administrador'
+    user['is_supervisor'] = rol == 'supervisor'
+    # Lo consume el frontend para decidir si muestra los botones de editar de
+    # registros ajenos, sin tener que repetir la tabla de roles alla.
+    user['puede_editar_todo'] = rol in ROLES_QUE_EDITAN_TODO
     return user
 
 def generic_email_for_name(nombre, domain=GENERIC_EMAIL_DOMAIN):
@@ -1021,6 +1044,124 @@ def ensure_db_schema():
     ''')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_ficha_archivo_ficha ON ficha_archivo(ficha_id)')
 
+    # ── Core de profesores/directores y asistencia a talleres ─────────────
+    # profesor es el padron maestro de personal: antes de esta tabla el docente
+    # solo existia como texto libre dentro de cada ficha (fichas_monitoreo.docente),
+    # sin forma de saber si "Perez Lopez, Ana" y "PEREZ LOPEZ ANA" eran la misma
+    # persona. El DNI es la identidad real, pero se guarda NULL (no '') cuando
+    # falta, para que el indice unico parcial tolere varios registros sin DNI.
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS profesor (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dni TEXT,
+            nombre_completo TEXT NOT NULL,
+            celular TEXT,
+            correo TEXT,
+            cargo TEXT NOT NULL DEFAULT 'docente',
+            condicion_laboral TEXT,
+            codigo_modular_ie TEXT,
+            fuente TEXT,
+            estado_fila INTEGER DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            actualizado_en DATETIME,
+            creado_por TEXT,
+            modificado_por TEXT,
+            FOREIGN KEY (codigo_modular_ie) REFERENCES dim_institucion(codigo_modular),
+            FOREIGN KEY (creado_por) REFERENCES app_user(user_id),
+            FOREIGN KEY (modificado_por) REFERENCES app_user(user_id)
+        )
+    ''')
+    conn.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_profesor_dni ON profesor(dni)
+        WHERE dni IS NOT NULL AND dni != ''
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_profesor_nombre ON profesor(nombre_completo)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_profesor_ie ON profesor(codigo_modular_ie)')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS taller_capacitacion (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre_evento TEXT,
+            compromiso_indicador TEXT,
+            nivel_educativo TEXT,
+            dre TEXT,
+            ugel TEXT,
+            codigo_modular_sede TEXT,
+            nombre_sede_detectado TEXT,
+            fecha_inicio TEXT,
+            fecha_fin TEXT,
+            metodo_extraccion TEXT,
+            parser TEXT,
+            fuente TEXT DEFAULT 'app_upload',
+            estado_fila INTEGER DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            actualizado_en DATETIME,
+            creado_por TEXT,
+            modificado_por TEXT,
+            FOREIGN KEY (codigo_modular_sede) REFERENCES dim_institucion(codigo_modular),
+            FOREIGN KEY (creado_por) REFERENCES app_user(user_id),
+            FOREIGN KEY (modificado_por) REFERENCES app_user(user_id)
+        )
+    ''')
+
+    # profesor_id es NOT NULL a proposito: el OCR no persiste nada hasta que el
+    # especialista revisa y confirma cada asistente (mismo patron que fichas e
+    # informes de campo). Un asistente sin identidad confirmada simplemente no
+    # se envia a guardar; nunca se inserta una fila huerfana que nadie volvera
+    # a vincular. Las columnas *_detectado guardan el texto crudo del OCR para
+    # auditoria, aunque el vinculo real sea profesor_id.
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS taller_asistencia (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            taller_id INTEGER NOT NULL,
+            profesor_id INTEGER NOT NULL,
+            nombre_detectado TEXT,
+            dni_detectado TEXT,
+            grado_a_cargo TEXT,
+            area TEXT,
+            celular_detectado TEXT,
+            correo_detectado TEXT,
+            codigo_modular_ie_detectado TEXT,
+            nombre_ie_detectado TEXT,
+            match_metodo TEXT,
+            match_score REAL,
+            metadata_json TEXT,
+            estado_fila INTEGER DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            actualizado_en DATETIME,
+            creado_por TEXT,
+            modificado_por TEXT,
+            FOREIGN KEY (taller_id) REFERENCES taller_capacitacion(id),
+            FOREIGN KEY (profesor_id) REFERENCES profesor(id),
+            FOREIGN KEY (codigo_modular_ie_detectado) REFERENCES dim_institucion(codigo_modular),
+            FOREIGN KEY (creado_por) REFERENCES app_user(user_id),
+            FOREIGN KEY (modificado_por) REFERENCES app_user(user_id)
+        )
+    ''')
+    taller_existing = {
+        row['name'] for row in conn.execute('PRAGMA table_info(taller_capacitacion)').fetchall()
+    }
+    for columna, tipo in (('especialista_responsable', 'TEXT'), ('especialista_user_id', 'TEXT')):
+        if columna not in taller_existing:
+            conn.execute(f'ALTER TABLE taller_capacitacion ADD COLUMN {columna} {tipo}')
+
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_taller_asistencia_taller ON taller_asistencia(taller_id)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_taller_asistencia_profesor ON taller_asistencia(profesor_id)')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS taller_archivo (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            taller_id INTEGER NOT NULL,
+            archivo_subido_id INTEGER NOT NULL,
+            orden INTEGER DEFAULT 0,
+            estado_fila INTEGER DEFAULT 1,
+            creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (taller_id) REFERENCES taller_capacitacion(id),
+            FOREIGN KEY (archivo_subido_id) REFERENCES archivo_subido(id)
+        )
+    ''')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_taller_archivo_taller ON taller_archivo(taller_id)')
+
     conn.execute('''
         CREATE TABLE IF NOT EXISTS informe_campo_documento (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1088,6 +1229,32 @@ def ensure_db_schema():
     }
     if 'modificado_por' not in campo_visita_existing:
         conn.execute('ALTER TABLE informe_campo_visita ADD COLUMN modificado_por TEXT')
+
+    # Flujo de revision de un informe de campo. 'requiere_revision' ya existia
+    # pero era un booleano que no disparaba nada; estas columnas le dan estado,
+    # responsable y rastro de quien pidio y quien cerro la revision.
+    #   revision_estado: 'ok' | 'pendiente' | 'en_revision' | 'resuelto'
+    # Mientras esta en 'pendiente' o 'en_revision' la visita NO alimenta las
+    # alertas (ver rebuild_simon_operational_summary): un dato en duda no debe
+    # mover los indicadores hasta que alguien lo confirme.
+    for columna, tipo in (
+        ('revision_estado', "TEXT DEFAULT 'ok'"),
+        ('revision_asignado_a', 'TEXT'),
+        ('revision_asignado_nombre', 'TEXT'),
+        ('revision_solicitada_por', 'TEXT'),
+        ('revision_solicitada_en', 'DATETIME'),
+        ('revision_resuelto_por', 'TEXT'),
+        ('revision_resuelto_en', 'DATETIME'),
+        ('revision_nota', 'TEXT'),
+    ):
+        if columna not in campo_visita_existing:
+            conn.execute(f'ALTER TABLE informe_campo_visita ADD COLUMN {columna} {tipo}')
+    # Coherencia con el booleano viejo: lo que ya estaba marcado queda pendiente.
+    conn.execute(
+        "UPDATE informe_campo_visita SET revision_estado = 'pendiente' "
+        "WHERE requiere_revision = 1 AND COALESCE(revision_estado, 'ok') = 'ok'"
+    )
+    conn.execute("UPDATE informe_campo_visita SET revision_estado = 'ok' WHERE revision_estado IS NULL")
 
     conn.execute('''
         CREATE TABLE IF NOT EXISTS informe_campo_hallazgo (
@@ -2029,7 +2196,13 @@ def rebuild_simon_operational_summary(conn):
         WHERE COALESCE(codigo_modular, '') != ''
     ''').fetchall()
     infra_rows = conn.execute('SELECT * FROM infraestructura_censo_2025').fetchall()
-    campo_rows = conn.execute('SELECT * FROM informe_campo_visita WHERE estado_fila = 1').fetchall()
+    # Una visita marcada para revision queda fuera del calculo hasta que se
+    # resuelva: un dato en duda no debe mover alertas ni priorizacion.
+    campo_rows = conn.execute('''
+        SELECT * FROM informe_campo_visita
+        WHERE estado_fila = 1
+          AND COALESCE(revision_estado, 'ok') NOT IN ('pendiente', 'en_revision')
+    ''').fetchall()
     # Respuestas del instrumento DINAMICO (UGEL) en Nivel I/II -- alimentan su
     # propia fuente de alertas ('dinamica'), separada de SIMON, para que el
     # selector de fuente del KPI (SIMON / dinamicas / campo / todas) tenga
@@ -2930,6 +3103,286 @@ def build_campo_ranking(conn):
         'heatmap': heatmap,
     }
 
+def _condicion_periodo(campo_fecha, anio='', mes=''):
+    """Condicion SQL para filtrar por anio, por mes, o por ambos.
+
+    Antes el mes solo se aplicaba junto con un anio: elegir "Julio" sin anio no
+    filtraba nada y la vista se veia igual, sin avisar. Ahora cada combinacion
+    tiene su comparacion:
+      anio + mes -> 'YYYY-MM'   (primeros 7 caracteres)
+      solo anio  -> 'YYYY'      (primeros 4)
+      solo mes   -> 'MM'        (caracteres 6-7, el mes de cualquier anio)
+    Sirve tanto para fechas 'YYYY-MM-DD' como para timestamps completos.
+    """
+    anio = str(anio or '').strip()
+    mes = str(mes or '').strip()
+    base = f"COALESCE({campo_fecha}, '')"
+    if anio and mes:
+        return f"SUBSTR({base}, 1, 7) = ?", [f'{anio}-{mes.zfill(2)}']
+    if anio:
+        return f"SUBSTR({base}, 1, 4) = ?", [anio]
+    if mes:
+        return f"SUBSTR({base}, 6, 2) = ?", [mes.zfill(2)]
+    return '', []
+
+
+def build_asistencias_dashboard(conn, anio='', mes='', codigo_ie=''):
+    """Seguimiento de la capacitacion docente: cuantos talleres se dictaron,
+    cuanta gente asistio y a quienes todavia no se ha capacitado.
+
+    Todo se cuenta contra talleres activos (t.estado_fila = 1): un taller dado
+    de baja no debe seguir sumando en los indicadores.
+    """
+    # Filtros opcionales de periodo (anio o anio+mes) y de institucion. La
+    # fecha del taller viene del OCR y puede faltar, por eso se cae a creado_en.
+    condiciones = ['COALESCE(a.estado_fila, 1) = 1', 'COALESCE(t.estado_fila, 1) = 1']
+    filtros = []
+    cond_periodo, params_periodo = _condicion_periodo("NULLIF(t.fecha_inicio, '')", anio, mes)
+    if cond_periodo:
+        # Si el taller no trae fecha propia (el OCR no siempre la lee) se usa la
+        # de registro, para no perder la fila del grafico.
+        cond_alt, params_alt = _condicion_periodo('t.creado_en', anio, mes)
+        condiciones.append(f"(({cond_periodo}) OR (COALESCE(t.fecha_inicio, '') = '' AND ({cond_alt})))")
+        filtros += params_periodo + params_alt
+    if codigo_ie:
+        condiciones.append('t.codigo_modular_sede = ?')
+        filtros.append(codigo_ie)
+    base = '''
+        FROM taller_asistencia a
+        JOIN taller_capacitacion t ON t.id = a.taller_id
+        WHERE ''' + ' AND '.join(condiciones) + '''
+    '''
+
+    totales = conn.execute(f'''
+        SELECT COUNT(*) AS asistencias,
+               COUNT(DISTINCT a.profesor_id) AS profesores_distintos,
+               COUNT(DISTINCT a.taller_id) AS talleres
+        {base}
+    ''', filtros).fetchone()
+
+    total_padron = conn.execute(
+        'SELECT COUNT(*) FROM profesor WHERE COALESCE(estado_fila, 1) = 1'
+    ).fetchone()[0]
+
+    # Por mes: la fecha del taller viene del OCR y puede faltar; en ese caso se
+    # cae a la fecha de registro para no perder la fila del grafico.
+    por_mes = conn.execute(f'''
+        SELECT SUBSTR(COALESCE(NULLIF(t.fecha_inicio, ''), t.creado_en), 1, 7) AS mes,
+               COUNT(*) AS asistencias,
+               COUNT(DISTINCT a.taller_id) AS talleres
+        {base}
+        GROUP BY mes
+        ORDER BY mes
+    ''', filtros).fetchall()
+
+    por_cargo = conn.execute(f'''
+        SELECT COALESCE(NULLIF(p.cargo, ''), 'sin dato') AS cargo,
+               COUNT(*) AS asistencias,
+               COUNT(DISTINCT a.profesor_id) AS profesores
+        {base} AND p.id IS NOT NULL
+        GROUP BY cargo
+        ORDER BY asistencias DESC
+    '''.replace('FROM taller_asistencia a', 'FROM taller_asistencia a LEFT JOIN profesor p ON p.id = a.profesor_id'),
+        filtros
+    ).fetchall()
+
+    top_ies = conn.execute(f'''
+        SELECT COALESCE(NULLIF(i.nombre_iiee, ''), 'Sin IE asignada') AS ie,
+               i.nivel_modalidad AS nivel,
+               COUNT(*) AS asistencias,
+               COUNT(DISTINCT a.profesor_id) AS profesores
+        {base}
+        GROUP BY i.nombre_iiee, i.nivel_modalidad
+        ORDER BY asistencias DESC
+        LIMIT 10
+    '''.replace('FROM taller_asistencia a',
+                'FROM taller_asistencia a LEFT JOIN profesor p ON p.id = a.profesor_id '
+                'LEFT JOIN dim_institucion i ON i.codigo_modular = COALESCE(a.codigo_modular_ie_detectado, p.codigo_modular_ie)'),
+        filtros
+    ).fetchall()
+
+    recientes = conn.execute('''
+        SELECT t.id, t.nombre_evento, t.compromiso_indicador, t.nivel_educativo,
+               t.fecha_inicio, t.fecha_fin, t.creado_en,
+               i.nombre_iiee AS sede_nombre, u.nombre AS creado_por_nombre,
+               (SELECT COUNT(*) FROM taller_asistencia a
+                 WHERE a.taller_id = t.id AND COALESCE(a.estado_fila, 1) = 1) AS asistentes
+        FROM taller_capacitacion t
+        LEFT JOIN dim_institucion i ON i.codigo_modular = t.codigo_modular_sede
+        LEFT JOIN app_user u ON u.user_id = t.creado_por
+        WHERE ''' + ' AND '.join(c for c in condiciones if not c.startswith('COALESCE(a.')) + '''
+        ORDER BY t.creado_en DESC
+        LIMIT 8
+    ''', filtros).fetchall()
+
+    capacitados = safe_int(totales['profesores_distintos'] if totales else 0, 0)
+    return {
+        'total_talleres': safe_int(totales['talleres'] if totales else 0, 0),
+        'total_asistencias': safe_int(totales['asistencias'] if totales else 0, 0),
+        'profesores_capacitados': capacitados,
+        'profesores_padron': total_padron,
+        'pct_cobertura': round((capacitados / total_padron) * 100, 1) if total_padron else 0.0,
+        'promedio_por_taller': round(
+            safe_int(totales['asistencias'] if totales else 0, 0) / totales['talleres'], 1
+        ) if totales and totales['talleres'] else 0.0,
+        'por_mes': rows_to_list(por_mes),
+        'por_cargo': rows_to_list(por_cargo),
+        'top_ies': rows_to_list(top_ies),
+        'recientes': rows_to_list(recientes),
+        'filtros': {'anio': anio, 'mes': mes, 'codigo_modular': codigo_ie},
+    }
+
+
+def _clave_persona(nombre):
+    """Clave para agrupar a la misma persona escrita de formas distintas."""
+    limpio = _normalize_place_text(nombre)
+    return ' '.join(limpio.split())
+
+
+def build_especialistas_monitoreo(conn, anio='', mes='', codigo_ie=''):
+    """Produccion por especialista, contada por el ESPECIALISTA DEL REGISTRO.
+
+    Importante: NO se cuenta por `creado_por` (quien subio el archivo). Un
+    administrador puede digitalizar la ficha de otro; el credito es de quien
+    hizo el monitoreo. Por eso se agrupa por:
+      - fichas SIMON      -> fichas_monitoreo.monitor
+      - informes de campo -> informe_campo_visita.especialista_detectado
+      - talleres          -> taller_capacitacion.especialista_responsable
+
+    Esos campos son texto libre (no hay FK), asi que se agrupan por nombre
+    normalizado y se enlazan con app_user cuando el nombre coincide; si no
+    coincide, la persona igual aparece, marcada como no vinculada.
+    """
+    hay_filtro_periodo = bool(str(anio or '').strip() or str(mes or '').strip())
+
+    personas = {}
+
+    def bucket(nombre_raw):
+        clave = _clave_persona(nombre_raw)
+        if not clave:
+            return None
+        if clave not in personas:
+            personas[clave] = {
+                'nombre': str(nombre_raw).strip(),
+                'clave': clave,
+                'user_id': '', 'email': '', 'rol_label': '', 'vinculado': False,
+                'fichas_simon': 0, 'informes_campo': 0, 'talleres': 0,
+                'asistentes_capacitados': 0, 'ultima_actividad': '', 'por_mes': {},
+            }
+        return personas[clave]
+
+    def suma(persona, campo, fecha, cuantos=1):
+        persona[campo] += cuantos
+        fecha = str(fecha or '')
+        if fecha:
+            if fecha > persona['ultima_actividad']:
+                persona['ultima_actividad'] = fecha
+            mes_k = fecha[:7]
+            if len(mes_k) == 7:
+                persona['por_mes'][mes_k] = persona['por_mes'].get(mes_k, 0) + cuantos
+
+    def filtro(campo_fecha, where, params):
+        cond, valores = _condicion_periodo(campo_fecha, anio, mes)
+        if cond:
+            where.append(cond)
+            params.extend(valores)
+
+    # --- Fichas SIMON ---
+    where = ['COALESCE(estado_fila, 1) = 1', "COALESCE(monitor, '') != ''"]
+    params = []
+    filtro('fecha_ejecucion', where, params)
+    if codigo_ie:
+        where.append('codigo_modular = ?')
+        params.append(codigo_ie)
+    consulta = 'SELECT monitor, fecha_ejecucion FROM fichas_monitoreo WHERE ' + ' AND '.join(where)
+    for row in conn.execute(consulta, params).fetchall():
+        persona = bucket(row['monitor'])
+        if persona:
+            suma(persona, 'fichas_simon', row['fecha_ejecucion'])
+
+    # --- Informes de campo ---
+    where = ['COALESCE(v.estado_fila, 1) = 1', "COALESCE(v.especialista_detectado, '') != ''"]
+    params = []
+    filtro('v.fecha_visita', where, params)
+    if codigo_ie:
+        where.append('v.codigo_modular = ?')
+        params.append(codigo_ie)
+    consulta = ('SELECT v.especialista_detectado, v.fecha_visita, v.creado_en '
+                'FROM informe_campo_visita v WHERE ' + ' AND '.join(where))
+    for row in conn.execute(consulta, params).fetchall():
+        persona = bucket(row['especialista_detectado'])
+        if persona:
+            suma(persona, 'informes_campo', row['fecha_visita'] or row['creado_en'])
+
+    # --- Talleres dictados ---
+    where = ['COALESCE(t.estado_fila, 1) = 1']
+    params = []
+    filtro("COALESCE(NULLIF(t.fecha_inicio, ''), t.creado_en)", where, params)
+    if codigo_ie:
+        where.append('t.codigo_modular_sede = ?')
+        params.append(codigo_ie)
+    consulta = ('SELECT t.especialista_responsable, t.fecha_inicio, t.creado_en, '
+                'u.nombre AS creador_nombre, '
+                '(SELECT COUNT(*) FROM taller_asistencia a '
+                '  WHERE a.taller_id = t.id AND COALESCE(a.estado_fila, 1) = 1) AS asistentes '
+                'FROM taller_capacitacion t '
+                'LEFT JOIN app_user u ON u.user_id = t.creado_por '
+                'WHERE ' + ' AND '.join(where))
+    for row in conn.execute(consulta, params).fetchall():
+        # Si nadie declaro responsable se usa a quien lo registro, como ultimo
+        # recurso; el campo declarado siempre manda.
+        persona = bucket(row['especialista_responsable'] or row['creador_nombre'])
+        if persona:
+            suma(persona, 'talleres', row['fecha_inicio'] or row['creado_en'])
+            persona['asistentes_capacitados'] += safe_int(row['asistentes'], 0)
+
+    # --- Enlazar con usuarios de la app ---
+    usuarios = conn.execute(
+        'SELECT user_id, nombre, email, rol FROM app_user WHERE activo = 1'
+    ).fetchall()
+    por_clave = {_clave_persona(u['nombre']): u for u in usuarios}
+    for clave, persona in personas.items():
+        usuario = por_clave.get(clave)
+        if usuario:
+            persona['user_id'] = usuario['user_id']
+            persona['email'] = usuario['email']
+            persona['rol_label'] = role_label(usuario['rol'])
+            persona['vinculado'] = True
+
+    # Usuarios activos sin ningun registro: aparecen en cero para que se note
+    # quien no ha cargado nada (solo cuando no hay filtros).
+    if not hay_filtro_periodo and not codigo_ie:
+        for usuario in usuarios:
+            clave = _clave_persona(usuario['nombre'])
+            if clave and clave not in personas:
+                personas[clave] = {
+                    'nombre': usuario['nombre'], 'clave': clave, 'user_id': usuario['user_id'],
+                    'email': usuario['email'], 'rol_label': role_label(usuario['rol']),
+                    'vinculado': True, 'fichas_simon': 0, 'informes_campo': 0, 'talleres': 0,
+                    'asistentes_capacitados': 0, 'ultima_actividad': '', 'por_mes': {},
+                }
+
+    filas = []
+    for persona in personas.values():
+        persona['total_registros'] = (persona['fichas_simon'] + persona['informes_campo']
+                                      + persona['talleres'])
+        persona['por_mes'] = [{'mes': m, 'registros': n} for m, n in sorted(persona['por_mes'].items())]
+        filas.append(persona)
+    filas.sort(key=lambda f: (-f['total_registros'], f['nombre'] or ''))
+
+    activos = [f for f in filas if f['total_registros'] > 0]
+    return {
+        'especialistas': filas,
+        'con_actividad': len(activos),
+        'sin_actividad': len(filas) - len(activos),
+        'sin_vincular': len([f for f in filas if not f['vinculado'] and f['total_registros'] > 0]),
+        'total_fichas': sum(f['fichas_simon'] for f in filas),
+        'total_campo': sum(f['informes_campo'] for f in filas),
+        'total_talleres': sum(f['talleres'] for f in filas),
+        'filtros': {'anio': anio, 'mes': mes, 'codigo_modular': codigo_ie},
+    }
+
+
 def build_ie_coverage(conn):
     """Cuantos dias pasaron desde el ultimo contacto real con cada IE, por
     fuente (SIMON / informes de campo). No es lo mismo que el ranking de
@@ -3080,17 +3533,23 @@ def require_auth(fn):
     return wrapper
 
 def can_edit_row(user, owner_user_id):
-    """Un administrador puede editar cualquier fila; un especialista solo las suyas.
+    """Administradores y supervisores pueden editar cualquier fila; un
+    especialista solo las suyas.
 
     Filas sin dueno (creado_por/subido_por NULL, tipicamente registros
-    historicos importados) solo las puede editar un administrador.
+    historicos importados) solo las puede editar quien edita todo.
     """
-    if normalize_role(user['rol']) == 'administrador':
+    if normalize_role(user['rol']) in ROLES_QUE_EDITAN_TODO:
         return True
     return bool(owner_user_id) and owner_user_id == user['user_id']
 
 def require_admin(fn):
-    """Exige una sesion valida con rol administrador."""
+    """Exige una sesion valida con rol administrador.
+
+    Se reserva para la administracion del sistema (usuarios, instituciones,
+    profesores, preguntas dinamicas). Para lo que un supervisor tambien debe
+    poder hacer, usar require_roles.
+    """
     @wraps(fn)
     def wrapper(*args, **kwargs):
         user = get_current_user()
@@ -3101,6 +3560,23 @@ def require_admin(fn):
         g.current_user = user
         return fn(*args, **kwargs)
     return wrapper
+
+def require_roles(*roles_permitidos):
+    """Exige una sesion valida cuyo rol este en la lista dada."""
+    permitidos = {normalize_role(r) for r in roles_permitidos}
+
+    def decorador(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            user = get_current_user()
+            if not user:
+                return jsonify({'error': 'Sesión inválida o expirada. Vuelve a iniciar sesión.'}), 401
+            if normalize_role(user['rol']) not in permitidos:
+                return jsonify({'error': 'No tienes permisos para esta acción.'}), 403
+            g.current_user = user
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorador
 
 # ─── HEALTH / API INDEX ───────────────────────────────────────────────────────
 
@@ -3177,7 +3653,7 @@ def usuarios():
                 FROM app_user u
                 LEFT JOIN dim_especialista e ON u.especialista_id = e.especialista_id
                 ORDER BY
-                    CASE WHEN u.rol = 'administrador' THEN 0 ELSE 1 END,
+                    CASE u.rol WHEN 'administrador' THEN 0 WHEN 'supervisor' THEN 1 ELSE 2 END,
                     u.nombre
             ''').fetchall()
             return jsonify([public_user(r) for r in rows])
@@ -3231,11 +3707,22 @@ def actualizar_usuario(user_id):
                 value = data.get(key)
                 params.append(str(value).strip().lower() if key in ('username', 'email') else (value or None))
         if 'rol' in data:
+            nuevo_rol = normalize_role(data.get('rol'))
+            # Con tres roles ya es posible dejar el sistema sin administradores
+            # degradando al ultimo a supervisor, no solo desactivandolo: se
+            # bloquean ambos caminos con la misma regla.
+            if normalize_role(user['rol']) == 'administrador' and nuevo_rol != 'administrador':
+                otros_admins = conn.execute(
+                    "SELECT COUNT(*) FROM app_user WHERE rol = 'administrador' AND activo = 1 AND user_id != ?",
+                    (user_id,),
+                ).fetchone()[0]
+                if otros_admins < 1:
+                    return jsonify({'error': 'Debe quedar al menos un administrador activo.'}), 400
             updates.append('rol = ?')
-            params.append(normalize_role(data.get('rol')))
+            params.append(nuevo_rol)
         if 'activo' in data:
             new_active = 1 if data.get('activo') else 0
-            if user['rol'] == 'administrador' and new_active == 0:
+            if normalize_role(user['rol']) == 'administrador' and new_active == 0:
                 active_admins = conn.execute(
                     "SELECT COUNT(*) FROM app_user WHERE rol = 'administrador' AND activo = 1"
                 ).fetchone()[0]
@@ -4064,6 +4551,597 @@ def admin_institucion_detalle(codigo_modular):
     finally:
         conn.close()
 
+# ─── PROFESORES (core) ────────────────────────────────────────────────────────
+
+PROFESOR_EDITABLE_FIELDS = [
+    'dni', 'nombre_completo', 'celular', 'correo', 'cargo',
+    'condicion_laboral', 'codigo_modular_ie',
+]
+PROFESOR_CARGOS = {'docente', 'director', 'otro'}
+
+
+def normalize_profesor_payload(conn, data, requerir_nombre=True):
+    """Valida y normaliza el payload de un profesor. Devuelve (valores, error)."""
+    nombre = str(data.get('nombre_completo') or '').strip()
+    if requerir_nombre and not nombre:
+        return None, 'El nombre completo es obligatorio.'
+
+    dni = re.sub(r'\D+', '', str(data.get('dni') or '')) or None
+    if dni and len(dni) > 12:
+        return None, 'El DNI no parece válido.'
+
+    cargo = str(data.get('cargo') or 'docente').strip().lower()
+    if cargo not in PROFESOR_CARGOS:
+        cargo = 'docente'
+
+    codigo_ie = str(data.get('codigo_modular_ie') or '').strip()
+    if codigo_ie:
+        # Nunca se guarda una IE que no exista en el padron: si no resuelve, se
+        # rechaza en vez de dejar un vinculo roto (misma regla que informes de campo).
+        resuelto = resolve_codigo_modular_strict(conn, codigo_ie)
+        if not resuelto:
+            return None, f'La IE "{codigo_ie}" no existe en el padrón.'
+        codigo_ie = resuelto
+    else:
+        codigo_ie = None
+
+    return {
+        'dni': dni,
+        'nombre_completo': nombre,
+        'celular': str(data.get('celular') or '').strip() or None,
+        'correo': str(data.get('correo') or '').strip() or None,
+        'cargo': cargo,
+        'condicion_laboral': str(data.get('condicion_laboral') or '').strip() or None,
+        'codigo_modular_ie': codigo_ie,
+    }, None
+
+
+@app.route('/api/profesores', methods=['GET'])
+@require_auth
+def buscar_profesores():
+    """Busqueda de profesores para los selectores del frontend.
+
+    Prioriza coincidencia exacta de DNI y luego ordena por similitud de nombre
+    (rapidfuzz). Solo sugiere: nunca decide por el usuario cual es el correcto.
+    """
+    q = (request.args.get('q') or '').strip()
+    codigo_ie = (request.args.get('codigo_modular_ie') or '').strip()
+    limit = min(max(safe_int(request.args.get('limit'), 20), 1), 100)
+
+    conn = get_db()
+    try:
+        where = ['p.estado_fila = 1']
+        params = []
+        if codigo_ie:
+            where.append('p.codigo_modular_ie = ?')
+            params.append(codigo_ie)
+        rows = conn.execute(f'''
+            SELECT p.*, i.nombre_iiee AS ie_nombre, i.centro_poblado AS ie_centro_poblado
+            FROM profesor p
+            LEFT JOIN dim_institucion i ON i.codigo_modular = p.codigo_modular_ie
+            WHERE {' AND '.join(where)}
+            ORDER BY p.nombre_completo
+        ''', params).fetchall()
+    finally:
+        conn.close()
+
+    candidatos = rows_to_list(rows)
+    if not q:
+        return jsonify(candidatos[:limit])
+
+    dni_q = re.sub(r'\D+', '', q)
+    exactos = [c for c in candidatos if dni_q and c.get('dni') == dni_q]
+    usados = {c['id'] for c in exactos}
+
+    # Primero las coincidencias literales de texto (lo que la persona espera al
+    # escribir un apellido), ordenadas por donde empieza el calce; despues las
+    # difusas, que son las que rescatan los errores de tipeo. Sin este orden,
+    # WRatio castiga que "Chalas" sea mucho mas corto que "CHALAS MONTENEGRO,
+    # DORIS" y deja el resultado obvio fuera de las primeras posiciones.
+    q_norm = _normalize_place_text(q)
+    literales = []
+    for c in candidatos:
+        if c['id'] in usados:
+            continue
+        pos = _normalize_place_text(c.get('nombre_completo') or '').find(q_norm)
+        if q_norm and pos >= 0:
+            literales.append((pos, c))
+    literales.sort(key=lambda par: (par[0], par[1].get('nombre_completo') or ''))
+    literales = [c for _, c in literales]
+    usados |= {c['id'] for c in literales}
+
+    # partial_ratio compara la consulta contra el mejor tramo del nombre, que es
+    # lo que hace falta aqui: la consulta suele ser un apellido suelto y mal
+    # tipeado frente a un "APELLIDOS, Nombres" completo ("Davilla Atamain" ->
+    # "Davila Atamain, Jarnelly Janeth" puntua 97, contra 61 de token_set_ratio).
+    restantes = {c['id']: c['nombre_completo'] or '' for c in candidatos if c['id'] not in usados}
+    por_id = {c['id']: c for c in candidatos}
+    rankeados = rapidfuzz_process.extract(
+        q, restantes, scorer=rapidfuzz_fuzz.partial_ratio, limit=limit
+    )
+    similares = [por_id[cid] for _, score, cid in rankeados if score >= 85]
+
+    return jsonify((exactos + literales + similares)[:limit])
+
+
+@app.route('/api/admin/profesores', methods=['GET', 'POST'])
+@require_admin
+def admin_profesores():
+    conn = get_db()
+    try:
+        if request.method == 'GET':
+            incluir_inactivos = request.args.get('incluir_inactivos') == '1'
+            where = '' if incluir_inactivos else 'WHERE COALESCE(p.estado_fila, 1) = 1'
+            rows = conn.execute(f'''
+                SELECT p.*, i.nombre_iiee AS ie_nombre, i.centro_poblado AS ie_centro_poblado
+                FROM profesor p
+                LEFT JOIN dim_institucion i ON i.codigo_modular = p.codigo_modular_ie
+                {where}
+                ORDER BY COALESCE(p.estado_fila, 1) DESC, p.nombre_completo
+            ''').fetchall()
+            return jsonify(rows_to_list(rows))
+
+        valores, error = normalize_profesor_payload(conn, request.get_json() or {})
+        if error:
+            return jsonify({'error': error}), 400
+
+        columnas = list(valores.keys()) + ['fuente', 'creado_por']
+        params = list(valores.values()) + ['manual', g.current_user['user_id']]
+        placeholders = ', '.join('?' for _ in columnas)
+        cur = conn.execute(
+            f'INSERT INTO profesor ({", ".join(columnas)}) VALUES ({placeholders})', params
+        )
+        conn.commit()
+        row = conn.execute('SELECT * FROM profesor WHERE id = ?', (cur.lastrowid,)).fetchone()
+        return jsonify({'success': True, 'profesor': dict(row)})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'Ya existe un profesor con ese DNI.'}), 400
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/profesores/<int:profesor_id>', methods=['PUT', 'DELETE'])
+@require_admin
+def admin_profesor_detalle(profesor_id):
+    conn = get_db()
+    try:
+        row = conn.execute('SELECT * FROM profesor WHERE id = ?', (profesor_id,)).fetchone()
+        if not row:
+            return jsonify({'error': 'Profesor no encontrado.'}), 404
+
+        if request.method == 'DELETE':
+            conn.execute(
+                'UPDATE profesor SET estado_fila = 0, modificado_por = ?, '
+                'actualizado_en = CURRENT_TIMESTAMP WHERE id = ?',
+                (g.current_user['user_id'], profesor_id),
+            )
+            conn.commit()
+            return jsonify({'success': True})
+
+        data = request.get_json() or {}
+        if data.get('restaurar'):
+            conn.execute(
+                'UPDATE profesor SET estado_fila = 1, modificado_por = ?, '
+                'actualizado_en = CURRENT_TIMESTAMP WHERE id = ?',
+                (g.current_user['user_id'], profesor_id),
+            )
+            conn.commit()
+            updated = conn.execute('SELECT * FROM profesor WHERE id = ?', (profesor_id,)).fetchone()
+            return jsonify({'success': True, 'profesor': dict(updated)})
+
+        merged = {**dict(row), **{k: v for k, v in data.items() if k in PROFESOR_EDITABLE_FIELDS}}
+        valores, error = normalize_profesor_payload(conn, merged)
+        if error:
+            return jsonify({'error': error}), 400
+
+        updates = [f'{campo} = ?' for campo in valores]
+        params = list(valores.values())
+        updates.append('modificado_por = ?')
+        params.append(g.current_user['user_id'])
+        updates.append('actualizado_en = CURRENT_TIMESTAMP')
+        params.append(profesor_id)
+        conn.execute(f'UPDATE profesor SET {", ".join(updates)} WHERE id = ?', params)
+        conn.commit()
+        updated = conn.execute('SELECT * FROM profesor WHERE id = ?', (profesor_id,)).fetchone()
+        return jsonify({'success': True, 'profesor': dict(updated)})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({'error': 'Ya existe un profesor con ese DNI.'}), 400
+    finally:
+        conn.close()
+
+# ─── DASHBOARDS FILTRABLES ────────────────────────────────────────────────────
+# Van aparte de /api/dashboard (que es pesado y no acepta filtros) para que las
+# vistas de Capacitaciones y Especialistas puedan refiltrarse sin recargar todo.
+
+def _filtros_dashboard():
+    return (
+        (request.args.get('anio') or '').strip(),
+        (request.args.get('mes') or '').strip(),
+        (request.args.get('codigo_modular') or '').strip(),
+    )
+
+
+@app.route('/api/dashboard/asistencias', methods=['GET'])
+@require_auth
+def dashboard_asistencias():
+    anio, mes, codigo_ie = _filtros_dashboard()
+    conn = get_db()
+    try:
+        return jsonify(build_asistencias_dashboard(conn, anio, mes, codigo_ie))
+    finally:
+        conn.close()
+
+
+@app.route('/api/dashboard/especialistas', methods=['GET'])
+@require_auth
+def dashboard_especialistas():
+    anio, mes, codigo_ie = _filtros_dashboard()
+    conn = get_db()
+    try:
+        return jsonify(build_especialistas_monitoreo(conn, anio, mes, codigo_ie))
+    finally:
+        conn.close()
+
+
+@app.route('/api/dashboard/periodos', methods=['GET'])
+@require_auth
+def dashboard_periodos():
+    """Anios con datos reales, para armar el filtro sin inventar opciones."""
+    conn = get_db()
+    try:
+        anios = set()
+        for consulta in (
+            "SELECT DISTINCT SUBSTR(fecha_ejecucion, 1, 4) FROM fichas_monitoreo WHERE COALESCE(fecha_ejecucion,'') != ''",
+            "SELECT DISTINCT SUBSTR(fecha_visita, 1, 4) FROM informe_campo_visita WHERE COALESCE(fecha_visita,'') != ''",
+            "SELECT DISTINCT SUBSTR(COALESCE(NULLIF(fecha_inicio,''), creado_en), 1, 4) FROM taller_capacitacion",
+        ):
+            for fila in conn.execute(consulta).fetchall():
+                valor = str(fila[0] or '').strip()
+                if len(valor) == 4 and valor.isdigit():
+                    anios.add(valor)
+        return jsonify({'anios': sorted(anios, reverse=True)})
+    finally:
+        conn.close()
+
+
+# ─── CARGA MASIVA (Excel/CSV) ─────────────────────────────────────────────────
+# Flujo de dos pasos: /preview parsea y clasifica sin escribir nada, y /commit
+# recibe de vuelta las filas ya revisadas por una persona. Nunca se importa a
+# ciegas: los duplicados y los errores se muestran antes de tocar la base.
+
+CARGA_MASIVA_EXTENSIONES = {'.xlsx', '.xlsm', '.csv'}
+
+# Cada campo: (clave interna, etiqueta visible, obligatorio, alias aceptados)
+CARGA_MASIVA_ESQUEMAS = {
+    'profesores': {
+        'titulo': 'Profesores y directores',
+        'campos': [
+            ('nombre_completo', 'Nombre completo', True, ['nombre', 'apellidos y nombres', 'docente', 'director']),
+            ('dni', 'DNI', False, ['documento', 'nro documento']),
+            ('cargo', 'Cargo', False, ['tipo', 'condicion']),
+            ('celular', 'Celular', False, ['telefono', 'numero de celular']),
+            ('correo', 'Correo', False, ['email', 'correo electronico']),
+            ('condicion_laboral', 'Condición laboral', False, ['condicion laboral', 'situacion laboral']),
+            ('codigo_modular_ie', 'Código modular de la IE', False, ['codigo modular', 'ie', 'institucion educativa', 'codigo ie']),
+        ],
+    },
+    'instituciones': {
+        'titulo': 'Instituciones educativas',
+        'campos': [
+            ('codigo_modular', 'Código modular', True, ['codigo', 'cod modular']),
+            ('nombre_iiee', 'Nombre de la IE', True, ['nombre', 'nombre ie', 'institucion educativa']),
+            ('codigo_local', 'Código local', False, ['cod local', 'codlocal']),
+            ('nivel_modalidad', 'Nivel / modalidad', False, ['nivel', 'modalidad']),
+            ('tipo_gestion', 'Tipo de gestión', False, ['gestion']),
+            ('distrito', 'Distrito', False, []),
+            ('centro_poblado', 'Centro poblado', False, ['localidad', 'lugar']),
+            ('direccion_iiee', 'Dirección', False, ['direccion']),
+            ('latitud', 'Latitud', False, ['lat']),
+            ('longitud', 'Longitud', False, ['lon', 'lng']),
+        ],
+    },
+}
+
+
+def _clave_encabezado(texto):
+    return re.sub(r'[^a-z0-9 ]', '', _normalize_place_text(texto).lower()).strip()
+
+
+def leer_filas_archivo(file_storage):
+    """Devuelve (encabezados, filas) de un .xlsx/.csv subido. Sin tocar la BD."""
+    nombre = file_storage.filename or ''
+    extension = Path(nombre).suffix.lower()
+    if extension == '.csv':
+        contenido = file_storage.read()
+        for encoding in ('utf-8-sig', 'latin-1'):
+            try:
+                texto = contenido.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            raise ValueError('No se pudo leer el CSV (codificación no reconocida).')
+        muestra = texto[:4096]
+        try:
+            dialecto = csv.Sniffer().sniff(muestra, delimiters=',;\t|')
+        except csv.Error:
+            dialecto = csv.excel
+        lector = csv.reader(io.StringIO(texto), dialecto)
+        filas = [fila for fila in lector if any(str(c).strip() for c in fila)]
+    else:
+        import openpyxl
+        libro = openpyxl.load_workbook(file_storage, data_only=True, read_only=True)
+        hoja = libro.active
+        filas = [
+            list(fila) for fila in hoja.iter_rows(values_only=True)
+            if fila and any(str(c).strip() for c in fila if c is not None)
+        ]
+    if not filas:
+        raise ValueError('El archivo está vacío.')
+    encabezados = [str(c or '').strip() for c in filas[0]]
+    return encabezados, filas[1:]
+
+
+def mapear_columnas(encabezados, esquema):
+    """Empareja los encabezados del archivo con los campos del esquema."""
+    normalizados = {_clave_encabezado(h): idx for idx, h in enumerate(encabezados) if str(h).strip()}
+    mapa = {}
+    faltantes = []
+    for clave, etiqueta, obligatorio, alias in esquema['campos']:
+        posibles = [clave.replace('_', ' '), etiqueta] + list(alias)
+        indice = None
+        for posible in posibles:
+            indice = normalizados.get(_clave_encabezado(posible))
+            if indice is not None:
+                break
+        if indice is None and obligatorio:
+            faltantes.append(etiqueta)
+        if indice is not None:
+            mapa[clave] = indice
+    return mapa, faltantes
+
+
+@app.route('/api/admin/carga-masiva/esquemas', methods=['GET'])
+@require_admin
+def carga_masiva_esquemas():
+    """Columnas esperadas por destino, para mostrarlas antes de subir nada."""
+    return jsonify({
+        destino: {
+            'titulo': cfg['titulo'],
+            'campos': [
+                {'clave': c, 'etiqueta': e, 'obligatorio': o, 'alias': a}
+                for c, e, o, a in cfg['campos']
+            ],
+        }
+        for destino, cfg in CARGA_MASIVA_ESQUEMAS.items()
+    })
+
+
+@app.route('/api/admin/carga-masiva/preview', methods=['POST'])
+@require_admin
+def carga_masiva_preview():
+    destino = (request.form.get('destino') or '').strip()
+    if destino not in CARGA_MASIVA_ESQUEMAS:
+        return jsonify({'error': 'Destino no válido.'}), 400
+    archivo = request.files.get('file')
+    if not archivo or not archivo.filename:
+        return jsonify({'error': 'No se subió ningún archivo.'}), 400
+    if Path(archivo.filename).suffix.lower() not in CARGA_MASIVA_EXTENSIONES:
+        return jsonify({'error': 'Solo se aceptan archivos .xlsx o .csv.'}), 400
+
+    esquema = CARGA_MASIVA_ESQUEMAS[destino]
+    try:
+        encabezados, filas_crudas = leer_filas_archivo(archivo)
+    except Exception as exc:
+        return jsonify({'error': f'No se pudo leer el archivo: {exc}'}), 400
+
+    mapa, faltantes = mapear_columnas(encabezados, esquema)
+    if faltantes:
+        return jsonify({
+            'error': f'Faltan columnas obligatorias: {", ".join(faltantes)}.',
+            'encabezados_detectados': encabezados,
+        }), 400
+
+    conn = get_db()
+    try:
+        filas = []
+        vistos_dni = {}
+        vistos_codigo = {}
+        for numero, cruda in enumerate(filas_crudas, start=2):
+            valores = {}
+            for clave, indice in mapa.items():
+                bruto = cruda[indice] if indice < len(cruda) else None
+                valores[clave] = str(bruto).strip() if bruto is not None else ''
+
+            fila = {'fila': numero, 'valores': valores, 'estado': 'nuevo', 'motivo': ''}
+
+            if destino == 'profesores':
+                if not valores.get('nombre_completo'):
+                    fila.update(estado='error', motivo='Falta el nombre completo.')
+                else:
+                    dni = re.sub(r'\D+', '', valores.get('dni', ''))
+                    valores['dni'] = dni
+                    codigo_ie = valores.get('codigo_modular_ie', '')
+                    if codigo_ie:
+                        resuelto = (resolve_codigo_modular_strict(conn, codigo_ie)
+                                    or resolver_ie_por_nombre_y_nivel(conn, codigo_ie)
+                                    or resolve_by_nombre_local(conn, codigo_ie))
+                        if not resuelto:
+                            fila.update(estado='error', motivo=f'La IE "{codigo_ie}" no existe en el padrón.')
+                        valores['codigo_modular_ie'] = resuelto or ''
+                    if fila['estado'] != 'error' and dni:
+                        if dni in vistos_dni:
+                            fila.update(estado='error', motivo=f'DNI repetido dentro del archivo (fila {vistos_dni[dni]}).')
+                        else:
+                            vistos_dni[dni] = numero
+                            existente = conn.execute(
+                                'SELECT id, nombre_completo FROM profesor WHERE dni = ?', (dni,)
+                            ).fetchone()
+                            if existente:
+                                fila.update(estado='duplicado', motivo=f'Ya existe con ese DNI: {existente["nombre_completo"]}.',
+                                            id_existente=existente['id'])
+                    elif fila['estado'] != 'error':
+                        existente = conn.execute(
+                            'SELECT id FROM profesor WHERE dni IS NULL '
+                            'AND UPPER(TRIM(nombre_completo)) = UPPER(TRIM(?)) '
+                            'AND COALESCE(codigo_modular_ie, "") = ?',
+                            (valores['nombre_completo'], valores.get('codigo_modular_ie', '')),
+                        ).fetchone()
+                        if existente:
+                            fila.update(estado='duplicado', motivo='Ya existe una persona con ese nombre en esa IE.',
+                                        id_existente=existente['id'])
+            else:  # instituciones
+                codigo = re.sub(r'\D+', '', valores.get('codigo_modular', ''))
+                valores['codigo_modular'] = codigo
+                if not codigo:
+                    fila.update(estado='error', motivo='Falta el código modular (solo dígitos).')
+                elif not valores.get('nombre_iiee'):
+                    fila.update(estado='error', motivo='Falta el nombre de la IE.')
+                elif codigo in vistos_codigo:
+                    fila.update(estado='error', motivo=f'Código modular repetido dentro del archivo (fila {vistos_codigo[codigo]}).')
+                else:
+                    vistos_codigo[codigo] = numero
+                    # Los tres choques que pidio el usuario, en orden de dureza.
+                    choque = conn.execute(
+                        'SELECT codigo_modular, nombre_iiee FROM dim_institucion WHERE codigo_modular = ?',
+                        (codigo,),
+                    ).fetchone()
+                    motivo = f'Ya existe una IE con el código modular {codigo}.' if choque else ''
+                    if not choque and valores.get('codigo_local'):
+                        choque = conn.execute(
+                            'SELECT codigo_modular, nombre_iiee FROM dim_institucion WHERE codigo_local = ? AND codigo_local != ""',
+                            (valores['codigo_local'],),
+                        ).fetchone()
+                        if choque:
+                            motivo = f'Otra IE ya usa el código local {valores["codigo_local"]}: {choque["nombre_iiee"]} ({choque["codigo_modular"]}).'
+                    if not choque:
+                        choque = conn.execute(
+                            'SELECT codigo_modular, nombre_iiee FROM dim_institucion '
+                            'WHERE UPPER(TRIM(nombre_iiee)) = UPPER(TRIM(?))',
+                            (valores['nombre_iiee'],),
+                        ).fetchone()
+                        if choque:
+                            motivo = f'Ya existe una IE con ese nombre: {choque["nombre_iiee"]} ({choque["codigo_modular"]}).'
+                    if choque:
+                        fila.update(estado='duplicado', motivo=motivo, id_existente=choque['codigo_modular'])
+
+            filas.append(fila)
+
+        resumen = {
+            'nuevos': sum(1 for f in filas if f['estado'] == 'nuevo'),
+            'duplicados': sum(1 for f in filas if f['estado'] == 'duplicado'),
+            'errores': sum(1 for f in filas if f['estado'] == 'error'),
+        }
+        return jsonify({
+            'success': True,
+            'destino': destino,
+            'encabezados_detectados': encabezados,
+            'columnas_reconocidas': sorted(mapa.keys()),
+            'filas': filas,
+            'resumen': resumen,
+        })
+    finally:
+        conn.close()
+
+
+@app.route('/api/admin/carga-masiva/commit', methods=['POST'])
+@require_admin
+def carga_masiva_commit():
+    data = request.get_json() or {}
+    destino = (data.get('destino') or '').strip()
+    if destino not in CARGA_MASIVA_ESQUEMAS:
+        return jsonify({'error': 'Destino no válido.'}), 400
+    filas = data.get('filas') or []
+    if not filas:
+        return jsonify({'error': 'No hay filas para importar.'}), 400
+    politica = (data.get('politica_duplicados') or 'omitir').strip()
+
+    conn = get_db()
+    user_id = g.current_user['user_id']
+    creados = actualizados = omitidos = 0
+    try:
+        for fila in filas:
+            if not isinstance(fila, dict):
+                continue
+            estado = fila.get('estado')
+            valores = fila.get('valores') or {}
+            if estado == 'error':
+                omitidos += 1
+                continue
+            if estado == 'duplicado' and politica != 'actualizar':
+                omitidos += 1
+                continue
+
+            if destino == 'profesores':
+                nombre = str(valores.get('nombre_completo') or '').strip()
+                if not nombre:
+                    omitidos += 1
+                    continue
+                dni = re.sub(r'\D+', '', str(valores.get('dni') or '')) or None
+                cargo = str(valores.get('cargo') or 'docente').strip().lower()
+                if cargo not in PROFESOR_CARGOS:
+                    cargo = 'director' if 'direct' in cargo else 'docente'
+                campos = (
+                    dni, nombre,
+                    str(valores.get('celular') or '').strip() or None,
+                    str(valores.get('correo') or '').strip() or None,
+                    cargo,
+                    str(valores.get('condicion_laboral') or '').strip() or None,
+                    str(valores.get('codigo_modular_ie') or '').strip() or None,
+                )
+                existente_id = fila.get('id_existente')
+                if estado == 'duplicado' and existente_id:
+                    conn.execute('''
+                        UPDATE profesor SET dni = ?, nombre_completo = ?, celular = COALESCE(?, celular),
+                            correo = COALESCE(?, correo), cargo = ?,
+                            condicion_laboral = COALESCE(?, condicion_laboral),
+                            codigo_modular_ie = COALESCE(?, codigo_modular_ie),
+                            estado_fila = 1, modificado_por = ?, actualizado_en = CURRENT_TIMESTAMP
+                        WHERE id = ?
+                    ''', (*campos, user_id, existente_id))
+                    actualizados += 1
+                else:
+                    conn.execute('''
+                        INSERT INTO profesor (dni, nombre_completo, celular, correo, cargo,
+                            condicion_laboral, codigo_modular_ie, fuente, creado_por)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'carga_masiva', ?)
+                    ''', (*campos, user_id))
+                    creados += 1
+            else:
+                codigo = re.sub(r'\D+', '', str(valores.get('codigo_modular') or ''))
+                if not codigo:
+                    omitidos += 1
+                    continue
+                columnas = ['codigo_local', 'nombre_iiee', 'nivel_modalidad', 'tipo_gestion',
+                            'distrito', 'centro_poblado', 'direccion_iiee', 'latitud', 'longitud']
+                datos = [str(valores.get(c) or '').strip() or None for c in columnas]
+                if estado == 'duplicado':
+                    asignaciones = ', '.join(f'{c} = COALESCE(?, {c})' for c in columnas)
+                    conn.execute(
+                        f'UPDATE dim_institucion SET {asignaciones}, estado_fila = 1, '
+                        'actualizado_en = CURRENT_TIMESTAMP WHERE codigo_modular = ?',
+                        (*datos, fila.get('id_existente') or codigo),
+                    )
+                    actualizados += 1
+                else:
+                    conn.execute(
+                        f'INSERT INTO dim_institucion (codigo_modular, {", ".join(columnas)}, estado_fila) '
+                        f'VALUES (?, {", ".join("?" for _ in columnas)}, 1)',
+                        (codigo, *datos),
+                    )
+                    creados += 1
+
+        conn.commit()
+        return jsonify({'success': True, 'creados': creados, 'actualizados': actualizados, 'omitidos': omitidos})
+    except sqlite3.IntegrityError as exc:
+        conn.rollback()
+        return jsonify({'error': f'No se pudo completar la importación: {exc}'}), 400
+    finally:
+        conn.close()
+
+
 # ─── ALERTAS ──────────────────────────────────────────────────────────────────
 
 @app.route('/api/alertas', methods=['GET'])
@@ -4294,6 +5372,8 @@ def get_dashboard():
     simon_ranking = build_simon_ranking(conn, simon_fichas_dedup, simon_dedup_meta)
     infra_ranking = build_infra_ranking(conn)
     campo_ranking = build_campo_ranking(conn)
+    asistencias_talleres = build_asistencias_dashboard(conn)
+    especialistas_monitoreo = build_especialistas_monitoreo(conn)
     ie_coverage = build_ie_coverage(conn)
 
     conn.close()
@@ -4315,6 +5395,8 @@ def get_dashboard():
         'simon_ranking': simon_ranking,
         'infra_ranking': infra_ranking,
         'campo_ranking': campo_ranking,
+        'asistencias_talleres': asistencias_talleres,
+        'especialistas_monitoreo': especialistas_monitoreo,
         'ie_coverage': ie_coverage,
         'infra_definitions': INFRA_DEFINITIONS,
         'infraestructura_censo': infra_summary,
@@ -4852,6 +5934,190 @@ def process_images_with_gemini(files_payload):
         print(f"Error Gemini Vision JSON: {e}, Raw: {raw}")
         return None
 
+# ─── ASISTENCIA A TALLERES: extraccion de listas de participantes ──────────
+# La foto es una tabla manuscrita multi-fila, no una ficha de un solo sujeto:
+# por eso usa vision (como el OCR de fichas) pero con las reglas estrictas y el
+# modo JSON del extractor de informes de campo, que ya esta afinado para no
+# inventar filas ni completar celdas ilegibles.
+
+TALLER_SYSTEM_PROMPT = """Eres un asistente que digitaliza listas de asistencia a
+talleres y capacitaciones de la UGEL IBIR Imaza a partir de fotos de planillas
+llenadas a mano.
+Reglas:
+1. No inventes datos. Si una celda esta vacia o es ilegible, usa "".
+2. Copia la columna de institucion educativa EXACTAMENTE como esta escrita a
+   mano, con sus abreviaturas y puntos (ej. "A.A.H", "AAH"). No la expandas ni
+   la corrijas: alguien la confirmara despues.
+3. Cada fila de la tabla de participantes es un asistente distinto. No agrupes
+   ni omitas filas, aunque esten incompletas.
+4. Los DNI peruanos tienen 8 digitos; si lees mas o menos, transcribe lo que ves.
+5. No interpretes la firma: no es un dato a extraer.
+6. Responde exclusivamente JSON valido segun el esquema entregado, sin markdown.
+"""
+
+TALLER_JSON_SCHEMA = {
+    'documento': {
+        'dre': 'string',
+        'ugel': 'string',
+        'sede': 'string',
+        'nombre_evento': 'string (titulo de la lista, ej. LISTA DE PARTICIPANTES EN LA ASISTENCIA TECNICA)',
+        'compromiso_indicador': 'string (ej. Compromiso de Desempeno 2026/Indicador 7.3)',
+        'nivel_educativo': 'string',
+        'nombre_ie_sede': 'string (IE anfitriona del taller)',
+        'fecha_inicio': 'YYYY-MM-DD o ""',
+        'fecha_fin': 'YYYY-MM-DD o "" si es un solo dia',
+    },
+    'asistentes': [
+        {
+            'fila_num': 'entero (numero de fila en la planilla)',
+            'nombre_completo': 'string (apellidos y nombres tal como estan escritos)',
+            'dni': 'string (solo digitos)',
+            'institucion_educativa_texto': 'string (tal como esta escrito, sin corregir)',
+            'grado_a_cargo': 'string',
+            'area': 'string',
+            'celular': 'string',
+            'correo': 'string',
+        }
+    ],
+}
+
+
+def call_taller_gemini_vision(image_parts):
+    if not get_gemini_key():
+        return {'status': 'missing_env', 'provider': 'gemini_vision', 'payload': {}, 'error': ''}
+    prompt = (
+        TALLER_SYSTEM_PROMPT
+        + '\n\nEsquema JSON de respuesta:\n'
+        + json.dumps(TALLER_JSON_SCHEMA, ensure_ascii=False, indent=2)
+    )
+    try:
+        model = genai.GenerativeModel(GEMINI_DEFAULT_MODEL)
+        response = model.generate_content(
+            [prompt, *image_parts],
+            generation_config={'response_mime_type': 'application/json', 'temperature': 0},
+        )
+        return {'status': 'ok', 'provider': 'gemini_vision', 'payload': parse_json_loose(response.text), 'error': ''}
+    except Exception as exc:
+        return {'status': 'failed', 'provider': 'gemini_vision', 'payload': {}, 'error': f'{type(exc).__name__}: {exc}'}
+
+
+def call_taller_gemini_texto(text):
+    """Respaldo cuando no hay imagen utilizable (ej. subieron un PDF ya digital)."""
+    if not get_gemini_key():
+        return {'status': 'missing_env', 'provider': 'gemini_texto', 'payload': {}, 'error': ''}
+    prompt = (
+        TALLER_SYSTEM_PROMPT
+        + '\n\nEsquema JSON de respuesta:\n'
+        + json.dumps(TALLER_JSON_SCHEMA, ensure_ascii=False, indent=2)
+        + '\n\nTexto de la planilla:\n'
+        + truncate_for_llm(text, 18000)
+    )
+    try:
+        model = genai.GenerativeModel(GEMINI_DEFAULT_MODEL)
+        response = model.generate_content(
+            prompt,
+            generation_config={'response_mime_type': 'application/json', 'temperature': 0},
+        )
+        return {'status': 'ok', 'provider': 'gemini_texto', 'payload': parse_json_loose(response.text), 'error': ''}
+    except Exception as exc:
+        return {'status': 'failed', 'provider': 'gemini_texto', 'payload': {}, 'error': f'{type(exc).__name__}: {exc}'}
+
+
+def extract_taller_asistentes(files_payload, text):
+    """Devuelve (payload, proveedor, error). No toca la base de datos."""
+    image_parts = []
+    for item in files_payload:
+        if is_pdf_file(item.get('filename', ''), item.get('mimetype', '')):
+            continue
+        if item.get('bytes'):
+            image_parts.append({
+                'mime_type': item.get('mimetype') or 'image/jpeg',
+                'data': item['bytes'],
+            })
+
+    if image_parts:
+        resultado = call_taller_gemini_vision(image_parts)
+        if resultado['status'] == 'ok' and resultado['payload'].get('asistentes'):
+            return resultado['payload'], resultado['provider'], ''
+
+    if len((text or '').strip()) >= 50:
+        resultado = call_taller_gemini_texto(text)
+        if resultado['status'] == 'ok' and resultado['payload'].get('asistentes'):
+            return resultado['payload'], resultado['provider'], ''
+        return {}, resultado['provider'], resultado.get('error') or 'sin_asistentes_detectados'
+
+    return {}, 'ninguno', 'sin_imagen_ni_texto_utilizable'
+
+
+def resolver_ie_por_nombre_y_nivel(conn, nombre_ie, nivel_educativo=''):
+    """Resuelve una IE escrita en lenguaje natural ("IE. Alberto Acosta Herrera").
+
+    Quita los prefijos habituales ("IE.", "I.E.", "N°") que impiden el match
+    exacto, y cuando el mismo nombre existe en varios niveles (el caso normal:
+    un colegio con Inicial, Primaria y Secundaria) desempata con el nivel que
+    declara el propio documento. Si sigue habiendo mas de una candidata,
+    devuelve '' para que lo confirme una persona.
+    """
+    nombre = str(nombre_ie or '').strip()
+    if not nombre:
+        return ''
+    nombre = re.sub(r'^\s*(i\.?\s*e\.?|institucion\s+educativa|colegio)\s*[:.\-]?\s*',
+                    '', nombre, flags=re.IGNORECASE).strip()
+    nombre = re.sub(r'^\s*n[°ºo]\s*', '', nombre, flags=re.IGNORECASE).strip()
+    if not nombre:
+        return ''
+
+    candidatas = conn.execute(
+        'SELECT codigo_modular, nivel_modalidad FROM dim_institucion '
+        'WHERE UPPER(TRIM(nombre_iiee)) = UPPER(TRIM(?)) AND COALESCE(estado_fila, 1) = 1',
+        (nombre,),
+    ).fetchall()
+    if not candidatas:
+        return ''
+    if len(candidatas) == 1:
+        return candidatas[0]['codigo_modular']
+
+    nivel = str(nivel_educativo or '').strip().lower()
+    if nivel:
+        # "Secundaria de menores" -> "secundaria"; "Inicial - Jardin" -> "inicial"
+        nivel_base = re.split(r'[\s\-]+', nivel)[0]
+        por_nivel = [
+            row for row in candidatas
+            if (row['nivel_modalidad'] or '').strip().lower().startswith(nivel_base)
+        ]
+        if len(por_nivel) == 1:
+            return por_nivel[0]['codigo_modular']
+    return ''
+
+
+def sugerir_profesores(profesores, nombre, dni):
+    """Match exacto por DNI, o candidatos rankeados por nombre.
+
+    Nunca elige por el usuario: devuelve (match_dni, candidatos) para que la
+    persona confirme en pantalla, igual que el resto del proyecto nunca acepta
+    una coincidencia ambigua de forma automatica.
+    """
+    dni = re.sub(r'\D+', '', str(dni or ''))
+    if dni:
+        exacto = next((p for p in profesores if p.get('dni') == dni), None)
+        if exacto:
+            return exacto, []
+
+    nombre = str(nombre or '').strip()
+    if not nombre:
+        return None, []
+
+    nombres = {p['id']: p['nombre_completo'] or '' for p in profesores}
+    por_id = {p['id']: p for p in profesores}
+    candidatos = []
+    for _, score, pid in rapidfuzz_process.extract(
+        nombre, nombres, scorer=rapidfuzz_fuzz.WRatio, limit=5
+    ):
+        if score >= 70:
+            candidatos.append({**por_id[pid], 'match_score': round(float(score), 1)})
+    return None, candidatos
+
+
 # ─── INFORMES DE CAMPO: extraccion y categorizacion (portado de
 #     subproyectos/informes_campo_v3 para que la app sea autocontenida) ───────
 
@@ -5283,6 +6549,378 @@ def ocr_informe_campo_upload():
         'variables_meta': CAMPO_VARIABLE_META,
     })
 
+@app.route('/api/ocr/taller_asistencia/upload', methods=['POST'])
+@require_auth
+def ocr_taller_asistencia_upload():
+    """Extrae la lista de participantes de una foto de planilla de asistencia.
+
+    No escribe nada en la base: devuelve lo detectado mas sugerencias de match
+    para que el especialista confirme cada asistente antes de guardar (mismo
+    contrato que el OCR de fichas y el de informes de campo).
+    """
+    uploaded_files = [f for f in request.files.getlist('files') if f and f.filename]
+    if not uploaded_files:
+        single = request.files.get('file')
+        if single and single.filename:
+            uploaded_files = [single]
+    if not uploaded_files:
+        return jsonify({'error': 'No se subió ningún archivo.'}), 400
+    if len(uploaded_files) > MAX_OCR_FILES:
+        return jsonify({'error': f'Sube como máximo {MAX_OCR_FILES} archivos a la vez.'}), 400
+    for archivo in uploaded_files:
+        if Path(archivo.filename).suffix.lower() not in ALLOWED_OCR_EXTENSIONS:
+            return jsonify({'error': f'Tipo de archivo no permitido: "{archivo.filename}".'}), 400
+
+    partes_texto = []
+    files_payload = []
+    metodos = []
+    for idx, archivo in enumerate(uploaded_files, start=1):
+        texto, metodo, filename, file_bytes, mimetype = extract_text_from_upload(archivo)
+        metodos.append(metodo)
+        files_payload.append({'filename': filename, 'mimetype': mimetype, 'bytes': file_bytes})
+        if texto:
+            partes_texto.append(f'--- DOCUMENTO {idx}: {filename} ---\n{texto}')
+    texto_total = '\n\n'.join(partes_texto).strip()
+
+    payload, provider, error = extract_taller_asistentes(files_payload, texto_total)
+    if not payload:
+        return jsonify({'error': f'No se pudo leer la lista de participantes (proveedor: {provider}). {error}'}), 502
+
+    conn = get_db()
+    try:
+        doc = payload.get('documento') or {}
+        nombre_sede = str(doc.get('nombre_ie_sede') or '').strip()
+        nivel_doc = str(doc.get('nivel_educativo') or '').strip()
+        codigo_sede = (
+            resolve_codigo_modular_strict(conn, nombre_sede)
+            or resolver_ie_por_nombre_y_nivel(conn, nombre_sede, nivel_doc)
+            or resolve_ficha_codigo_modular(conn, '', nombre_sede)[0]
+            or resolve_by_nombre_local(conn, nombre_sede, doc.get('sede', ''))
+        )
+
+        profesores = rows_to_list(conn.execute('''
+            SELECT p.id, p.dni, p.nombre_completo, p.cargo, p.celular, p.correo,
+                   p.condicion_laboral, p.codigo_modular_ie,
+                   i.nombre_iiee AS ie_nombre, i.centro_poblado AS ie_centro_poblado
+            FROM profesor p
+            LEFT JOIN dim_institucion i ON i.codigo_modular = p.codigo_modular_ie
+            WHERE p.estado_fila = 1
+        ''').fetchall())
+
+        asistentes = []
+        for fila in payload.get('asistentes') or []:
+            if not isinstance(fila, dict):
+                continue
+            nombre = str(fila.get('nombre_completo') or '').strip()
+            dni = re.sub(r'\D+', '', str(fila.get('dni') or ''))
+            ie_texto = str(fila.get('institucion_educativa_texto') or '').strip()
+            match_dni, candidatos = sugerir_profesores(profesores, nombre, dni)
+
+            # La columna de IE viene manuscrita y abreviada ("A.A.H"): se intenta
+            # resolver, pero lo normal es que no alcance y lo confirme la persona.
+            codigo_ie = (
+                resolver_ie_por_nombre_y_nivel(conn, ie_texto, nivel_doc)
+                or resolve_ficha_codigo_modular(conn, '', ie_texto)[0]
+                or resolve_by_nombre_local(conn, ie_texto)
+            )
+            if not codigo_ie and match_dni:
+                codigo_ie = match_dni.get('codigo_modular_ie') or ''
+
+            asistentes.append({
+                'fila_num': fila.get('fila_num'),
+                'nombre_detectado': nombre,
+                'dni_detectado': dni,
+                'institucion_educativa_texto': ie_texto,
+                'codigo_modular_ie_sugerido': codigo_ie or '',
+                'grado_a_cargo': str(fila.get('grado_a_cargo') or '').strip(),
+                'area': str(fila.get('area') or '').strip(),
+                'celular_detectado': str(fila.get('celular') or '').strip(),
+                'correo_detectado': str(fila.get('correo') or '').strip(),
+                'profesor_match': match_dni,
+                'candidatos_profesor': candidatos,
+            })
+    finally:
+        conn.close()
+
+    files_meta = [{
+        'filename': item['filename'],
+        'mimetype': item['mimetype'],
+        'hash_sha1': hashlib.sha1(item['bytes']).hexdigest(),
+        'file_b64': base64.b64encode(item['bytes']).decode('ascii'),
+    } for item in files_payload if item.get('bytes')]
+
+    return jsonify({
+        'success': True,
+        'provider': provider,
+        'method': '+'.join(sorted(set(m for m in metodos if m))),
+        'documento': {**doc, 'codigo_modular_sede_sugerido': codigo_sede or ''},
+        'asistentes': asistentes,
+        'files_meta': files_meta,
+    })
+
+
+@app.route('/api/talleres_capacitacion', methods=['GET', 'POST'])
+@require_auth
+def talleres_capacitacion():
+    conn = get_db()
+    try:
+        if request.method == 'GET':
+            incluir_eliminados = request.args.get('incluir_eliminadas') == '1' or request.args.get('incluir_eliminados') == '1'
+            where = '' if incluir_eliminados else 'WHERE COALESCE(t.estado_fila, 1) = 1'
+            rows = conn.execute(f'''
+                SELECT t.*, i.nombre_iiee AS sede_nombre, i.nivel_modalidad AS sede_nivel,
+                       cu.nombre AS creado_por_nombre, cu.email AS creado_por_email,
+                       mu.nombre AS modificado_por_nombre,
+                       (SELECT COUNT(*) FROM taller_asistencia a
+                         WHERE a.taller_id = t.id AND a.estado_fila = 1) AS total_asistentes
+                FROM taller_capacitacion t
+                LEFT JOIN dim_institucion i ON i.codigo_modular = t.codigo_modular_sede
+                LEFT JOIN app_user cu ON cu.user_id = t.creado_por
+                LEFT JOIN app_user mu ON mu.user_id = t.modificado_por
+                {where}
+                ORDER BY t.creado_en DESC
+            ''').fetchall()
+            return jsonify(rows_to_list(rows))
+
+        data = request.get_json() or {}
+        asistentes = data.get('asistentes') or []
+        if not asistentes:
+            return jsonify({'error': 'No hay asistentes para guardar.'}), 400
+
+        user_id = g.current_user['user_id']
+        doc = data.get('documento') or {}
+        codigo_sede = resolve_codigo_modular_strict(conn, str(doc.get('codigo_modular_sede') or '')) or None
+
+        cur = conn.execute('''
+            INSERT INTO taller_capacitacion (
+                nombre_evento, compromiso_indicador, nivel_educativo, dre, ugel,
+                codigo_modular_sede, nombre_sede_detectado, fecha_inicio, fecha_fin,
+                metodo_extraccion, parser, creado_por
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            str(doc.get('nombre_evento') or '').strip(),
+            str(doc.get('compromiso_indicador') or '').strip(),
+            str(doc.get('nivel_educativo') or '').strip(),
+            str(doc.get('dre') or '').strip(),
+            str(doc.get('ugel') or '').strip(),
+            codigo_sede,
+            str(doc.get('nombre_ie_sede') or '').strip(),
+            str(doc.get('fecha_inicio') or '').strip(),
+            str(doc.get('fecha_fin') or '').strip(),
+            str(data.get('method') or '').strip(),
+            str(data.get('provider') or '').strip(),
+            user_id,
+        ))
+        taller_id = cur.lastrowid
+
+        for idx, item in enumerate(data.get('files') or []):
+            if not isinstance(item, dict) or not item.get('file_b64'):
+                continue
+            try:
+                contenido = base64.b64decode(item['file_b64'])
+            except Exception:
+                continue
+            archivo_cur = conn.execute('''
+                INSERT INTO archivo_subido (tipo, nombre_archivo, mimetype, tamano_bytes, contenido, hash_sha1, subido_por)
+                VALUES ('taller_asistencia', ?, ?, ?, ?, ?, ?)
+            ''', (
+                item.get('filename', ''), item.get('mimetype', ''), len(contenido),
+                contenido, item.get('hash_sha1', ''), user_id,
+            ))
+            conn.execute(
+                'INSERT INTO taller_archivo (taller_id, archivo_subido_id, orden) VALUES (?, ?, ?)',
+                (taller_id, archivo_cur.lastrowid, idx),
+            )
+
+        guardados = 0
+        profesores_creados = 0
+        omitidos = []
+        for fila in asistentes:
+            if not isinstance(fila, dict):
+                continue
+            profesor_id = safe_int(fila.get('profesor_id'), 0) or None
+            nuevo = fila.get('nuevo_profesor')
+
+            if not profesor_id and isinstance(nuevo, dict):
+                valores, error = normalize_profesor_payload(conn, nuevo)
+                if error:
+                    omitidos.append(f"{fila.get('nombre_detectado', '')}: {error}")
+                    continue
+                try:
+                    columnas = list(valores.keys()) + ['fuente', 'creado_por']
+                    params = list(valores.values()) + ['ocr_taller', user_id]
+                    placeholders = ', '.join('?' for _ in columnas)
+                    profesor_cur = conn.execute(
+                        f'INSERT INTO profesor ({", ".join(columnas)}) VALUES ({placeholders})', params
+                    )
+                    profesor_id = profesor_cur.lastrowid
+                    profesores_creados += 1
+                except sqlite3.IntegrityError:
+                    existente = conn.execute(
+                        'SELECT id FROM profesor WHERE dni = ?', (valores['dni'],)
+                    ).fetchone()
+                    if existente:
+                        profesor_id = existente['id']
+                    else:
+                        omitidos.append(f"{fila.get('nombre_detectado', '')}: no se pudo crear el profesor.")
+                        continue
+
+            if not profesor_id:
+                omitidos.append(f"{fila.get('nombre_detectado', '')}: sin profesor confirmado.")
+                continue
+
+            conn.execute('''
+                INSERT INTO taller_asistencia (
+                    taller_id, profesor_id, nombre_detectado, dni_detectado, grado_a_cargo,
+                    area, celular_detectado, correo_detectado, codigo_modular_ie_detectado,
+                    nombre_ie_detectado, match_metodo, match_score, creado_por
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                taller_id,
+                profesor_id,
+                str(fila.get('nombre_detectado') or '').strip(),
+                re.sub(r'\D+', '', str(fila.get('dni_detectado') or '')),
+                str(fila.get('grado_a_cargo') or '').strip(),
+                str(fila.get('area') or '').strip(),
+                str(fila.get('celular_detectado') or '').strip(),
+                str(fila.get('correo_detectado') or '').strip(),
+                resolve_codigo_modular_strict(conn, str(fila.get('codigo_modular_ie_detectado') or '')) or None,
+                str(fila.get('institucion_educativa_texto') or '').strip(),
+                str(fila.get('match_metodo') or '').strip(),
+                fila.get('match_score'),
+                user_id,
+            ))
+            guardados += 1
+
+        conn.commit()
+        return jsonify({
+            'success': True,
+            'taller_id': taller_id,
+            'asistentes_guardados': guardados,
+            'profesores_creados': profesores_creados,
+            'omitidos': omitidos,
+        })
+    except sqlite3.IntegrityError as exc:
+        conn.rollback()
+        return jsonify({'error': f'No se pudo guardar la asistencia: {exc}'}), 400
+    finally:
+        conn.close()
+
+
+TALLER_EDITABLE_FIELDS = [
+    'nombre_evento', 'compromiso_indicador', 'nivel_educativo', 'dre', 'ugel',
+    'fecha_inicio', 'fecha_fin', 'especialista_responsable',
+]
+
+
+@app.route('/api/talleres_capacitacion/<int:taller_id>', methods=['GET', 'PUT', 'DELETE'])
+@require_auth
+def taller_detalle(taller_id):
+    conn = get_db()
+    try:
+        row = conn.execute('''
+            SELECT t.*, i.nombre_iiee AS sede_nombre, i.nivel_modalidad AS sede_nivel,
+                   cu.nombre AS creado_por_nombre, cu.email AS creado_por_email,
+                   mu.nombre AS modificado_por_nombre
+            FROM taller_capacitacion t
+            LEFT JOIN dim_institucion i ON i.codigo_modular = t.codigo_modular_sede
+            LEFT JOIN app_user cu ON cu.user_id = t.creado_por
+            LEFT JOIN app_user mu ON mu.user_id = t.modificado_por
+            WHERE t.id = ?
+        ''', (taller_id,)).fetchone()
+        if not row:
+            return jsonify({'error': 'Taller no encontrado.'}), 404
+        taller = dict(row)
+
+        if request.method == 'GET':
+            asistentes = conn.execute('''
+                SELECT a.*, p.nombre_completo AS profesor_nombre, p.dni AS profesor_dni,
+                       p.cargo AS profesor_cargo, i.nombre_iiee AS ie_nombre,
+                       i.nivel_modalidad AS ie_nivel
+                FROM taller_asistencia a
+                LEFT JOIN profesor p ON p.id = a.profesor_id
+                LEFT JOIN dim_institucion i ON i.codigo_modular = a.codigo_modular_ie_detectado
+                WHERE a.taller_id = ? AND COALESCE(a.estado_fila, 1) = 1
+                ORDER BY a.id
+            ''', (taller_id,)).fetchall()
+            archivos = conn.execute('''
+                SELECT ar.id, ar.nombre_archivo, ar.mimetype, ta.orden
+                FROM taller_archivo ta
+                JOIN archivo_subido ar ON ar.id = ta.archivo_subido_id
+                WHERE ta.taller_id = ? AND COALESCE(ta.estado_fila, 1) = 1 AND COALESCE(ar.estado_fila, 1) = 1
+                ORDER BY ta.orden
+            ''', (taller_id,)).fetchall()
+            return jsonify({
+                'taller': taller,
+                'asistentes': rows_to_list(asistentes),
+                'archivos': rows_to_list(archivos),
+                'puede_editar': can_edit_row(g.current_user, taller.get('creado_por')),
+            })
+
+        if not can_edit_row(g.current_user, taller.get('creado_por')):
+            return jsonify({'error': 'Solo puedes editar tus propios registros.'}), 403
+
+        if request.method == 'DELETE':
+            # Baja logica solo del taller: NO se tocan las asistencias. Si se
+            # marcaran tambien, al restaurar volverian los participantes que
+            # alguien habia quitado a mano. Los conteos y dashboards filtran por
+            # el estado del taller, asi que ocultarlo basta.
+            conn.execute(
+                'UPDATE taller_capacitacion SET estado_fila = 0, modificado_por = ?, '
+                'actualizado_en = CURRENT_TIMESTAMP WHERE id = ?',
+                (g.current_user['user_id'], taller_id),
+            )
+            conn.commit()
+            return jsonify({'success': True})
+
+        data = request.get_json() or {}
+        if data.get('restaurar'):
+            conn.execute(
+                'UPDATE taller_capacitacion SET estado_fila = 1, modificado_por = ?, '
+                'actualizado_en = CURRENT_TIMESTAMP WHERE id = ?',
+                (g.current_user['user_id'], taller_id),
+            )
+            conn.commit()
+            updated = conn.execute('SELECT * FROM taller_capacitacion WHERE id = ?', (taller_id,)).fetchone()
+            return jsonify({'success': True, 'taller': dict(updated)})
+
+        updates = []
+        params = []
+        for campo in TALLER_EDITABLE_FIELDS:
+            if campo in data:
+                updates.append(f'{campo} = ?')
+                params.append(str(data.get(campo) or '').strip())
+        if 'codigo_modular_sede' in data:
+            codigo = str(data.get('codigo_modular_sede') or '').strip()
+            resuelto = resolve_codigo_modular_strict(conn, codigo) if codigo else ''
+            if codigo and not resuelto:
+                return jsonify({'error': f'La IE sede "{codigo}" no existe en el padrón.'}), 400
+            updates.append('codigo_modular_sede = ?')
+            params.append(resuelto or None)
+
+        # Bajas individuales de asistentes (quitar a alguien de la lista sin
+        # borrar el taller entero).
+        for asistencia_id in data.get('asistentes_eliminados') or []:
+            conn.execute(
+                'UPDATE taller_asistencia SET estado_fila = 0, modificado_por = ?, '
+                'actualizado_en = CURRENT_TIMESTAMP WHERE id = ? AND taller_id = ?',
+                (g.current_user['user_id'], safe_int(asistencia_id, 0), taller_id),
+            )
+
+        if updates:
+            updates.append('modificado_por = ?')
+            params.append(g.current_user['user_id'])
+            updates.append('actualizado_en = CURRENT_TIMESTAMP')
+            params.append(taller_id)
+            conn.execute(f'UPDATE taller_capacitacion SET {", ".join(updates)} WHERE id = ?', params)
+
+        conn.commit()
+        updated = conn.execute('SELECT * FROM taller_capacitacion WHERE id = ?', (taller_id,)).fetchone()
+        return jsonify({'success': True, 'taller': dict(updated)})
+    finally:
+        conn.close()
+
+
 @app.route('/api/informes_campo', methods=['GET', 'POST'])
 @require_auth
 def informes_campo():
@@ -5488,6 +7126,56 @@ def informe_campo_detalle(visita_campo_id):
         if 'requiere_revision' in data:
             updates.append('requiere_revision = ?')
             params.append(1 if data.get('requiere_revision') else 0)
+
+        # Flujo de revision. Marcar puede cualquiera (el que nota el problema);
+        # resolver le toca al especialista del registro -- o a un administrador
+        # o supervisor, que existen justamente para destrabar.
+        if 'revision_estado' in data:
+            nuevo_estado = str(data.get('revision_estado') or 'ok').strip()
+            if nuevo_estado not in REVISION_ESTADOS:
+                return jsonify({'error': f'Estado de revisión no válido: {nuevo_estado}.'}), 400
+            estado_actual = str(visita.get('revision_estado') or 'ok')
+            ahora = datetime.now().isoformat(timespec='seconds')
+            yo = g.current_user['user_id']
+
+            if nuevo_estado in ('pendiente', 'en_revision') and estado_actual in ('ok', 'resuelto'):
+                # Se abre la revision: queda a cargo del especialista del
+                # registro, que es quien puede confirmar lo que observo.
+                asignado_nombre = str(visita.get('especialista_detectado') or '').strip()
+                asignado_id = ''
+                if asignado_nombre:
+                    encontrado = conn.execute(
+                        'SELECT user_id FROM app_user WHERE activo = 1 AND '
+                        'UPPER(TRIM(nombre)) = UPPER(TRIM(?)) LIMIT 1', (asignado_nombre,)
+                    ).fetchone()
+                    asignado_id = encontrado['user_id'] if encontrado else ''
+                updates += ['revision_solicitada_por = ?', 'revision_solicitada_en = ?',
+                            'revision_asignado_a = ?', 'revision_asignado_nombre = ?',
+                            'revision_resuelto_por = ?', 'revision_resuelto_en = ?']
+                params += [yo, ahora, asignado_id, asignado_nombre, None, None]
+
+            if nuevo_estado == 'resuelto':
+                asignado = str(visita.get('revision_asignado_a') or '')
+                puede_resolver = (
+                    normalize_role(g.current_user['rol']) in ROLES_QUE_EDITAN_TODO
+                    or not asignado or asignado == yo
+                )
+                if not puede_resolver:
+                    return jsonify({
+                        'error': 'Esta revisión le corresponde a '
+                                 f'{visita.get("revision_asignado_nombre") or "otro especialista"}.'
+                    }), 403
+                updates += ['revision_resuelto_por = ?', 'revision_resuelto_en = ?']
+                params += [yo, ahora]
+
+            updates.append('revision_estado = ?')
+            params.append(nuevo_estado)
+            updates.append('requiere_revision = ?')
+            params.append(1 if nuevo_estado in ('pendiente', 'en_revision') else 0)
+
+        if 'revision_nota' in data:
+            updates.append('revision_nota = ?')
+            params.append(str(data.get('revision_nota') or '').strip())
 
         variables_tocadas = [v for v in CAMPO_CONCRETE_VARIABLES if v in data]
         for var in variables_tocadas:

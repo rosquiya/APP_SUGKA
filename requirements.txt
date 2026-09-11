@@ -6,3 +6,5 @@ fpdf2
 google-generativeai
 azure-core
 azure-ai-documentintelligence
+openpyxl
+rapidfuzz
