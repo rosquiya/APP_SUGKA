@@ -1331,9 +1331,10 @@ input.ss-unpicked{border-color:var(--warning)}
               <div class="map-heading-title">IE de Imaza</div>
               <div class="map-heading-sub" id="map-heading-sub">Instituciones educativas monitoreadas por nivel, alerta y distrito.</div>
             </div>
-            <div class="panel-label">Fuente de riesgo</div>
+            <div class="panel-label" id="map-source-label">Cómo colorear el mapa</div>
             <div class="dash-source-tabs map-source-tabs" id="map-source-tabs" style="margin-bottom:14px">
-              <button type="button" class="dash-source-tab active" data-map-source="todas">Todas</button>
+              <button type="button" class="dash-source-tab active" data-map-source="prioridad">Prioridad</button>
+              <button type="button" class="dash-source-tab" data-map-source="todas">Alertas</button>
               <button type="button" class="dash-source-tab" data-map-source="simon">SIMON</button>
               <button type="button" class="dash-source-tab" data-map-source="censo">Censo</button>
               <button type="button" class="dash-source-tab" data-map-source="campo">Campo</button>
@@ -1345,7 +1346,7 @@ input.ss-unpicked{border-color:var(--warning)}
                 <option value="">Todos los distritos</option>
               </select>
               <select id="map-filter-alerta" class="map-select">
-                <option value="">Todas las alertas</option>
+                <option value="">Todos los niveles de riesgo</option>
                 <option value="alta">Alta</option>
                 <option value="media">Media</option>
                 <option value="baja">Baja / sin alerta</option>
@@ -1361,7 +1362,7 @@ input.ss-unpicked{border-color:var(--warning)}
           <div class="panel-section">
             <div class="stats-strip">
               <div class="stat-mini"><div class="num" id="ms-total">0</div><div class="lbl">IEs Visibles</div></div>
-              <div class="stat-mini"><div class="num" id="ms-alertas" style="color:var(--danger)">0</div><div class="lbl">Alerta Alta</div></div>
+              <div class="stat-mini"><div class="num" id="ms-alertas" style="color:var(--danger)">0</div><div class="lbl" id="ms-alertas-label">Alerta Alta</div></div>
             </div>
           </div>
 
@@ -1403,6 +1404,10 @@ input.ss-unpicked{border-color:var(--warning)}
                 <div class="ied-row"><span>Promedio Desempeño</span><span class="val" id="ied-promedio"></span></div>
                 <div class="ied-row"><span>Visitas de Campo</span><span class="val" id="ied-campo"></span></div>
                 <div class="ied-row"><span>Cobertura Total</span><span class="val" id="ied-cobertura"></span></div>
+              </div>
+              <div class="ied-section" id="ied-score-section">
+                <div class="ied-label">Prioridad de atención</div>
+                <div id="ied-score"></div>
               </div>
               <div class="ied-section" id="ied-alerts-section">
                 <div class="ied-label">Alertas Críticas Activas</div>
@@ -6056,7 +6061,7 @@ let allIEs = [];
 let filteredIEs = [];
 let currentMarkers = {};
 let selectedIECode = null;
-let mapSourceFilter = 'todas';
+let mapSourceFilter = 'prioridad';
 
 /* CARTO retiro el acceso anonimo a basemaps.cartocdn.com (empezo a devolver
  * tiles con el texto "API KEY REQUIRED" en produccion) -- usamos OpenStreetMap
@@ -6087,6 +6092,14 @@ function mapEffectiveNivel(ie) {
     if (valor === medio) return 'media';
     return 'baja';
   };
+  if (mapSourceFilter === 'prioridad') {
+    // Score de priorizacion del informe v5. Critica y Alta comparten el rojo
+    // porque ambas exigen accion; Media es la franja de seguimiento.
+    const p = ie.prioridad || 'Baja';
+    if (p === 'Critica' || p === 'Alta') return 'alta';
+    if (p === 'Media') return 'media';
+    return 'baja';
+  }
   if (mapSourceFilter === 'simon') return mapNivel(ie.riesgo_simon, 'Alto', 'Medio');
   if (mapSourceFilter === 'censo') return mapNivel(ie.riesgo_censo, 'Critico', 'Alerta');
   if (mapSourceFilter === 'campo') return mapNivel(ie.riesgo_campo, 'Alto', 'Medio');
@@ -6094,6 +6107,13 @@ function mapEffectiveNivel(ie) {
 }
 
 const MAP_SOURCE_LEGEND = {
+  prioridad: {
+    title: 'Prioridad de atención (score 0–100)',
+    alta: 'Crítica y Alta (60–100)',
+    media: 'Media (40–59)',
+    baja: 'Baja (0–39)',
+    copy: 'Color según score_priorizacion_ie del informe v5: 0.45 SIMON + 0.30 Infraestructura + 0.20 Campo + 0.05 Brecha de evidencia. Toca una IE para ver su desglose.',
+  },
   todas: {title: 'Nivel de alerta (alertas activas)', alta: 'Alerta alta', media: 'Alerta media', baja: 'Sin alerta pendiente', copy: 'Color según las alertas activas de la IE (SIMON, Censo, Campo y preguntas dinámicas) — mismo dato que Gestión → Alertas.'},
   simon: {title: 'Riesgo SIMON', alta: 'Alto', media: 'Medio', baja: 'Bajo', copy: 'Color según riesgo_intervencion de SIMON. Los puntos grises no tienen fichas SIMON.'},
   censo: {title: 'Riesgo Censo de Infraestructura', alta: 'Crítico', media: 'Alerta', baja: 'Estable', copy: 'Color según risk_score_infra del Censo 2025.'},
@@ -6108,6 +6128,28 @@ function updateMapLegendLabels() {
   document.getElementById('leg-baja-label').textContent = cfg.baja;
   const sub = document.getElementById('map-heading-sub');
   if (sub) sub.textContent = cfg.copy;
+  // El contador rojo cuenta lo mismo que la primera fila de la leyenda, así que
+  // debe llamarse igual: decía "Alerta Alta" incluso coloreando por prioridad.
+  const contador = document.getElementById('ms-alertas-label');
+  if (contador) contador.textContent = mapSourceFilter === 'prioridad' ? 'Prioridad alta' : cfg.alta;
+  // El desplegable filtra por el MISMO nivel que pinta el color, así que sus
+  // opciones deben llamarse igual que la leyenda de la fuente activa.
+  const sel = document.getElementById('map-filter-alerta');
+  if (sel) {
+    const esPrioridad = mapSourceFilter === 'prioridad';
+    sel.options[0].textContent = esPrioridad ? 'Toda prioridad' : 'Todos los niveles de riesgo';
+    sel.options[1].textContent = cfg.alta;
+    sel.options[2].textContent = cfg.media;
+    sel.options[3].textContent = cfg.baja;
+  }
+  const rotulo = document.getElementById('map-source-label');
+  if (rotulo) {
+    // Corto a proposito: el subtitulo de arriba ya explica el detalle y aqui
+    // un texto largo se parte en dos lineas y se corta.
+    rotulo.textContent = mapSourceFilter === 'prioridad'
+      ? 'Colorear por: las 3 fuentes'
+      : 'Colorear por: una fuente';
+  }
 }
 
 async function initMap() {
@@ -6132,6 +6174,9 @@ async function initMap() {
     });
   });
 
+  // La leyenda tiene textos por defecto en el HTML; hay que sincronizarla con
+  // la fuente activa al arrancar, no solo cuando el usuario cambia de pestaña.
+  updateMapLegendLabels();
   await cargarInstitucionesMapa();
 }
 
@@ -6301,18 +6346,31 @@ function renderIEList() {
   container.innerHTML = '';
   document.getElementById('ie-list-count').textContent = filteredIEs.length;
 
-  // Mostrar maximo 100 para no trabar
-  const toRender = filteredIEs.slice(0, 100);
+  // En modo Prioridad la lista se ordena por puntaje: lo primero que se ve son
+  // las IE que hay que atender, no las primeras alfabeticamente.
+  const ordenadas = mapSourceFilter === 'prioridad'
+    ? filteredIEs.slice().sort((a, b) => (b.score?.score_priorizacion_ie ?? 0) - (a.score?.score_priorizacion_ie ?? 0))
+    : filteredIEs;
+  const toRender = ordenadas.slice(0, 100);
 
   toRender.forEach(ie => {
     const div = document.createElement('div');
     div.className = 'ie-row' + (ie.codigo_modular===selectedIECode?' selected':'');
     const c = ALERTA_CFG[mapEffectiveNivel(ie)] || ALERTA_CFG.sindatos;
+    // El puntaje va siempre visible: es el dato con el que se decide a quien
+    // visitar, y antes obligaba a abrir la ficha de cada IE para verlo.
+    const sc = ie.score || {};
+    const puntaje = sc.score_priorizacion_ie ?? 0;
+    const prioridad = sc.prioridad || 'Baja';
     div.innerHTML = `
       <div class="ie-dot" style="background:${c.hex}"></div>
       <div style="min-width:0;flex:1">
         <div class="ie-name">${esc(ie.codigo_modular)} - ${esc(ie.nombre_iiee)}</div>
         <div class="ie-meta">${esc(ie.nivel_modalidad)} · ${esc(ie.distrito||'Sin distrito')}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:8px">
+        <div style="font-size:15px;font-weight:800;color:${PRIORIDAD_COLOR[prioridad] || 'var(--text-muted)'};line-height:1">${puntaje}</div>
+        <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.03em">${esc(prioridad)}</div>
       </div>
     `;
     div.onclick = () => {
@@ -6323,6 +6381,48 @@ function renderIEList() {
     };
     container.appendChild(div);
   });
+}
+
+/* Desglose del score de priorizacion (informe v5) para una IE del mapa.
+   Muestra cuanto aporto cada fuente al puntaje, no solo el total: el objetivo
+   del informe es que el especialista pueda ver por que una IE quedo priorizada
+   y estar en desacuerdo con fundamento. */
+const PRIORIDAD_COLOR = {Critica: 'var(--danger)', Alta: 'var(--danger)', Media: 'var(--warning)', Baja: 'var(--accent)'};
+const SCORE_COMPONENTES = [
+  ['riesgo_simon_0_100', 'SIMON', 0.45, 'desempeño en aula'],
+  ['riesgo_infra_0_100', 'Infraestructura', 0.30, 'Censo 2025'],
+  ['riesgo_campo_0_100', 'Campo', 0.20, 'alertas de visitas'],
+  ['brecha_evidencia_0_100', 'Brecha de evidencia', 0.05, 'fuentes faltantes'],
+];
+
+function renderIEScore(ie) {
+  const cont = document.getElementById('ied-score');
+  if (!cont) return;
+  const sc = ie.score || {};
+  const total = sc.score_priorizacion_ie ?? 0;
+  const prioridad = sc.prioridad || 'Baja';
+  cont.innerHTML = `
+    <div class="ied-row" style="align-items:center">
+      <span style="font-weight:800;color:${PRIORIDAD_COLOR[prioridad]}">${esc(prioridad)}</span>
+      <span class="val" style="font-size:18px">${total} <span style="font-size:11px;color:var(--text-dim)">/100</span></span>
+    </div>
+    ${SCORE_COMPONENTES.map(([clave, nombre, peso, detalle]) => {
+      const valor = sc[clave] ?? 0;
+      const aporte = Math.round(valor * peso * 10) / 10;
+      return `
+        <div style="margin-top:8px">
+          <div style="display:flex;justify-content:space-between;font-size:11px">
+            <span>${esc(nombre)} <span style="color:var(--text-dim)">· ${esc(detalle)}</span></span>
+            <span><strong>${valor}</strong> × ${peso} = <strong>${aporte}</strong></span>
+          </div>
+          <div class="dash-hbar-track" style="margin-top:3px"><span class="dash-hbar-fill" style="width:${Math.max(2, Math.min(100, valor))}%;background:${clave === 'brecha_evidencia_0_100' ? 'var(--text-dim)' : 'var(--brand-blue)'}"></span></div>
+        </div>`;
+    }).join('')}
+    <div style="margin-top:10px;font-size:10.5px;color:var(--text-dim);line-height:1.5">
+      Score del informe v5: <strong>0.45</strong> SIMON + <strong>0.30</strong> Infraestructura +
+      <strong>0.20</strong> Campo + <strong>0.05</strong> Brecha. La brecha no mide riesgo: mide
+      cuántas de las tres fuentes faltan para evaluar esta IE.
+    </div>`;
 }
 
 async function showIEDetail(ie) {
@@ -6341,6 +6441,8 @@ async function showIEDetail(ie) {
   document.getElementById('ied-promedio').textContent = ie.simon_promedio||'-';
   document.getElementById('ied-campo').textContent = ie.campo_documentos||'0';
   document.getElementById('ied-cobertura').textContent = ie.coverage_category||'Sin evidencia';
+
+  renderIEScore(ie);
 
   // Load alerts
   const ac = document.getElementById('ied-alerts-container');
@@ -7102,10 +7204,6 @@ const dashboardState = {
  * tienen aun una forma correcta de combinarse o de calcularse, asi que se
  * comunica explicitamente en vez de mostrar numeros mezclados o inventados. */
 const SOURCE_KPI_SOON = {
-  todas: {
-    title: 'Vista unificada en construcción',
-    copy: 'Aún no combinamos KPIs de SIMON, preguntas dinámicas e informes de campo en una sola lectura. Elige una fuente arriba para ver sus KPIs reales.',
-  },
   dinamica: {
     title: 'KPIs de preguntas dinámicas en construcción',
     copy: 'El instrumento dinámico (Infraestructura, Docentes, Alumnos, Estudiantes, Familias) todavía no tiene respuestas registradas.',
@@ -7739,6 +7837,7 @@ function renderDashboard() {
   const simonRanking = d.simon_ranking || {ies: [], total_ie: 0};
   const infraRanking = d.infra_ranking || {ies: [], total_ie: 0};
   const infraSummary = d.infraestructura_censo || {};
+  const priorizacion = d.priorizacion || {};
   const simonRiesgoAlto = simonRanking.ies.filter(ie => ie.riesgo_intervencion === 'Alto').length;
   const censoScore = Number(infraSummary.promedio_score || 0);
   const censoNivel = censoScore >= 5 ? 'Critico' : censoScore >= 3 ? 'Alerta' : 'Estable';
@@ -7847,6 +7946,27 @@ function renderDashboard() {
       <div class="dash-kpi-sub">de 382 IE oficiales</div>
     </div>
     ${campoHeroKpi}
+  ` : dashboardState.sourceFilter === 'todas' ? `
+    <div class="dash-kpi red">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">IE priorizadas</div><span class="dash-kpi-icon">${ICON_SVGS.alert}</span></div>
+      <div class="dash-kpi-value">${priorizacion.prioritarias || 0}</div>
+      <div class="dash-kpi-sub" title="Score 60 o más: prioridad Crítica o Alta">${priorizacion.criticas || 0} críticas · ${priorizacion.altas || 0} altas · de ${priorizacion.total || 0} IE</div>
+    </div>
+    <div class="dash-kpi">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Score promedio</div><span class="dash-kpi-icon">${ICON_SVGS.chart}</span></div>
+      <div class="dash-kpi-value">${priorizacion.score_promedio ?? 0}</div>
+      <div class="dash-kpi-sub">de 100 · las tres fuentes combinadas</div>
+    </div>
+    <div class="dash-kpi amber">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">IE con las 3 fuentes</div><span class="dash-kpi-icon">${ICON_SVGS.school}</span></div>
+      <div class="dash-kpi-value">${priorizacion.con_tres_fuentes || 0}</div>
+      <div class="dash-kpi-sub">${priorizacion.pct_tres_fuentes ?? 0}% del universo · el resto se evalúa con datos parciales</div>
+    </div>
+    <div class="dash-kpi green">
+      <div class="dash-kpi-icon-row"><div class="dash-kpi-label">Cobertura por fuente</div><span class="dash-kpi-icon">${ICON_SVGS.map}</span></div>
+      <div class="dash-kpi-value" style="font-size:20px">${priorizacion.con_simon || 0} · ${priorizacion.con_infra || 0} · ${priorizacion.con_campo || 0}</div>
+      <div class="dash-kpi-sub">SIMON · Censo · Campo</div>
+    </div>
   ` : SOURCE_KPI_SOON[dashboardState.sourceFilter] ? `
     <div class="dash-kpi-soon">
       <div>
@@ -8915,18 +9035,30 @@ function renderDashboardSide(d, excel) {
     const levels = (model.levels || []).map(level => `
       <div class="dash-rule"><strong>${esc(level.level)}</strong> · ${esc(level.range)}<br/>${esc(level.action)}</div>
     `).join('');
+    // Cada componente muestra su peso, cómo se calcula y POR QUÉ pesa eso: es
+    // el punto del informe, que un especialista pueda discutir un peso concreto.
     const weights = (model.weights || []).map(w => `
-      <div class="dash-rule"><strong>${esc(w.factor)}</strong><br/>${esc(w.weight)} · ${esc(w.rule || '')}</div>
+      <div class="dash-rule">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <strong>${esc(w.factor)}</strong>
+          <span style="font-size:15px;font-weight:800;color:var(--brand-blue)">${esc(w.weight)}</span>
+        </div>
+        ${w.calculo ? `<div style="font-family:Consolas,monospace;font-size:10px;color:var(--dash-muted);margin:4px 0">${esc(w.calculo)}</div>` : ''}
+        <div style="margin-top:2px">${esc(w.rule || '')}</div>
+      </div>
     `).join('');
     const infraFormula = (infraDefs.formula || []).slice(0, 4).map(item => `<div class="dash-rule">${esc(item)}</div>`).join('');
     document.getElementById('dash-model').innerHTML = `
-      <div class="dash-section-title">Modelo de clasificacion</div>
+      <div class="dash-section-title">Cómo se prioriza cada IE</div>
       <div class="dash-section-sub"><strong>${esc(model.name || '')}</strong></div>
+      ${model.formula ? `<div style="background:var(--dash-surface3);border-radius:8px;padding:10px 12px;margin:8px 0;font-family:Consolas,monospace;font-size:11px;line-height:1.6;color:var(--dash-text)">${esc(model.formula)}</div>` : ''}
       <div class="dash-item-meta">${esc(model.description || '')}</div>
-      <div class="dash-section-title" style="margin-top:16px">Componentes del score</div>
+      <div class="dash-section-title" style="margin-top:16px">Peso de cada fuente y por qué</div>
       ${weights}
-      <div class="dash-section-title" style="margin-top:16px">Niveles de riesgo</div>
+      ${model.nota_pesos ? `<div class="dash-item-meta" style="margin-top:10px;padding:8px 10px;border-left:3px solid var(--dash-amber);background:var(--dash-surface3)">${esc(model.nota_pesos)}</div>` : ''}
+      <div class="dash-section-title" style="margin-top:16px">Niveles de prioridad</div>
       ${levels}
+      ${model.fuente ? `<div class="dash-item-meta" style="margin-top:8px">Fuente: ${esc(model.fuente)}</div>` : ''}
       <div class="dash-section-title" style="margin-top:16px">Infraestructura 2025</div>
       <div class="dash-rule"><strong>alertas_infraestructura_campo</strong><br/>${esc(infraDefs.alertas_infraestructura_campo || '')}</div>
       <div class="dash-rule"><strong>risk_flags</strong><br/>${esc(infraDefs.risk_flags || '')}</div>

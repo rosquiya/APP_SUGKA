@@ -971,6 +971,19 @@ def ensure_db_schema():
         'riesgo_intervencion_simon': 'TEXT',
         'simon_promedio_general_desempeno': 'REAL',
         'simon_porcentaje_items_bajos': 'REAL',
+        # Componentes del score de priorizacion del informe v5 (seccion 3.3).
+        # Se guardan por separado, no solo el total, para que la app pueda
+        # mostrarle al especialista de que esta hecho el puntaje de cada IE.
+        'riesgo_simon_0_100': 'REAL',
+        'riesgo_infra_0_100': 'REAL',
+        'riesgo_campo_0_100': 'REAL',
+        'brecha_evidencia_0_100': 'REAL',
+        'score_priorizacion_ie': 'REAL',
+        'prioridad_v5': 'TEXT',
+        'campo_alertas_altas': 'INTEGER DEFAULT 0',
+        'campo_alertas_medias': 'INTEGER DEFAULT 0',
+        'campo_alertas_bajas': 'INTEGER DEFAULT 0',
+        'campo_vars_distintas': 'INTEGER DEFAULT 0',
     }
     for name, column_type in resumen_columns.items():
         if name not in resumen_existing:
@@ -1276,6 +1289,25 @@ def ensure_db_schema():
     ''')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_campo_hallazgo_visita ON informe_campo_hallazgo(visita_campo_id)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_campo_hallazgo_variable ON informe_campo_hallazgo(variable_detectada)')
+
+    # Validacion de hallazgos por especialista. El pipeline de OCR marca una
+    # variable a partir de un fragmento de texto, y esa deteccion puede estar
+    # mal (el fragmento habla del tema pero no reporta el problema, o es una
+    # recomendacion y no una alerta). Estas columnas guardan el veredicto
+    # humano para que la evidencia siga siendo trazable: un hallazgo
+    # descartado deja de contar, pero no se pierde ni el fragmento ni la razon.
+    hallazgo_existing = {
+        fila[1] for fila in conn.execute('PRAGMA table_info(informe_campo_hallazgo)')
+    }
+    for columna, tipo in (
+        ('validacion_estado', "TEXT DEFAULT 'sin_validar'"),
+        ('validacion_comentario', 'TEXT'),
+        ('validacion_por', 'TEXT'),
+        ('validacion_en', 'DATETIME'),
+        ('validacion_fuente', 'TEXT'),
+    ):
+        if columna not in hallazgo_existing:
+            conn.execute(f'ALTER TABLE informe_campo_hallazgo ADD COLUMN {columna} {tipo}')
 
     conn.execute('''
         CREATE TABLE IF NOT EXISTS app_instrumento (
@@ -1796,13 +1828,146 @@ SIMON_RISK_EXAMPLE = {
     ),
 }
 
+# ─── SCORE DE PRIORIZACION (informe final Sugka Lab v5, seccion 3.3) ──────────
+# Regla ponderada explicable, 0 a 100, que une las tres fuentes por
+# codigo_modular. Se implementa exactamente como la documenta el informe para
+# que app e informe den el mismo numero: antes la app usaba una formula aditiva
+# propia (calculate_risk v0.1) que no coincidia con lo publicado.
+#
+# Cada fuente se lleva primero a una escala 0-100 para que el peso dependa solo
+# de la formula y no de la escala original de cada variable.
+
+# La app ya usa Critico/Alto/Medio/Bajo en colores, filtros y leyendas; el
+# informe nombra los mismos cuatro niveles como Critica/Alta/Media/Baja.
+RIESGO_NIVEL_POR_PRIORIDAD = {'Critica': 'Critico', 'Alta': 'Alto', 'Media': 'Medio', 'Baja': 'Bajo'}
+
+SCORE_PESOS = {'simon': 0.45, 'infra': 0.30, 'campo': 0.20, 'brecha': 0.05}
+
+# Maximo observable de risk_score_infra segun el informe (seccion 3.3.2).
+INFRA_SCORE_MAX = 6.5
+
+# Puntos por alerta de campo segun severidad. Mantienen la proporcion 2:1 entre
+# severidades consecutivas: dos medias ~ una alta, dos bajas ~ una media.
+CAMPO_PUNTOS_SEVERIDAD = {'alta': 25, 'media': 12, 'baja': 6}
+
+
+def riesgo_simon_0_100(promedio, pct_bajos):
+    """Desempeno pedagogico en escala 0-100 (mas alto = peor).
+
+    El promedio se invierte porque un promedio bajo es peor, y pesa mas (0.60)
+    que el porcentaje de items bajos (0.40) porque resume los 8 items en una
+    cifra continua; el porcentaje evita que un item muy bueno tape varios malos.
+    """
+    promedio = safe_float(promedio, 0.0)
+    if promedio <= 0:
+        return 0.0
+    pct = safe_float(pct_bajos, 0.0)
+    if pct <= 1.0:
+        pct *= 100  # se guarda como fraccion; el informe lo usa como porcentaje
+    promedio_bajo = ((4 - promedio) / 3) * 100
+    return round(max(0.0, min(100.0, 0.60 * promedio_bajo + 0.40 * pct)), 1)
+
+
+def riesgo_infra_0_100(risk_score_infra):
+    """Infraestructura en escala 0-100, reescalando sobre su maximo observable."""
+    valor = safe_float(risk_score_infra, 0.0)
+    if valor <= 0:
+        return 0.0
+    return round(min(valor / INFRA_SCORE_MAX * 100, 100), 1)
+
+
+def riesgo_campo_0_100(altas, medias, bajas):
+    """Alertas de campo ponderadas por severidad, con tope en 100."""
+    total = (safe_int(altas, 0) * CAMPO_PUNTOS_SEVERIDAD['alta']
+             + safe_int(medias, 0) * CAMPO_PUNTOS_SEVERIDAD['media']
+             + safe_int(bajas, 0) * CAMPO_PUNTOS_SEVERIDAD['baja'])
+    return round(min(total, 100), 1)
+
+
+def brecha_evidencia_0_100(tiene_simon, tiene_infra, tiene_campo):
+    """Completitud de la evidencia, NO riesgo.
+
+    Mide cuantas de las tres fuentes faltan. Una brecha alta no dice que la IE
+    este bien: dice que no se la puede evaluar con la misma certeza que a las
+    demas. Por eso pesa solo 0.05 en el score final.
+    """
+    faltantes = 3 - sum(1 for tiene in (tiene_simon, tiene_infra, tiene_campo) if tiene)
+    return round((faltantes / 3) * 100, 1)
+
+
+def clasificar_prioridad(score):
+    """Cortes del informe v5 (seccion 3.3.4)."""
+    valor = safe_float(score, 0.0)
+    if valor >= 75:
+        return 'Critica'
+    if valor >= 60:
+        return 'Alta'
+    if valor >= 40:
+        return 'Media'
+    return 'Baja'
+
+
+def calcular_score_priorizacion(simon_0_100, infra_0_100, campo_0_100, brecha_0_100):
+    """Combina los cuatro componentes con los pesos del informe v5."""
+    score = (SCORE_PESOS['simon'] * safe_float(simon_0_100, 0.0)
+             + SCORE_PESOS['infra'] * safe_float(infra_0_100, 0.0)
+             + SCORE_PESOS['campo'] * safe_float(campo_0_100, 0.0)
+             + SCORE_PESOS['brecha'] * safe_float(brecha_0_100, 0.0))
+    return round(min(max(score, 0.0), 100.0), 1)
+
+
+def desglose_score(fila):
+    """Componentes + score + prioridad de una fila de institucion_resumen.
+
+    Se usa tanto al recalcular (rebuild) como al leer filas viejas que todavia
+    no tienen las columnas guardadas, para que la app nunca muestre un score
+    vacio mientras no se haya corrido un recalculo.
+    """
+    simon = fila.get('riesgo_simon_0_100')
+    if simon is None:
+        simon = riesgo_simon_0_100(
+            fila.get('simon_promedio_general_desempeno') or fila.get('simon_promedio_nivel'),
+            fila.get('simon_porcentaje_items_bajos'),
+        )
+    infra = fila.get('riesgo_infra_0_100')
+    if infra is None:
+        infra = riesgo_infra_0_100(fila.get('risk_score_infra'))
+    campo = fila.get('riesgo_campo_0_100')
+    if campo is None:
+        campo = riesgo_campo_0_100(
+            fila.get('campo_alertas_altas'), fila.get('campo_alertas_medias'),
+            fila.get('campo_alertas_bajas'),
+        )
+    brecha = fila.get('brecha_evidencia_0_100')
+    if brecha is None:
+        brecha = brecha_evidencia_0_100(
+            safe_int(fila.get('simon_fichas'), 0) > 0,
+            'Censo' in str(fila.get('coverage_category') or ''),
+            safe_int(fila.get('campo_documentos'), 0) > 0,
+        )
+    score = fila.get('score_priorizacion_ie')
+    if score is None:
+        score = calcular_score_priorizacion(simon, infra, campo, brecha)
+    return {
+        'riesgo_simon_0_100': round(safe_float(simon, 0.0), 1),
+        'riesgo_infra_0_100': round(safe_float(infra, 0.0), 1),
+        'riesgo_campo_0_100': round(safe_float(campo, 0.0), 1),
+        'brecha_evidencia_0_100': round(safe_float(brecha, 0.0), 1),
+        'score_priorizacion_ie': round(safe_float(score, 0.0), 1),
+        'prioridad': fila.get('prioridad_v5') or clasificar_prioridad(score),
+    }
+
+
 RISK_MODEL = {
-    'name': 'Modelo de Riesgo Educativo SUGKA v0.1',
-    'type': 'Reglas ponderadas explicables',
+    'name': 'Score de priorizacion Sugka Lab (informe final v5)',
+    'type': 'Regla ponderada explicable, 0 a 100',
+    'formula': ('score_priorizacion_ie = 0.45 · SIMON + 0.30 · Infraestructura '
+                '+ 0.20 · Campo + 0.05 · Brecha de evidencia'),
     'description': (
-        'Clasifica cada IE con una puntuacion de 0 a 100 usando reglas auditables. '
-        'La priorizacion actual se calcula con fichas SIMON reales, alertas abiertas '
-        'e infraestructura del Censo Educativo 2025; no usa datos inventados ni un modelo de caja negra.'
+        'Une las tres fuentes por codigo_modular y resume la prioridad de atencion de cada IE '
+        'en una sola escala de 0 a 100. No es un modelo entrenado: el informe descarta la regresion '
+        'por falta de muestra y entrega esta regla ponderada, donde cada peso puede revisarse y '
+        'discutirse uno por uno. El score prioriza; no reemplaza el criterio del especialista.'
     ),
     'levels': [
         {'level': 'Critico', 'range': '75-100', 'action': 'Visita prioritaria y plan de accion inmediato'},
@@ -1811,12 +1976,53 @@ RISK_MODEL = {
         {'level': 'Bajo', 'range': '0-39', 'action': 'Seguimiento ordinario'},
     ],
     'weights': [
-        {'factor': 'Prioridad base de institucion_resumen', 'weight': 'hasta 28 pts', 'rule': 'priority_score se escala como base de priorizacion.'},
-        {'factor': 'Cobertura de evidencia', 'weight': '+25 / +16 / +6 pts', 'rule': 'Sin evidencia, solo campo o solo SIMON agregan incertidumbre operativa.'},
-        {'factor': 'Alertas acumuladas', 'weight': 'hasta 34 pts', 'rule': 'Suma alertas de campo, pedagogicas e infraestructura/servicios.'},
-        {'factor': 'Infraestructura censal', 'weight': 'hasta 53 pts', 'rule': 'risk_score_infra y banderas censales elevan prioridad.'},
-        {'factor': 'Promedio SIMON', 'weight': '+30 / +24 / +14 pts', 'rule': 'Promedios menores a Nivel III requieren refuerzo pedagogico.'},
+        {
+            'factor': 'Riesgo SIMON',
+            'weight': '0.45',
+            'rule': (
+                'Unica fuente que observa directamente el desempeno pedagogico en el aula, con un '
+                'instrumento estandarizado aplicado por un especialista: la evidencia mas cercana al '
+                'problema que se busca priorizar.'
+            ),
+            'calculo': 'promedio invertido ((4 - promedio) / 3 × 100) × 0.60 + % de items bajos × 0.40',
+        },
+        {
+            'factor': 'Riesgo de infraestructura',
+            'weight': '0.30',
+            'rule': (
+                'Unica fuente con cobertura completa de las 382 IE y con registro estructurado '
+                '(Censo/Padron), no extraccion de texto libre: la senal mas objetiva.'
+            ),
+            'calculo': 'risk_score_infra / 6.5 × 100, con tope en 100',
+        },
+        {
+            'factor': 'Riesgo de Campo',
+            'weight': '0.20',
+            'rule': (
+                'Aporta senales que ni SIMON ni el Censo observan (violencia, ausencia docente, gestion '
+                'directiva, acceso), pero su cobertura es parcial y depende de extraccion automatica de '
+                'texto. Pesa menos por eso, no porque sus hallazgos importen menos.'
+            ),
+            'calculo': 'alertas altas × 25 + medias × 12 + bajas × 6, con tope en 100',
+        },
+        {
+            'factor': 'Brecha de evidencia',
+            'weight': '0.05',
+            'rule': (
+                'No mide riesgo, mide completitud. Se mantiene bajo a proposito para que falta de datos '
+                'nunca se confunda con alto riesgo, pero presente para que una IE sin evidencia no quede '
+                'igual que una ya confirmada como de bajo riesgo en las tres fuentes.'
+            ),
+            'calculo': 'fuentes faltantes / 3 × 100',
+        },
     ],
+    'nota_pesos': (
+        'Los cuatro pesos son una propuesta inicial sustentada en el razonamiento anterior, no en un '
+        'ajuste estadistico: hoy no hay muestra suficiente para ajustarlos con confianza. Estan '
+        'documentados componente por componente para que un especialista pueda cuestionarlos y proponer '
+        'un ajuste antes de un uso institucional.'
+    ),
+    'fuente': 'Informe final Sugka Lab v5, seccion 3.3',
 }
 
 ALERT_RULES = [
@@ -1877,86 +2083,56 @@ def risk_level(score):
     return 'Bajo'
 
 def calculate_risk(row):
-    priority = safe_float(row.get('priority_score'), 0.0)
-    coverage = row.get('coverage_category') or 'Sin evidencia'
-    total_alerts = safe_int(row.get('total_alertas_campo'), 0)
-    infra_alerts = safe_int(row.get('alertas_infraestructura_campo'), 0)
-    pedagogic_alerts = safe_int(row.get('alertas_pedagogicas_campo'), 0)
-    simon_fichas = safe_int(row.get('simon_fichas'), 0)
-    campo_docs = safe_int(row.get('campo_documentos'), 0)
-    simon_average = safe_float(row.get('simon_promedio_nivel'), 0.0)
-    infra_risk = safe_float(row.get('risk_score_infra'), 0.0)
-    risk_flags = [
-        flag for flag in str(row.get('risk_flags') or '').split('|')
-        if flag
+    """Prioriza una IE con el score del informe v5 (seccion 3.3).
+
+    Antes esta funcion usaba una formula aditiva propia de la app que no
+    coincidia con la publicada en el informe: mismos niveles y mismos cortes,
+    pero otro calculo. Ahora la app usa la del informe, que es la regla
+    ponderada explicable (no hay modelo entrenado: el informe lo descarta
+    explicitamente por falta de muestra).
+
+    Se mantienen las llaves `risk_score` / `risk_level` / `risk_reasons` porque
+    el resto de la app y el frontend ya las consumen; `risk_level` conserva los
+    nombres Critico/Alto/Medio/Bajo que usan los colores y filtros existentes.
+    """
+    desglose = desglose_score(dict(row))
+    score = desglose['score_priorizacion_ie']
+
+    # Razones legibles, ordenadas por cuanto aporta cada componente al total:
+    # el especialista debe poder ver POR QUE una IE quedo priorizada.
+    aportes = [
+        ('SIMON', desglose['riesgo_simon_0_100'], SCORE_PESOS['simon'],
+         'desempeno pedagogico observado en aula'),
+        ('Infraestructura', desglose['riesgo_infra_0_100'], SCORE_PESOS['infra'],
+         'condiciones del local segun el Censo 2025'),
+        ('Campo', desglose['riesgo_campo_0_100'], SCORE_PESOS['campo'],
+         'alertas registradas en visitas'),
     ]
+    aportes.sort(key=lambda a: a[1] * a[2], reverse=True)
+    reasons = [
+        f'{nombre} {valor}/100 (peso {int(peso * 100)}%): {detalle}'
+        for nombre, valor, peso, detalle in aportes
+        if valor > 0
+    ]
+    brecha = desglose['brecha_evidencia_0_100']
+    if brecha > 0:
+        faltan = int(round(brecha / 100 * 3))
+        reasons.append(
+            f'Brecha de evidencia {brecha}/100: falta {faltan} de 3 fuentes, '
+            'el puntaje se calculo con informacion parcial'
+        )
+    if not reasons:
+        reasons = ['Sin senales de riesgo en las tres fuentes']
 
-    score = min(priority * 3.2, 28)
-    reasons = []
-
-    if coverage == 'Sin evidencia':
-        score += 25
-        reasons.append('sin evidencia registrada')
-    elif coverage == 'Solo campo':
-        score += 16
-        reasons.append('campo sin contraste SIMON')
-    elif coverage == 'Solo SIMON':
-        score += 6
-        reasons.append('evidencia SIMON cargada')
-
-    alert_score = min(total_alerts * 0.07, 16)
-    score += alert_score
-    if total_alerts >= 20:
-        reasons.append(f'{total_alerts} alertas abiertas')
-
-    if pedagogic_alerts >= 20:
-        score += 10
-        reasons.append('alertas pedagogicas acumuladas')
-    elif pedagogic_alerts >= 8:
-        score += 5
-
-    if infra_alerts >= 10:
-        score += 8
-        reasons.append('alertas de infraestructura/servicios')
-    elif infra_alerts >= 4:
-        score += 4
-
-    if infra_risk:
-        score += min(infra_risk * 4, 28)
-        reasons.append(f'riesgo infraestructura {round(infra_risk, 2)}')
-
-    if 'edificacion_con_riesgo_estructural' in risk_flags:
-        score += 10
-        reasons.append('riesgo estructural censal')
-    if 'alta_densidad_alumnos_por_aula_en_uso' in risk_flags:
-        score += 6
-        reasons.append('alta densidad por aula')
-    if 'aulas_registradas_no_en_uso' in risk_flags:
-        score += 5
-        reasons.append('aulas registradas sin uso')
-    if 'sin_registros_edificaciones' in risk_flags or 'sin_registros_aulas' in risk_flags:
-        score += 4
-        reasons.append('brecha de registros censales')
-
-    if simon_average and simon_average < 2:
-        score += 30
-        reasons.append('desempeno menor a nivel 2')
-    elif simon_average and simon_average < 2.5:
-        score += 24
-        reasons.append('desempeno por debajo de 2.5')
-    elif simon_average and simon_average < 3:
-        score += 14
-        reasons.append('desempeno regular con necesidad de refuerzo')
-    elif not simon_fichas and campo_docs:
-        score += 6
-        reasons.append('evidencia de campo pendiente de ficha')
-
-    score = round(min(score, 100), 1)
     return {
         'risk_score': score,
-        'risk_level': risk_level(score),
-        'risk_reasons': reasons[:4] or ['sin alertas criticas acumuladas'],
+        'risk_level': RIESGO_NIVEL_POR_PRIORIDAD.get(desglose['prioridad'], 'Bajo'),
+        'risk_reasons': reasons[:4],
+        # Se exponen los componentes para que la vista pueda mostrar el desglose
+        # y la leyenda sin recalcular nada.
+        'score_componentes': desglose,
     }
+
 
 SEMAFORO_PEDAGOGICO = [
     {
@@ -2295,7 +2471,11 @@ def rebuild_simon_operational_summary(conn):
         campo_pedagogic_count = sum(campo_var_counts.get(v, 0) for v in CAMPO_PEDAGOGIC_BUCKET)
 
         indicators = len(all_values)
-        average = round(sum(all_values) / indicators, 2) if indicators else 0.0
+        # El promedio se guarda redondeado a 2 decimales para mostrarlo, pero el
+        # score del informe se calcula con el valor exacto: redondear antes
+        # desplazaba el resultado (PAKUI daba 62.4 en vez de 62.5).
+        promedio_exacto = (sum(all_values) / indicators) if indicators else 0.0
+        average = round(promedio_exacto, 2) if indicators else 0.0
         low_share = low_total / indicators if indicators else 0.0
         simon_priority = round(min(22, 5 + (low_share * 11) + max(0, 3 - average) * 5), 2) if indicators else 0.0
         infra_alerts = safe_int(infra.get('alertas_infraestructura_campo'), 0)
@@ -2359,6 +2539,21 @@ def rebuild_simon_operational_summary(conn):
         })
         campo_temas = sorted(campo_var_counts.keys())
 
+        # --- Score de priorizacion del informe v5 (seccion 3.3) ---
+        # Se cuentan VARIABLES DISTINTAS observadas por severidad (no visitas),
+        # tal como lo define el informe: una variable vista en tres visitas
+        # sigue siendo una sola senal.
+        sev_campo = {'alta': 0, 'media': 0, 'baja': 0}
+        for var in campo_var_counts:
+            severidad = (CAMPO_VARIABLE_META.get(var, {}) or {}).get('severidad', 'media')
+            if severidad in sev_campo:
+                sev_campo[severidad] += 1
+        v5_simon = riesgo_simon_0_100(promedio_exacto if indicators else 0.0, low_share)
+        v5_infra = riesgo_infra_0_100(infra_score)
+        v5_campo = riesgo_campo_0_100(sev_campo['alta'], sev_campo['media'], sev_campo['baja'])
+        v5_brecha = brecha_evidencia_0_100(bool(fichas), bool(infra), bool(campo_visitas))
+        v5_score = calcular_score_priorizacion(v5_simon, v5_infra, v5_campo, v5_brecha)
+
         conn.execute('''
             INSERT OR REPLACE INTO institucion_resumen (
                 codigo_modular, campo_documentos, simon_fichas, simon_indicadores,
@@ -2367,9 +2562,14 @@ def rebuild_simon_operational_summary(conn):
                 simon_sin_campo, ambas_fuentes, priority_score, priority_reason,
                 campo_owners, campo_topics, simon_monitores, simon_docentes, simon_fechas,
                 risk_score_infra, risk_flags, riesgo_intervencion_simon,
-                simon_promedio_general_desempeno, simon_porcentaje_items_bajos
+                simon_promedio_general_desempeno, simon_porcentaje_items_bajos,
+                riesgo_simon_0_100, riesgo_infra_0_100, riesgo_campo_0_100,
+                brecha_evidencia_0_100, score_priorizacion_ie, prioridad_v5,
+                campo_alertas_altas, campo_alertas_medias, campo_alertas_bajas,
+                campo_vars_distintas
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             code,
             len(campo_visitas),
@@ -2394,6 +2594,8 @@ def rebuild_simon_operational_summary(conn):
             riesgo_intervencion_simon,
             average if indicators else None,
             round(low_share, 2) if indicators else None,
+            v5_simon, v5_infra, v5_campo, v5_brecha, v5_score, clasificar_prioridad(v5_score),
+            sev_campo['alta'], sev_campo['media'], sev_campo['baja'], len(campo_var_counts),
         ))
 
         if low_total:
@@ -3381,6 +3583,45 @@ def build_especialistas_monitoreo(conn, anio='', mes='', codigo_ie=''):
         'total_talleres': sum(f['talleres'] for f in filas),
         'filtros': {'anio': anio, 'mes': mes, 'codigo_modular': codigo_ie},
     }
+
+
+def build_priorizacion_resumen(conn):
+    """Lectura unificada de las tres fuentes: el score del informe v5 por IE.
+
+    Es lo que responde "que tan priorizado esta el universo completo", en vez de
+    mirar cada fuente por separado. Incluye la cobertura de evidencia porque sin
+    ella el promedio de score se malinterpreta: casi toda IE tiene solo Censo.
+    """
+    fila = conn.execute("""
+        SELECT COUNT(*) AS total,
+               ROUND(AVG(COALESCE(score_priorizacion_ie, 0)), 1) AS score_promedio,
+               ROUND(AVG(COALESCE(riesgo_simon_0_100, 0)), 1) AS simon_prom,
+               ROUND(AVG(COALESCE(riesgo_infra_0_100, 0)), 1) AS infra_prom,
+               ROUND(AVG(COALESCE(riesgo_campo_0_100, 0)), 1) AS campo_prom,
+               ROUND(AVG(COALESCE(brecha_evidencia_0_100, 0)), 1) AS brecha_prom,
+               SUM(CASE WHEN prioridad_v5 = 'Critica' THEN 1 ELSE 0 END) AS criticas,
+               SUM(CASE WHEN prioridad_v5 = 'Alta' THEN 1 ELSE 0 END) AS altas,
+               SUM(CASE WHEN prioridad_v5 = 'Media' THEN 1 ELSE 0 END) AS medias,
+               SUM(CASE WHEN prioridad_v5 = 'Baja' THEN 1 ELSE 0 END) AS bajas,
+               SUM(CASE WHEN COALESCE(brecha_evidencia_0_100, 100) = 0 THEN 1 ELSE 0 END) AS con_tres_fuentes,
+               SUM(CASE WHEN COALESCE(simon_fichas, 0) > 0 THEN 1 ELSE 0 END) AS con_simon,
+               SUM(CASE WHEN COALESCE(coverage_category, '') LIKE '%Censo%' THEN 1 ELSE 0 END) AS con_infra,
+               SUM(CASE WHEN COALESCE(campo_documentos, 0) > 0 THEN 1 ELSE 0 END) AS con_campo
+        FROM institucion_resumen
+    """).fetchone()
+    datos = dict(fila) if fila else {}
+    total = safe_int(datos.get('total'), 0)
+    prioritarias = safe_int(datos.get('criticas'), 0) + safe_int(datos.get('altas'), 0)
+    datos['prioritarias'] = prioritarias
+    datos['pct_prioritarias'] = round(prioritarias / total * 100, 1) if total else 0.0
+    datos['pct_tres_fuentes'] = round(safe_int(datos.get('con_tres_fuentes'), 0) / total * 100, 1) if total else 0.0
+    # Aporte medio de cada fuente al score, ya ponderado: hace visible por que el
+    # promedio general es bajo (casi nadie tiene SIMON ni Campo).
+    datos['aporte_simon'] = round(safe_float(datos.get('simon_prom'), 0) * SCORE_PESOS['simon'], 1)
+    datos['aporte_infra'] = round(safe_float(datos.get('infra_prom'), 0) * SCORE_PESOS['infra'], 1)
+    datos['aporte_campo'] = round(safe_float(datos.get('campo_prom'), 0) * SCORE_PESOS['campo'], 1)
+    datos['aporte_brecha'] = round(safe_float(datos.get('brecha_prom'), 0) * SCORE_PESOS['brecha'], 1)
+    return datos
 
 
 def build_ie_coverage(conn):
@@ -4398,6 +4639,11 @@ def get_instituciones():
             COALESCE(r.campo_documentos,    0)              AS campo_documentos,
             COALESCE(r.campo_owners,        '')             AS especialistas,
             COALESCE(r.simon_promedio_nivel,0)              AS simon_promedio,
+            r.riesgo_simon_0_100, r.riesgo_infra_0_100, r.riesgo_campo_0_100,
+            r.brecha_evidencia_0_100, r.score_priorizacion_ie, r.prioridad_v5,
+            r.risk_score_infra, r.simon_promedio_general_desempeno,
+            r.simon_porcentaje_items_bajos, r.campo_alertas_altas,
+            r.campo_alertas_medias, r.campo_alertas_bajas,
             CASE
                 WHEN COALESCE(r.priority_score,0) >= 15 THEN 'alta'
                 WHEN COALESCE(r.priority_score,0) >= 8  THEN 'media'
@@ -4446,6 +4692,11 @@ def get_instituciones():
         item['riesgo_censo'] = infra_lookup.get(item['codigo_modular'])
         item['riesgo_campo'] = campo_lookup.get(item['codigo_modular'])
         item['nivel_alerta'] = alerta_lookup.get(item['codigo_modular'], 'baja')
+        # Score de priorizacion del informe v5: el mapa puede colorear por esto
+        # ademas de por alertas pendientes. Se envia el desglose completo para
+        # que la ficha de la IE muestre de que esta hecho el puntaje.
+        item['score'] = desglose_score(item)
+        item['prioridad'] = item['score']['prioridad']
         result.append(item)
 
     conn.close()
@@ -5372,6 +5623,7 @@ def get_dashboard():
     simon_ranking = build_simon_ranking(conn, simon_fichas_dedup, simon_dedup_meta)
     infra_ranking = build_infra_ranking(conn)
     campo_ranking = build_campo_ranking(conn)
+    priorizacion = build_priorizacion_resumen(conn)
     asistencias_talleres = build_asistencias_dashboard(conn)
     especialistas_monitoreo = build_especialistas_monitoreo(conn)
     ie_coverage = build_ie_coverage(conn)
@@ -5395,6 +5647,7 @@ def get_dashboard():
         'simon_ranking': simon_ranking,
         'infra_ranking': infra_ranking,
         'campo_ranking': campo_ranking,
+        'priorizacion': priorizacion,
         'asistencias_talleres': asistencias_talleres,
         'especialistas_monitoreo': especialistas_monitoreo,
         'ie_coverage': ie_coverage,
@@ -7208,7 +7461,14 @@ def informe_campo_detalle(visita_campo_id):
             )
 
         if 'hallazgos' in data:
-            conn.execute('DELETE FROM informe_campo_hallazgo WHERE visita_campo_id = ?', (visita_campo_id,))
+            # Solo se reemplazan los hallazgos vigentes: los que un especialista
+            # ya descarto se conservan como registro de la validacion (el GET
+            # tampoco los devuelve, asi que no vuelven en el payload).
+            conn.execute(
+                'DELETE FROM informe_campo_hallazgo '
+                'WHERE visita_campo_id = ? AND estado_fila = 1',
+                (visita_campo_id,),
+            )
             for h in data.get('hallazgos') or []:
                 if not isinstance(h, dict):
                     continue
