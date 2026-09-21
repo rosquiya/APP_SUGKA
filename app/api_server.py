@@ -3892,6 +3892,7 @@ def api_index():
         'ocr_status': {
             'azure_configured': bool(azure_endpoint and azure_key),
             'gemini_configured': bool(os.getenv("GEMINI_API_KEY", "")),
+            'openai_configured': bool(get_openai_key()),
             'fallback': 'windows_ocr',
         },
         'endpoints': {
