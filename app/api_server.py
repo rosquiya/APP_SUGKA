@@ -6320,8 +6320,60 @@ def call_taller_gemini_texto(text):
         return {'status': 'failed', 'provider': 'gemini_texto', 'payload': {}, 'error': f'{type(exc).__name__}: {exc}'}
 
 
+def call_taller_openai(text):
+    """Ultimo respaldo si Gemini falla o se queda sin cuota (mismo patron que
+    call_campo_openai para informes de campo). Usa el texto que ya extrajo
+    Azure/pdfplumber -- no hace falta reenviar la imagen."""
+    api_key = get_openai_key()
+    if not api_key:
+        return {'status': 'missing_env', 'provider': 'openai', 'payload': {}, 'error': ''}
+    model = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
+    prompt = (
+        TALLER_SYSTEM_PROMPT
+        + '\n\nEsquema JSON de respuesta:\n'
+        + json.dumps(TALLER_JSON_SCHEMA, ensure_ascii=False, indent=2)
+        + '\n\nTexto de la planilla:\n'
+        + truncate_for_llm(text, 18000)
+    )
+    request_payload = {
+        'model': model,
+        'input': [
+            {'role': 'system', 'content': TALLER_SYSTEM_PROMPT},
+            {'role': 'user', 'content': prompt + '\n\nResponde solo JSON valido, sin markdown.'},
+        ],
+        'text': {'format': {'type': 'json_object'}},
+    }
+    try:
+        req = urllib.request.Request(
+            'https://api.openai.com/v1/responses',
+            data=json.dumps(request_payload).encode('utf-8'),
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+            },
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            body = json.loads(resp.read().decode('utf-8'))
+        text_parts = []
+        for output in body.get('output', []) or []:
+            for content in output.get('content', []) or []:
+                if isinstance(content, dict) and isinstance(content.get('text'), str):
+                    text_parts.append(content['text'])
+        out_text = '\n'.join(text_parts).strip() or body.get('output_text', '')
+        return {'status': 'ok', 'provider': 'openai', 'payload': parse_json_loose(out_text), 'error': ''}
+    except Exception as exc:
+        return {'status': 'failed', 'provider': 'openai', 'payload': {}, 'error': f'{type(exc).__name__}: {exc}'}
+
+
 def extract_taller_asistentes(files_payload, text):
-    """Devuelve (payload, proveedor, error). No toca la base de datos."""
+    """Devuelve (payload, proveedor, error). No toca la base de datos.
+
+    Cascada: Gemini Vision (si hay imagenes) -> Gemini texto (si Azure ya dejo
+    texto util) -> OpenAI texto como ultimo respaldo. Antes solo se intentaba
+    Gemini, asi que un 429 de cuota (el free tier de Gemini permite 20
+    requests/dia) tumbaba el flujo completo sin red de seguridad -- mismo
+    problema que ya se habia resuelto para informes de campo."""
     image_parts = []
     for item in files_payload:
         if is_pdf_file(item.get('filename', ''), item.get('mimetype', '')):
@@ -6332,18 +6384,27 @@ def extract_taller_asistentes(files_payload, text):
                 'data': item['bytes'],
             })
 
+    last_provider, last_error = 'ninguno', ''
+
     if image_parts:
         resultado = call_taller_gemini_vision(image_parts)
         if resultado['status'] == 'ok' and resultado['payload'].get('asistentes'):
             return resultado['payload'], resultado['provider'], ''
+        last_provider, last_error = resultado['provider'], resultado.get('error') or last_error
 
     if len((text or '').strip()) >= 50:
         resultado = call_taller_gemini_texto(text)
         if resultado['status'] == 'ok' and resultado['payload'].get('asistentes'):
             return resultado['payload'], resultado['provider'], ''
-        return {}, resultado['provider'], resultado.get('error') or 'sin_asistentes_detectados'
+        last_provider, last_error = resultado['provider'], resultado.get('error') or last_error
 
-    return {}, 'ninguno', 'sin_imagen_ni_texto_utilizable'
+        resultado = call_taller_openai(text)
+        if resultado['status'] == 'ok' and resultado['payload'].get('asistentes'):
+            return resultado['payload'], resultado['provider'], ''
+        last_provider, last_error = resultado['provider'], resultado.get('error') or last_error
+        return {}, last_provider, last_error or 'sin_asistentes_detectados'
+
+    return {}, last_provider, last_error or 'sin_imagen_ni_texto_utilizable'
 
 
 def resolver_ie_por_nombre_y_nivel(conn, nombre_ie, nivel_educativo=''):
