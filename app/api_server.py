@@ -3328,31 +3328,42 @@ def _condicion_periodo(campo_fecha, anio='', mes=''):
     return '', []
 
 
-def build_asistencias_dashboard(conn, anio='', mes='', codigo_ie=''):
+def build_asistencias_dashboard(conn, anio='', mes='', codigo_ie='', profesor_id='', taller_id=''):
     """Seguimiento de la capacitacion docente: cuantos talleres se dictaron,
     cuanta gente asistio y a quienes todavia no se ha capacitado.
 
     Todo se cuenta contra talleres activos (t.estado_fila = 1): un taller dado
     de baja no debe seguir sumando en los indicadores.
     """
-    # Filtros opcionales de periodo (anio o anio+mes) y de institucion. La
-    # fecha del taller viene del OCR y puede faltar, por eso se cae a creado_en.
-    condiciones = ['COALESCE(a.estado_fila, 1) = 1', 'COALESCE(t.estado_fila, 1) = 1']
-    filtros = []
+    # Los filtros se separan en dos grupos porque no todas las consultas pasan
+    # por taller_asistencia: la lista de talleres recientes solo conoce `t`.
+    #   cond_taller -> condiciones que viven en taller_capacitacion
+    #   cond_asis   -> las anteriores mas las que solo existen en la asistencia
+    cond_taller = ['COALESCE(t.estado_fila, 1) = 1']
+    params_taller = []
     cond_periodo, params_periodo = _condicion_periodo("NULLIF(t.fecha_inicio, '')", anio, mes)
     if cond_periodo:
         # Si el taller no trae fecha propia (el OCR no siempre la lee) se usa la
         # de registro, para no perder la fila del grafico.
         cond_alt, params_alt = _condicion_periodo('t.creado_en', anio, mes)
-        condiciones.append(f"(({cond_periodo}) OR (COALESCE(t.fecha_inicio, '') = '' AND ({cond_alt})))")
-        filtros += params_periodo + params_alt
+        cond_taller.append(f"(({cond_periodo}) OR (COALESCE(t.fecha_inicio, '') = '' AND ({cond_alt})))")
+        params_taller += params_periodo + params_alt
     if codigo_ie:
-        condiciones.append('t.codigo_modular_sede = ?')
-        filtros.append(codigo_ie)
+        cond_taller.append('t.codigo_modular_sede = ?')
+        params_taller.append(codigo_ie)
+    if taller_id:
+        cond_taller.append('t.id = ?')
+        params_taller.append(taller_id)
+
+    cond_asis = ['COALESCE(a.estado_fila, 1) = 1'] + cond_taller
+    filtros = list(params_taller)
+    if profesor_id:
+        cond_asis.append('a.profesor_id = ?')
+        filtros.append(profesor_id)
     base = '''
         FROM taller_asistencia a
         JOIN taller_capacitacion t ON t.id = a.taller_id
-        WHERE ''' + ' AND '.join(condiciones) + '''
+        WHERE ''' + ' AND '.join(cond_asis) + '''
     '''
 
     totales = conn.execute(f'''
@@ -3403,6 +3414,17 @@ def build_asistencias_dashboard(conn, anio='', mes='', codigo_ie=''):
         filtros
     ).fetchall()
 
+    # Con filtro de docente, "recientes" son los talleres a los que ESA persona
+    # asistio: se resuelve con EXISTS porque la consulta no une la asistencia.
+    cond_recientes = list(cond_taller)
+    params_recientes = list(params_taller)
+    if profesor_id:
+        cond_recientes.append(
+            'EXISTS (SELECT 1 FROM taller_asistencia a2 WHERE a2.taller_id = t.id'
+            ' AND a2.profesor_id = ? AND COALESCE(a2.estado_fila, 1) = 1)'
+        )
+        params_recientes.append(profesor_id)
+
     recientes = conn.execute('''
         SELECT t.id, t.nombre_evento, t.compromiso_indicador, t.nivel_educativo,
                t.fecha_inicio, t.fecha_fin, t.creado_en,
@@ -3412,10 +3434,24 @@ def build_asistencias_dashboard(conn, anio='', mes='', codigo_ie=''):
         FROM taller_capacitacion t
         LEFT JOIN dim_institucion i ON i.codigo_modular = t.codigo_modular_sede
         LEFT JOIN app_user u ON u.user_id = t.creado_por
-        WHERE ''' + ' AND '.join(c for c in condiciones if not c.startswith('COALESCE(a.')) + '''
+        WHERE ''' + ' AND '.join(cond_recientes) + '''
         ORDER BY t.creado_en DESC
         LIMIT 8
-    ''', filtros).fetchall()
+    ''', params_recientes).fetchall()
+
+    # Nombres de lo filtrado, para que la vista pueda rotularlo sin otra consulta.
+    profesor_nombre = ''
+    if profesor_id:
+        fila = conn.execute(
+            'SELECT nombre_completo FROM profesor WHERE id = ?', (profesor_id,)
+        ).fetchone()
+        profesor_nombre = (fila['nombre_completo'] if fila else '') or ''
+    taller_nombre = ''
+    if taller_id:
+        fila = conn.execute(
+            'SELECT nombre_evento FROM taller_capacitacion WHERE id = ?', (taller_id,)
+        ).fetchone()
+        taller_nombre = (fila['nombre_evento'] if fila else '') or ''
 
     capacitados = safe_int(totales['profesores_distintos'] if totales else 0, 0)
     return {
@@ -3431,7 +3467,11 @@ def build_asistencias_dashboard(conn, anio='', mes='', codigo_ie=''):
         'por_cargo': rows_to_list(por_cargo),
         'top_ies': rows_to_list(top_ies),
         'recientes': rows_to_list(recientes),
-        'filtros': {'anio': anio, 'mes': mes, 'codigo_modular': codigo_ie},
+        'filtros': {
+            'anio': anio, 'mes': mes, 'codigo_modular': codigo_ie,
+            'profesor_id': profesor_id, 'profesor_nombre': profesor_nombre,
+            'taller_id': taller_id, 'taller_nombre': taller_nombre,
+        },
     }
 
 
@@ -5018,9 +5058,13 @@ def _filtros_dashboard():
 @require_auth
 def dashboard_asistencias():
     anio, mes, codigo_ie = _filtros_dashboard()
+    # Estos dos solo aplican a capacitaciones, por eso no van en el helper comun.
+    profesor_id = (request.args.get('profesor_id') or '').strip()
+    taller_id = (request.args.get('taller_id') or '').strip()
     conn = get_db()
     try:
-        return jsonify(build_asistencias_dashboard(conn, anio, mes, codigo_ie))
+        return jsonify(build_asistencias_dashboard(
+            conn, anio, mes, codigo_ie, profesor_id, taller_id))
     finally:
         conn.close()
 

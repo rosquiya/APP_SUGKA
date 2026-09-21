@@ -2002,6 +2002,8 @@ input.ss-unpicked{border-color:var(--warning)}
                 <select class="form-input" data-dashf="anio" data-vista="asis" style="max-width:130px"><option value="">Todos los años</option></select>
                 <select class="form-input" data-dashf="mes" data-vista="asis" style="max-width:150px"><option value="">Todos los meses</option></select>
                 <input class="form-input" data-dashf="ie" data-vista="asis" placeholder="Toda institución — busca por nombre o código" style="max-width:340px"/>
+                <input class="form-input" data-dashf="profesor" data-vista="asis" placeholder="Todos los docentes — busca por nombre o DNI" style="max-width:300px"/>
+                <input class="form-input" data-dashf="taller" data-vista="asis" placeholder="Todos los talleres — toca para ver la lista" style="max-width:320px"/>
                 <button type="button" class="mini-btn" data-dashf-clear="asis">Limpiar</button>
               </div>
               <div class="dash-kpi-grid" id="dash-asis-kpis"></div>
@@ -7285,9 +7287,12 @@ function dashKpiTile(label, value, sub = '', tono = '') {
    llega en /api/dashboard ya viene agregado y no se puede desagregar después. */
 const MESES_NOMBRE = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const dashFiltros = {
-  asis: {anio: '', mes: '', ie: ''},
+  asis: {anio: '', mes: '', ie: '', profesor: '', taller: ''},
   esp:  {anio: '', mes: '', ie: ''},
 };
+// Etiquetas de lo elegido, para el resumen "Filtro aplicado" sin ir al servidor.
+const dashFiltroNombres = {profesor: '', taller: ''};
+let dashTalleresCache = null;
 let dashAniosDisponibles = null;
 
 async function prepararFiltrosDashboard(vista) {
@@ -7318,6 +7323,66 @@ async function prepararFiltrosDashboard(vista) {
       },
     });
   }
+
+  // Docente: se busca contra el servidor porque el padron puede crecer.
+  const inputProf = document.querySelector(`[data-dashf="profesor"][data-vista="${vista}"]`);
+  if (inputProf && inputProf.dataset.ssAttached !== '1') {
+    inputProf.dataset.ssAttached = '1';
+    createSearchableSelect({
+      input: inputProf,
+      minChars: 2,
+      fetchOptions: q => fetchProfesorOptions(q),
+      emptyText: 'Ningún docente coincide. Prueba con el apellido o el DNI.',
+      onSelect: opcion => {
+        dashFiltros[vista].profesor = opcion ? opcion.id : '';
+        dashFiltroNombres.profesor = opcion ? opcion.label : '';
+        recargarDashboardFiltrado(vista);
+      },
+    });
+  }
+
+  // Taller: los talleres son pocos, asi que se listan completos al enfocar
+  // (seleccion) y se filtran mientras se escribe (busqueda).
+  const inputTaller = document.querySelector(`[data-dashf="taller"][data-vista="${vista}"]`);
+  if (inputTaller && inputTaller.dataset.ssAttached !== '1') {
+    inputTaller.dataset.ssAttached = '1';
+    createSearchableSelect({
+      input: inputTaller,
+      minChars: 0,
+      debounceMs: 0,
+      fetchOptions: buscarTalleres,
+      emptyText: 'Todavía no hay talleres registrados.',
+      onSelect: opcion => {
+        dashFiltros[vista].taller = opcion ? opcion.id : '';
+        dashFiltroNombres.taller = opcion ? opcion.label : '';
+        recargarDashboardFiltrado(vista);
+      },
+    });
+  }
+}
+
+/* Lista de talleres para el filtro. Se trae una sola vez y se filtra en el
+   navegador: son pocos y así el desplegable abre sin esperar al servidor. */
+async function buscarTalleres(q) {
+  if (!dashTalleresCache) {
+    try {
+      dashTalleresCache = await apiFetch('/talleres_capacitacion');
+    } catch (e) {
+      dashTalleresCache = [];
+    }
+  }
+  const texto = (q || '').trim().toLowerCase();
+  return dashTalleresCache
+    .filter(t => !texto || [t.nombre_evento, t.sede_nombre, t.especialista_responsable, t.fecha_inicio]
+      .some(v => String(v || '').toLowerCase().includes(texto)))
+    .slice(0, 40)
+    .map(t => ({
+      id: String(t.id),
+      label: t.nombre_evento || 'Taller sin nombre',
+      sublabel: [t.fecha_inicio || (t.creado_en || '').slice(0, 10), t.sede_nombre,
+                 `${t.total_asistentes || 0} participante(s)`].filter(Boolean).join(' · '),
+      raw: t,
+    }));
 }
 
 function paramsFiltro(vista) {
@@ -7326,6 +7391,8 @@ function paramsFiltro(vista) {
   if (f.anio) qs.set('anio', f.anio);
   if (f.mes) qs.set('mes', f.mes);
   if (f.ie) qs.set('codigo_modular', f.ie);
+  if (f.profesor) qs.set('profesor_id', f.profesor);
+  if (f.taller) qs.set('taller_id', f.taller);
   const texto = qs.toString();
   return texto ? '?' + texto : '';
 }
@@ -7357,10 +7424,19 @@ document.querySelectorAll('[data-dashf]').forEach(el => {
 document.querySelectorAll('[data-dashf-clear]').forEach(btn => {
   btn.addEventListener('click', () => {
     const vista = btn.dataset.dashfClear;
-    dashFiltros[vista] = {anio: '', mes: '', ie: ''};
+    dashFiltros[vista] = vista === 'asis'
+      ? {anio: '', mes: '', ie: '', profesor: '', taller: ''}
+      : {anio: '', mes: '', ie: ''};
+    dashFiltroNombres.profesor = '';
+    dashFiltroNombres.taller = '';
     document.querySelectorAll(`[data-dashf][data-vista="${vista}"]`).forEach(el => {
       el.value = '';
-      if (el.dataset.dashf === 'ie') { el.dataset.pickedId = ''; el.classList.remove('searchable-select-picked'); }
+      // Los tres buscadores guardan lo elegido en el dataset y se marcan con
+      // una clase; sin limpiarlas el campo sigue pareciendo seleccionado.
+      if (['ie', 'profesor', 'taller'].includes(el.dataset.dashf)) {
+        el.dataset.pickedId = '';
+        el.classList.remove('ss-picked', 'ss-unpicked');
+      }
     });
     recargarDashboardFiltrado(vista);
   });
@@ -7372,6 +7448,8 @@ function resumenFiltros(vista) {
   if (f.anio) partes.push(f.mes ? `${MESES_NOMBRE[Number(f.mes) - 1]} ${f.anio}` : `año ${f.anio}`);
   else if (f.mes) partes.push(MESES_NOMBRE[Number(f.mes) - 1]);
   if (f.ie) partes.push(ieDescripcion(f.ie, {conCodigo: false}));
+  if (f.profesor) partes.push(dashFiltroNombres.profesor || 'un docente');
+  if (f.taller) partes.push(dashFiltroNombres.taller || 'un taller');
   return partes.length ? partes.join(' · ') : '';
 }
 
@@ -7380,12 +7458,23 @@ function renderAsistenciasDashboard() {
   if (!a) return;
 
   const filtroTexto = resumenFiltros('asis');
+  const porDocente = !!(a.filtros && a.filtros.profesor_id);
   document.getElementById('dash-asis-kpis').innerHTML = [
     ...(filtroTexto ? [`<div class="dash-kpi" style="grid-column:1/-1;border-top-color:var(--brand-blue)"><div class="dash-kpi-label">Filtro aplicado</div><div class="dash-kpi-sub" style="margin-top:4px">${esc(filtroTexto)}</div></div>`] : []),
-    dashKpiTile('Talleres registrados', a.total_talleres, 'listas de asistencia cargadas'),
-    dashKpiTile('Participaciones', a.total_asistencias, `promedio ${a.promedio_por_taller} por taller`),
-    dashKpiTile('Docentes capacitados', a.profesores_capacitados, `de ${a.profesores_padron} en el padrón`, 'green'),
-    dashKpiTile('Cobertura del padrón', `${a.pct_cobertura}%`, 'personas distintas alcanzadas', a.pct_cobertura < 25 ? 'amber' : 'green'),
+    // Filtrando por una persona, los dos ultimos indicadores no informan nada:
+    // "docentes capacitados" seria siempre 1 y la cobertura del padron 0.3%,
+    // que se lee como un problema cuando solo refleja el filtro.
+    ...(porDocente
+      ? [
+          dashKpiTile('Talleres a los que asistió', a.total_talleres, 'con lista de asistencia cargada', 'green'),
+          dashKpiTile('Participaciones', a.total_asistencias, 'veces que figura en una lista'),
+        ]
+      : [
+          dashKpiTile('Talleres registrados', a.total_talleres, 'listas de asistencia cargadas'),
+          dashKpiTile('Participaciones', a.total_asistencias, `promedio ${a.promedio_por_taller} por taller`),
+          dashKpiTile('Docentes capacitados', a.profesores_capacitados, `de ${a.profesores_padron} en el padrón`, 'green'),
+          dashKpiTile('Cobertura del padrón', `${a.pct_cobertura}%`, 'personas distintas alcanzadas', a.pct_cobertura < 25 ? 'amber' : 'green'),
+        ]),
   ].join('');
 
   const maxMes = Math.max(1, ...(a.por_mes || []).map(m => m.asistencias || 0));
